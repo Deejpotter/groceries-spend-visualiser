@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.16.0/umd/popper.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+
+    <title>Groceries Spend Visualizer</title>
+</head>
+<body>
+<h1>Groceries Spend Visualizer</h1>
+<p>Analyze your spending on groceries over a fortnight.</p>
+<form action="/" method="post">
+    <input type="submit" value="Calculate">
+</form>
+<div id="output">
+    {% if results %}
+    <h2>Analysis Results:</h2>
+    <pre style="white-space: pre-wrap;">{{ results | safe }}</pre>
+    {% endif %}
+</div>
+
+
+</body>
+</html>
