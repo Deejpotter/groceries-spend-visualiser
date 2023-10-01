@@ -15,10 +15,11 @@ def process_invoices(directory):
     """
     Processes all invoices in the specified directory.
     :param directory:
-    :return:
+    :return: Dictionary containing different types of data
     """
     # Initialize OpenAI
     initialize_openai()
+
     # Extract text from PDFs
     extracted_text = extract_text_from_pdfs(directory)
 
@@ -31,8 +32,12 @@ def process_invoices(directory):
     # Analyze data
     analysis_results = [analyze_data(df) for df in structured_data]
 
-    # Concatenate analysis results into a single string
-    results_string = f"Extracted text: {extracted_text}\n\n Cleaned text: {cleaned_text}\n\n Structured data: {structured_data}\n\n Analysis results: {analysis_results}"
+    # Create a dictionary to hold the results
+    results_dict = {
+        'extracted_text': extracted_text,
+        'cleaned_text': cleaned_text,
+        'structured_data': structured_data,
+        'analysis_results': analysis_results
+    }
 
-    return results_string
-
+    return results_dict
