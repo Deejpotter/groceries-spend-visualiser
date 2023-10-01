@@ -7,22 +7,63 @@
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.16.0/umd/popper.min.js"></script>
     <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
-
     <title>Groceries Spend Visualizer</title>
 </head>
 <body>
 <h1>Groceries Spend Visualizer</h1>
 <p>Analyze your spending on groceries over a fortnight.</p>
+<!-- Display Upload Form -->
+<form action="/process_invoices" method="post">
+    <input type="submit" value="Process New Invoices" class="btn btn-secondary">
+</form>
+<!-- Display Calculate Form -->
 <form action="/" method="post">
-    <input type="submit" value="Calculate">
+    <input type="submit" value="Calculate" class="btn btn-primary">
 </form>
 <div id="output">
     {% if results %}
     <h2>Analysis Results:</h2>
-    <pre style="white-space: pre-wrap;">{{ results | safe }}</pre>
+
+    <!-- Display Extracted Text -->
+    <div class="card">
+        <div class="card-header">Extracted Text</div>
+        <div class="card-body">
+            {% for text in results.extracted_text %}
+            <pre style="white-space: pre-wrap;">{{ text | safe }}</pre>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Display Cleaned Text -->
+    <div class="card">
+        <div class="card-header">Cleaned Text</div>
+        <div class="card-body">
+            {% for text in results.cleaned_text %}
+            <pre style="white-space: pre-wrap;">{{ text | safe }}</pre>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Display Structured Data -->
+    <div class="card">
+        <div class="card-header">Structured Data</div>
+        <div class="card-body">
+            {% for data in results.structured_data %}
+            <pre style="white-space: pre-wrap;">{{ data | safe }}</pre>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Display Analysis Results -->
+    <div class="card">
+        <div class="card-header">Analysis Results</div>
+        <div class="card-body">
+            {% for result in results.analysis_results %}
+            <pre style="white-space: pre-wrap;">{{ result | safe }}</pre>
+            {% endfor %}
+        </div>
+    </div>
     {% endif %}
 </div>
-
-
 </body>
 </html>

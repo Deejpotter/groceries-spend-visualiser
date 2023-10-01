@@ -3,7 +3,7 @@ import openai
 
 def clean_text(text):
     """
-    Cleans the extracted text from PDF using OpenAI.
+    Cleans the extracted text from PDF using OpenAI GPT-4.
 
     Parameters:
         text (str): The extracted text.
@@ -11,23 +11,31 @@ def clean_text(text):
     Returns:
         str: The cleaned text.
     """
-    prompt = f""" Consider the following text:
-    {text}
-    
-    Extract the words from that text. Some of the words may be misspelled or have too many letters. Some words may be missing. Some may be split into multiple words. Some may be joined together.
-    Try to recreate the original text. Then format it nicely.    
+
+    system_prompt = """
+        You are a specialized text fixer for invoices. Your task is to:
+        - Correct any spelling or grammatical errors.
+        - Reorder any text that may be in the wrong sequence.
+        - Separate words that are combined and combine words that are split.
+        - Extract and organize only the essential structured data such as:
+            - Customer details (Name)
+            - Item lists (Description, Quantity, Price)
+            - Totals (Subtotal, Taxes, Final Total)
+        - Remove any redundant or unnecessary information.
+        - Return the cleaned and structured text in a way that's easy to read and analyze.
     """
 
-    # Use OpenAI's text generation to clean the text
-    response = openai.Completion.create(
-        engine="davinci",
-        prompt=prompt,
-        max_tokens=100,  # Adjust max_tokens as needed
-        n=1,  # Number of completions to generate
-        stop=None,  # Stop tokens to limit the response (can be a list of strings)
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": f"{text}"}
+    ]
+
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=messages
     )
 
-    # Extract the cleaned text from the OpenAI response
-    cleaned_text = response.choices[0].text.strip()
+    cleaned_text = response['choices'][0]['message']['content'].strip()
 
     return cleaned_text
+
