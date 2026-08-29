@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <title>Woolworths Spend Analysis</title>
+    <style>
+        body { padding: 2rem; }
+        .stat-card { text-align: center; }
+        .stat-value { font-size: 1.8rem; font-weight: 700; }
+        .stat-label { color: #6c757d; }
+        table td.num, table th.num { text-align: right; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Woolworths Spend Analysis</h1>
+    <p class="text-muted">
+        {{ stats.first_date.strftime('%d %b %Y') }} &ndash; {{ stats.last_date.strftime('%d %b %Y') }}
+        &middot; {{ stats.total_shops }} shops
+    </p>
+
+    <div class="row my-4">
+        <div class="col stat-card">
+            <div class="stat-value">${{ '{:,.2f}'.format(stats.total_spend) }}</div>
+            <div class="stat-label">Total spend</div>
+        </div>
+        <div class="col stat-card">
+            <div class="stat-value">${{ '{:,.2f}'.format(stats.avg_spend_per_month) }}</div>
+            <div class="stat-label">Avg / month</div>
+        </div>
+        <div class="col stat-card">
+            <div class="stat-value">${{ '{:,.2f}'.format(stats.avg_spend_per_shop) }}</div>
+            <div class="stat-label">Avg / shop</div>
+        </div>
+        <div class="col stat-card">
+            <div class="stat-value">{{ stats.avg_days_between_shops }}</div>
+            <div class="stat-label">Days between shops</div>
+        </div>
+    </div>
+
+    <div class="mb-4" style="border: 1px solid rgba(0,0,0,.125); border-radius: .25rem;">
+        <div style="padding: .75rem 1.25rem; background: rgba(0,0,0,.03); border-bottom: 1px solid rgba(0,0,0,.125);">Monthly spend</div>
+        <div style="position: relative; height: 320px; padding: 1.25rem;">
+            <canvas id="monthlyChart"></canvas>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">Most frequently bought</div>
+                <div class="card-body p-0">
+                    <table class="table table-sm mb-0">
+                        <thead><tr><th>Product</th><th class="num">Orders</th><th class="num">Spend</th></tr></thead>
+                        <tbody>
+                        {% for name, row in stats.top_by_frequency.iterrows() %}
+                            <tr>
+                                <td>{{ name }}</td>
+                                <td class="num">{{ row.orders }}</td>
+                                <td class="num">${{ '{:,.2f}'.format(row.total_spend) }}</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">Highest total spend</div>
+                <div class="card-body p-0">
+                    <table class="table table-sm mb-0">
+                        <thead><tr><th>Product</th><th class="num">Orders</th><th class="num">Spend</th></tr></thead>
+                        <tbody>
+                        {% for name, row in stats.top_by_spend.iterrows() %}
+                            <tr>
+                                <td>{{ name }}</td>
+                                <td class="num">{{ row.orders }}</td>
+                                <td class="num">${{ '{:,.2f}'.format(row.total_spend) }}</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Layout can still be settling right at 'load' (canvas.parentElement's
+// size briefly reads 0 in some environments), which corrupts Chart.js's
+// bar geometry permanently. A double requestAnimationFrame reliably waits
+// until the browser has completed a real layout+paint pass first.
+requestAnimationFrame(function () {
+requestAnimationFrame(function () {
+new Chart(document.getElementById('monthlyChart'), {
+    type: 'bar',
+    data: {
+        labels: {{ monthly_labels | tojson }},
+        datasets: [{
+            label: 'Spend ($)',
+            data: {{ monthly_values | tojson }},
+            backgroundColor: '#28a745'
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+            x: { type: 'category' },
+            y: { beginAtZero: true }
+        }
+    }
+});
+});
+});
+</script>
+</body>
+</html>
