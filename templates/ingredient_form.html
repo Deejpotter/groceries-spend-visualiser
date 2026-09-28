@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Groceries Spend Visualizer</title>
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+</head>
+<body>
+    <div class="container mt-5">
+        <h1 class="mb-4">Add Ingredients</h1>
+        <p class="lead">Enter your ingredients with price and URL information.</p>
+        
+        <form id="ingredientForm" method="POST" action="/add_ingredient">
+            <div class="form-group">
+                <label for="name">Ingredient Name</label>
+                <input type="text" class="form-control" id="name" name="name" required placeholder="e.g. Apples">
+            </div>
+            
+            <div class="form-group">
+                <label for="category">Category</label>
+                <select class="form-control" id="category" name="category" required>
+                    <option value="">Select a category...</option>
+                    <option value="produce">Produce</option>
+                    <option value="meat">Meat</option>
+                    <option value="dairy">Dairy</option>
+                    <option value="bakery">Bakery</option>
+                    <option value="pantry">Pantry</option>
+                    <option value="frozen">Frozen</option>
+                    <option value="beverages">Beverages</option>
+                    <option value="snacks">Snacks</option>
+                    <option value="household">Household</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group col-md-4">
+                    <label for="price">Price ($)</label>
+                    <input type="number" class="form-control" id="price" name="price" step="0.01" min="0" placeholder="0.00">
+                </div>
+                
+                <div class="form-group col-md-4">
+                    <label for="url">URL (optional)</label>
+                    <input type="url" class="form-control" id="url" name="url" placeholder="https://example.com/product">
+                </div>
+                
+                <div class="form-group col-md-4">
+                    <label for="notes">Notes (optional)</label>
+                    <input type="text" class="form-control" id="notes" name="notes" placeholder="Any notes about this ingredient">
+                </div>
+            </div>
+            
+            <button type="submit" class="btn btn-primary">Add Ingredient</button>
+            <a href="/" class="btn btn-secondary">Cancel</a>
+        </form>
+    </div>
+    
+    <!-- Bootstrap JS -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.16.0/umd/popper.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</body>
+</html>

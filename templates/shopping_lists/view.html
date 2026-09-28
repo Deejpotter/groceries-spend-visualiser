@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}Shopping List — Grocery Visualiser{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Shopping List</h1>
+    <div>
+        {% if plan_start and plan_end %}
+        <form method="post" action="{{ url_for('shopping_list.shopping_list_generate') }}" class="d-inline">
+            <input type="hidden" name="plan_start" value="{{ plan_start }}">
+            <input type="hidden" name="plan_end" value="{{ plan_end }}">
+            <button type="submit" class="btn btn-info">
+                <i class="fas fa-sync"></i> Regenerate from Plan
+            </button>
+        </form>
+        {% endif %}
+        <button onclick="window.print()" class="btn btn-secondary">
+            <i class="fas fa-print"></i> Print
+        </button>
+    </div>
+</div>
+
+{% if plan_start and plan_end %}
+<div class="alert alert-info">
+    <strong>Plan Period:</strong> {{ plan_start }} to {{ plan_end }}
+</div>
+{% endif %}
+
+{% if generated_list or persistent_items %}
+{% if cost_estimate %}
+<div class="alert alert-light border border-dark text-right mb-4">
+    <strong>Estimated Total: ${{ "%.2f"|format(cost_estimate) }}</strong>
+</div>
+{% endif %}
+
+{% for category, items in generated_list.items() %}
+<div class="card mb-3">
+    <div class="card-header bg-{% if category == 'produce' %}success{% elif category == 'meat' %}danger{% elif category == 'dairy' %}info{% elif category == 'bakery' %}warning{% elif category == 'frozen' %}secondary{% else %}light{% endif %} text-white">
+        <strong>{{ category_lookup.get(category, category) }}</strong>
+        <span class="float-right text-white-50">{{ items|length }} items</span>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+            <tbody>
+                {% for item in items %}
+                <tr class="{{ 'table-primary' if item.meal_date else '' }}">
+                    <td>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox"
+                                   {% if item.checked %}checked{% endif %}
+                                   onchange="window.location.href='{{ url_for('shopping_list.shopping_list_toggle', item_id=item.id) }}'">
+                        </div>
+                    </td>
+                    <td style="width: 40px; text-align: right;">{{ item.quantity }}</td>
+                    <td>{{ item.unit }}</td>
+                    <td>{{ item.ingredient_name }}</td>
+                    <td class="text-muted small" style="max-width: 200px;">
+                        {% if item.recipe_refs %}
+                        <span title="{{ item.recipe_refs|join(', ') }}">
+                            {{ item.recipe_refs|join(', ') }}
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td class="text-right">
+                        <a href="{{ url_for('shopping_list.shopping_list_delete', item_id=item.id) }}"
+                           class="btn btn-sm btn-outline-danger"
+                           onclick="return confirm('Remove this item?')">
+                            <i class="fas fa-times"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endfor %}
+
+<hr class="my-4">
+
+<h4>Add Manual Item</h4>
+<form method="post" action="{{ url_for('shopping_list.shopping_list_add_manual') }}" class="row g-3 mb-4">
+    <div class="col-md-5">
+        <input type="text" class="form-control" name="name" placeholder="Item name" required>
+    </div>
+    <div class="col-md-2">
+        <input type="number" class="form-control" name="quantity" value="1" min="0.01" step="0.01" required>
+    </div>
+    <div class="col-md-3">
+        <select class="form-control" name="unit">
+            {% for code, label in units %}
+            <option value="{{ code }}">{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-md-2">
+        <button type="submit" class="btn btn-primary w-100">Add Item</button>
+    </div>
+</form>
+
+{% if persistent_items %}
+<div class="card">
+    <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+        <strong>Manual Items</strong>
+        <form method="post" action="{{ url_for('shopping_list.shopping_list_clear_checked') }}">
+            <button type="submit" class="btn btn-sm btn-outline-light">Clear Checked Items</button>
+        </form>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+            <tbody>
+                {% for item in persistent_items %}
+                <tr class="{{ 'table-success' if item.checked else '' }}">
+                    <td>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox"
+                                   {% if item.checked %}checked{% endif %}
+                                   onchange="window.location.href='{{ url_for('shopping_list.shopping_list_toggle', item_id=item.id) }}'">
+                        </div>
+                    </td>
+                    <td style="width: 40px; text-align: right;">{{ item.quantity }}</td>
+                    <td>{{ item.unit }}</td>
+                    <td>{{ item.ingredient_name }}</td>
+                    <td class="text-right">
+                        <a href="{{ url_for('shopping_list.shopping_list_delete', item_id=item.id) }}"
+                           class="btn btn-sm btn-outline-danger"
+                           onclick="return confirm('Remove this item?')">
+                            <i class="fas fa-times"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+{% else %}
+<div class="alert alert-secondary text-center">
+    <p>No shopping list generated yet. Set your plan dates in Settings, then go to the Meal Plan and generate a plan.</p>
+</div>
+{% endif %}
+{% endblock %}

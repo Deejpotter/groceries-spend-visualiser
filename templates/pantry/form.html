@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Edit' if item else 'Add' }} Pantry Item — Grocery Visualiser{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h4>{{ 'Edit' if item else 'Add' }} Pantry Item</h4>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    <div class="form-group">
+                        <label for="ingredient_id">Ingredient <span class="text-danger">*</span></label>
+                        <select class="form-control" id="ingredient_id" name="ingredient_id" required>
+                            <option value="">Select ingredient...</option>
+                            {% for ing in ingredients %}
+                            <option value="{{ ing.id }}" {% if item and item.ingredient_id == ing.id %}selected{% endif %}>
+                                {{ ing.name }} ({{ ing.unit }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">Select the ingredient from your database.</small>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group col-md-4">
+                            <label for="quantity">Quantity <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" id="quantity" name="quantity"
+                                   step="0.01" min="0" value="{{ item.quantity if item else '' }}" required>
+                        </div>
+                        <div class="form-group col-md-4">
+                            <label for="unit">Unit</label>
+                            <input type="text" class="form-control" id="unit" name="unit"
+                                   value="{{ item.unit if item else '' }}"
+                                   placeholder="e.g. kg, L, each">
+                        </div>
+                        <div class="form-group col-md-4">
+                            <label for="expiry_date">Expiry Date</label>
+                            <input type="date" class="form-control" id="expiry_date" name="expiry_date"
+                                   value="{{ item.expiry_date if item else '' }}">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="location">Location</label>
+                        <select class="form-control" id="location" name="location">
+                            <option value="pantry" {% if item and item.location == 'pantry' or not item %}selected{% endif %}>Pantry</option>
+                            <option value="fridge" {% if item and item.location == 'fridge' %}selected{% endif %}>Fridge</option>
+                            <option value="freezer" {% if item and item.location == 'freezer' %}selected{% endif %}>Freezer</option>
+                            <option value="other" {% if item and item.location == 'other' %}selected{% endif %}>Other</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group text-right">
+                                            <a href="{{ url_for('pantry.pantry_list') }}" class="btn btn-secondary">Cancel</a>
+                        <button type="submit" class="btn btn-primary">
+                            {{ 'Update' if item else 'Add' }} Item
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card mt-3">
+            <div class="card-header">Tips</div>
+            <div class="card-body">
+                <ul>
+                    <li>Track what you have at home to avoid over-buying</li>
+                    <li>Set <strong>expiry dates</strong> to get alerts on soon-to-expire items</li>
+                    <li>Use <strong>Consume</strong> to reduce quantity after using an ingredient</li>
+                    <li>Pantry items can optionally be subtracted from shopping lists</li>
+                    <li>Enable this in <a href="{{ url_for('settings.settings') }}">Settings</a></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,55 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv/
+myenv/
+*.egg-info/
+.eggs/
+*.egg
+
+# Virtual environments
+*.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Database (persisted in volume, not in image)
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploads (persisted in volume, not in image)
+static/uploads/
+data/
+
+# Build artifacts
+*.pyc
+__pycache__/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Testing / Dev
+*.log
+.pytest_cache/
+.coverage
+htmlcov/

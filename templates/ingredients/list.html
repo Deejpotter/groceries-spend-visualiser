@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}Ingredients — Grocery Visualiser{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Ingredients</h1>
+    <a href="{{ url_for('ingredients.ingredient_add') }}" class="btn btn-primary">
+        <i class="fas fa-plus"></i> Add Ingredient
+    </a>
+</div>
+
+<form method="get" class="mb-4">
+    <div class="row">
+        <div class="col-md-4">
+            <input type="text" name="search" class="form-control" placeholder="Search ingredients..." value="{{ request.args.get('search', '') }}">
+        </div>
+        <div class="col-md-3">
+            <select name="category" class="form-control">
+                <option value="">All Categories</option>
+                {% for code, label in categories %}
+                <option value="{{ code }}" {% if request.args.get('category') == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <button type="submit" class="btn btn-secondary">Filter</button>
+        </div>
+        <div class="col-md-3">
+            <a href="{{ url_for('ingredients.ingredient_list') }}" class="btn btn-link">Clear</a>
+        </div>
+    </div>
+</form>
+
+{% if ingredients %}
+<table class="table table-striped table-hover">
+    <thead class="thead-dark">
+        <tr>
+            <th>Name</th>
+            <th>Category</th>
+            <th>Unit</th>
+            <th>Price</th>
+            <th>Store</th>
+            <th>Min Stock</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for ing in ingredients %}
+        <tr>
+            <td><strong>{{ ing.name }}</strong></td>
+            <td>{{ category_lookup.get(ing.category, ing.category) }}</td>
+            <td>{{ unit_label(ing.unit) }}</td>
+            <td>{% if ing.price %}${{ "%.2f"|format(ing.price) }}{% else %}—{% endif %}</td>
+            <td>{{ ing.store or '—' }}</td>
+            <td>{{ ing.minimum_stock or 0 }}</td>
+            <td>
+                <div class="btn-group btn-group-sm">
+                    <a href="{{ url_for('ingredients.ingredient_edit', ingredient_id=ing.id) }}" class="btn btn-outline-secondary">Edit</a>
+                    <a href="{{ url_for('ingredients.ingredient_delete', ingredient_id=ing.id) }}"
+                       class="btn btn-outline-danger"
+                       onclick="return confirm('Delete this ingredient?')">Delete</a>
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="alert alert-info text-center">
+    <p>No ingredients found.</p>
+    <a href="{{ url_for('ingredients.ingredient_add') }}" class="btn btn-primary">Add your first ingredient</a>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Helper functions exposed to templates
+function categoryLabel(code) {
+    const labels = {
+        'produce': 'Produce',
+        'meat': 'Meat & Seafood',
+        'dairy': 'Dairy & Eggs',
+        'bakery': 'Bakery',
+        'pantry': 'Pantry Staples',
+        'frozen': 'Frozen',
+        'household': 'Household',
+        'beverages': 'Beverages',
+        'snacks': 'Snacks',
+        'other': 'Other'
+    };
+    return labels[code] || code;
+}
+function unitLabel(code) {
+    const labels = {
+        'kg': 'Kilogram (kg)', 'g': 'Gram (g)', 'lb': 'Pound (lb)', 'oz': 'Ounce (oz)',
+        'L': 'Litre (L)', 'mL': 'Millilitre (mL)', 'gal': 'Gallon (gal)',
+        'fl_oz': 'Fluid Ounce (fl oz)', 'each': 'Each', 'pack': 'Pack',
+        'bunch': 'Bunch', 'roll': 'Roll', 'can': 'Can', 'jar': 'Jar',
+        'box': 'Box', 'bag': 'Bag', 'tube': 'Tube', 'carton': 'Carton',
+        'slice': 'Slice', 'cup': 'Cup', 'tbsp': 'Tablespoon', 'tsp': 'Teaspoon'
+    };
+    return labels[code] || code;
+}
+</script>
+{% endblock %}

@@ -1,0 +1,127 @@
+/* Custom styles for Grocery Visualiser */
+
+body {
+    background-color: #f8f9fa;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.container {
+    flex: 1;
+}
+
+footer {
+    margin-top: auto;
+}
+
+/* Navigation */
+.navbar-brand .icon {
+    margin-right: 0.5rem;
+}
+
+/* Cards */
+.card {
+    border: none;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    border-radius: 8px;
+}
+
+.card:hover {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+/* Recipe cards */
+.card-img-top {
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+}
+
+.card-footer {
+    border-top: 1px solid #eee;
+    padding: 0.75rem;
+}
+
+/* Ingredient list */
+.table thead th {
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+    letter-spacing: 0.5px;
+}
+
+/* Buttons */
+.btn-primary {
+    background-color: #4f6df5;
+    border-color: #4f6df5;
+}
+
+.btn-primary:hover {
+    background-color: #3a57d8;
+    border-color: #3a57d8;
+}
+
+/* Custom checkbox for two-night toggle */
+.custom-checkbox .custom-control-input:checked ~ .custom-control-label::before {
+    background-color: #4f6df5;
+    border-color: #4f6df5;
+}
+
+/* Recipe form - ingredient rows */
+.ingredient-row {
+    background-color: #f8f9fa;
+    cursor: default;
+}
+
+.ingredient-row .ingredient-select {
+    background-color: #fff;
+}
+
+/* Tag suggestions */
+.tag-suggestion {
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.tag-suggestion:hover {
+    background-color: #4f6df5;
+    color: #fff;
+}
+
+/* Alert styling */
+.alert {
+    border-radius: 8px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .navbar-collapse {
+        background-color: rgba(0,0,0,0.1);
+        border-radius: 0 0 8px 8px;
+        padding: 0.5rem 1rem;
+    }
+
+    .navbar-nav .nav-link {
+        padding: 0.5rem 0.75rem;
+    }
+}
+
+/* Print styles for shopping list */
+@media print {
+    .navbar, footer, .btn, .alert {
+        display: none !important;
+    }
+
+    body {
+        background: white;
+    }
+
+    .container {
+        max-width: 100%;
+    }
+
+    .card {
+        box-shadow: none;
+        border: 1px solid #ddd;
+    }
+}

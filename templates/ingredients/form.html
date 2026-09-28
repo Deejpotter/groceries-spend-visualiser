@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Edit' if ingredient else 'Add' }} Ingredient — Grocery Visualiser{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4>{{ 'Edit' if ingredient else 'Add' }} Ingredient</h4>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    <div class="form-group">
+                        <label for="name">Name <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="name" name="name"
+                               value="{{ ingredient.name if ingredient else '' }}" required>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group col-md-4">
+                            <label for="category">Category</label>
+                            <select class="form-control" id="category" name="category" required>
+                                {% for code, label in categories %}
+                                <option value="{{ code }}" {% if ingredient and ingredient.category == code %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group col-md-4">
+                            <label for="unit">Unit</label>
+                            <select class="form-control" id="unit" name="unit" required>
+                                {% for code, label in units %}
+                                <option value="{{ code }}" {% if ingredient and ingredient.unit == code %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group col-md-4">
+                            <label for="price">Price per Unit ($)</label>
+                            <input type="number" class="form-control" id="price" name="price"
+                                   step="0.01" min="0"
+                                   value="{{ ingredient.price if ingredient else '' }}">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label for="minimum_stock">Minimum Stock Level</label>
+                            <input type="number" class="form-control" id="minimum_stock" name="minimum_stock"
+                                   step="0.01" min="0"
+                                   value="{{ ingredient.minimum_stock if ingredient else '' }}">
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label for="store">Store</label>
+                            <input type="text" class="form-control" id="store" name="store"
+                                   value="{{ ingredient.store if ingredient else '' }}"
+                                   placeholder="e.g. Coles, Woolworths">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="url">Product URL</label>
+                        <input type="url" class="form-control" id="url" name="url"
+                               value="{{ ingredient.url if ingredient else '' }}"
+                               placeholder="https://...">
+                    </div>
+
+                    <div class="form-group text-right">
+                        <a href="{{ url_for('ingredients.ingredient_list') }}" class="btn btn-secondary">Cancel</a>
+                        <button type="submit" class="btn btn-primary">
+                            {{ 'Update' if ingredient else 'Add' }} Ingredient
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">Tips</div>
+            <div class="card-body">
+                <ul>
+                    <li>Use <strong>each</strong> for individual items like apples or eggs</li>
+                    <li>Use <strong>pack</strong> for multi-packs like yoghurt multipacks</li>
+                    <li>Setting a <strong>minimum stock</strong> helps with pantry alerts</li>
+                    <li>Add a <strong>store</strong> URL to quickly find the product online</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

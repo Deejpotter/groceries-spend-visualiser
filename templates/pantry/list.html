@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Pantry — Grocery Visualiser{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Pantry</h1>
+    <a href="{{ url_for('pantry.pantry_form', item_id=None) }}" class="btn btn-primary">
+            <i class="fas fa-plus"></i> Add Item
+        </a>
+</div>
+
+{% if items %}
+<div class="row mb-3">
+    <div class="col-md-3">
+        <select class="form-control" id="locationFilter" onchange="filterPantry()">
+            <option value="">All Locations</option>
+            <option value="pantry" {% if not request.args.get('location') or request.args.get('location') == 'pantry' %}selected{% endif %}>Pantry</option>
+            <option value="fridge" {% if request.args.get('location') == 'fridge' %}selected{% endif %}>Fridge</option>
+            <option value="freezer" {% if request.args.get('location') == 'freezer' %}selected{% endif %}>Freezer</option>
+        </select>
+    </div>
+</div>
+
+<table class="table table-striped table-hover">
+    <thead class="thead-dark">
+        <tr>
+            <th>Ingredient</th>
+            <th>Quantity</th>
+            <th>Unit</th>
+            <th>Expiry</th>
+            <th>Location</th>
+            <th>Status</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in items %}
+        <tr class="{{ 'table-danger' if item.expiry_status == 'expired' else 'table-warning' if item.expiry_status == 'soon' else '' }}">
+            <td>
+                <strong>{{ item.ingredient_name }}</strong>
+                <div class="text-muted small">{{ item.category or '' }}</div>
+            </td>
+            <td style="text-align: right;">{{ item.quantity }}</td>
+            <td>{{ item.unit }}</td>
+            <td>
+                {% if item.expiry_date %}
+                    {{ item.expiry_date }}
+                    {% if item.days_until_expiry is not none %}
+                    <span class="badge {% if item.expiry_status == 'expired' %}badge-danger{% elif item.expiry_status == 'soon' %}badge-warning{% else %}badge-success{% endif %}">
+                        {{ item.days_until_expiry }} days
+                    </span>
+                    {% endif %}
+                {% else %}
+                    <span class="text-muted">No date</span>
+                {% endif %}
+            </td>
+            <td>
+                <span class="badge bg-{% if item.location == 'fridge' %}primary{% elif item.location == 'freezer' %}info{% else %}light{% endif %}">
+                    {{ item.location|title }}
+                </span>
+            </td>
+            <td>
+                {% if item.expiry_status == 'expired' %}
+                <span class="text-danger"><strong>Expired!</strong></span>
+                {% elif item.expiry_status == 'soon' %}
+                <span class="text-warning">Expiring soon</span>
+                {% elif item.expiry_status == 'no_date' %}
+                <span class="text-muted">—</span>
+                {% else %}
+                <span class="text-success">OK</span>
+                {% endif %}
+            </td>
+            <td>
+                <div class="btn-group btn-group-sm">
+                    <a href="{{ url_for('pantry.pantry_form', item_id=item.id) }}" class="btn btn-outline-secondary">Edit</a>
+                                        <a href="{{ url_for('pantry.pantry_consume', item_id=item.id) }}" class="btn btn-outline-primary">Consume</a>
+                                        <a href="{{ url_for('pantry.pantry_delete', item_id=item.id) }}"
+                                           class="btn btn-outline-danger"
+                                           onclick="return confirm('Remove this item?')">Delete</a>
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="alert alert-info text-center">
+    <p>No pantry items.</p>
+<a href="{{ url_for('pantry.pantry_form', item_id=None) }}" class="btn btn-primary">Add your first pantry item</a>
+</div>
+{% endif %}
+
+<div class="alert alert-light border mt-4">
+    <div class="d-flex justify-content-between">
+        <strong>Low Stock Alerts</strong>
+        <span class="badge badge-warning">{{ items|selectattr('expiry_status', 'equalto', 'soon')|list|length }} expiring soon</span>
+        <span class="badge badge-danger">{{ items|selectattr('expiry_status', 'equalto', 'expired')|list|length }} expired</span>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterPantry() {
+    const location = document.getElementById('locationFilter').value;
+    window.location.href = '{{ url_for("pantry.pantry_list") }}' + 
+        (location ? '?location=' + location : '');
+}
+</script>
+{% endblock %}

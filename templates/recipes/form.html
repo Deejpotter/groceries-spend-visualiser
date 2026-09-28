@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Edit' if recipe else 'Add' }} Recipe — Grocery Visualiser{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4>{{ 'Edit' if recipe else 'Add' }} Recipe</h4>
+            </div>
+            <div class="card-body">
+                <form method="post" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+
+                    <div class="form-group">
+                        <label for="name">Recipe Name <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="name" name="name"
+                               value="{{ recipe.name if recipe else '' }}" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="description">Description</label>
+                        <textarea class="form-control" id="description" name="description" rows="2"
+                                  placeholder="Brief description of this recipe">{{ recipe.description if recipe else '' }}</textarea>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group col-md-3">
+                            <label for="servings">Servings <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" id="servings" name="servings"
+                                   min="1" value="{{ recipe.servings if recipe else 1 }}" required>
+                        </div>
+                        <div class="form-group col-md-3">
+                            <label for="prep_time">Prep Time (min)</label>
+                            <input type="number" class="form-control" id="prep_time" name="prep_time"
+                                   min="0" value="{{ recipe.prep_time if recipe else '' }}">
+                        </div>
+                        <div class="form-group col-md-3">
+                            <label for="cook_time">Cook Time (min)</label>
+                            <input type="number" class="form-control" id="cook_time" name="cook_time"
+                                   min="0" value="{{ recipe.cook_time if recipe else '' }}">
+                        </div>
+                        <div class="form-group col-md-3">
+                            <label></label>
+                            <div class="custom-control custom-checkbox">
+                                <input type="checkbox" class="custom-control-input" id="is_two_night"
+                                       name="is_two_night" {% if recipe and recipe.is_two_night %}checked{% endif %}>
+                                <label class="custom-control-label" for="is_two_night">Two-night recipe</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="source_url">Source URL</label>
+                        <input type="url" class="form-control" id="source_url" name="source_url"
+                               value="{{ recipe.source_url if recipe else '' }}"
+                               placeholder="https://recipe-source.com/...">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Recipe Image</label>
+                        {% if recipe and recipe.image_url %}
+                        <div class=" mb-2">
+                            <img src="{{ recipe.image_url }}" alt="{{ recipe.name }}" style="max-height: 200px;">
+                        </div>
+                        {% endif %}
+                        <div class="input-group">
+                            <div class="input-group-prepend">
+                                <span class="input-group-text">URL</span>
+                            </div>
+                            <input type="url" class="form-control" id="image_url" name="image_url"
+                                   value="{{ recipe.image_url if recipe else '' }}"
+                                   placeholder="https://...">
+                        </div>
+                        <small class="text-muted">Or upload a file (if configured). Leave blank to keep current.</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="instructions">Instructions</label>
+                        <textarea class="form-control" id="instructions" name="instructions" rows="5"
+                                  placeholder="Step-by-step cooking instructions...">{{ recipe.instructions if recipe else '' }}</textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="tags">Tags</label>
+                        <input type="text" class="form-control" id="tags" name="tags"
+                               value="{{ recipe.tags if recipe else '' }}"
+                               placeholder="e.g. dinner, standard, italian, quick">
+                        <small class="text-muted">Separate tags with commas. Tags are used by meal rules to select recipes.</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="ingredients_data">Ingredients <span class="text-danger">*</span></label>
+                        <div id="ingredients-container">
+                            {% if recipe and recipe.recipe_ingredients %}
+                            {% for ri in recipe.recipe_ingredients %}
+                            <div class="ingredient-row mb-2 p-2 border rounded">
+                                <input type="hidden" name="ingredient_ids" value="{{ ri.ingredient_id }}">
+                                <div class="row">
+                                    <div class="col-md-5">
+                                        <input type="text" class="form-control" value="{{ ri.ingredient_name }}"
+                                               readonly tabindex="-1">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <input type="number" class="form-control" name="quantities"
+                                               step="0.01" min="0" value="{{ ri.quantity }}"
+                                               placeholder="Qty">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <input type="text" class="form-control" name="unit_overrides"
+                                               value="{{ ri.unit_override or '' }}"
+                                               placeholder="Unit (optional)">
+                                    </div>
+                                    <div class="col-md-1">
+                                        <button type="button" class="btn btn-outline-danger btn-sm remove-ingredient">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                            {% endif %}
+                        </div>
+                        <button type="button" id="add-ingredient" class="btn btn-outline-secondary btn-sm">
+                            + Add Ingredient
+                        </button>
+                        <small class="text-muted">Select ingredients from your database and set quantities.</small>
+                    </div>
+
+                    <div class="form-group text-right">
+                        <a href="{{ url_for('recipes.recipe_list') }}" class="btn btn-secondary">Cancel</a>
+                        <button type="submit" class="btn btn-primary">
+                            {{ 'Update' if recipe else 'Create' }} Recipe
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">Tips</div>
+            <div class="card-body">
+                <ul>
+                    <li><strong>Tags</strong> are used by meal rules to select recipes for meal slots</li>
+                    <li>Use <strong>standard</strong> for regular meals, <strong>friday-special</strong> for treats</li>
+                    <li>Mark <strong>two-night</strong> recipes that cover 2 days (e.g. roast chicken)</li>
+                    <li>Ingredient quantities are for the default servings above</li>
+                    <li>You can override servings per meal plan entry</li>
+                </ul>
+            </div>
+        </div>
+        <div class="card mt-3">
+            <div class="card-header">Suggested Tags</div>
+            <div class="card-body">
+                <div class="d-flex flex-wrap gap-1">
+                    {% for tag in ['breakfast', 'lunch', 'dinner', 'snack', 'standard', 'single-night', 'two-night', 'quick', 'slow-cook', 'vegetarian', 'vegan', 'gluten-free', 'dessert', 'easy', 'medium', 'hard'] %}
+                    <span class="badge badge-light text-dark tag-suggestion" data-tag="{{ tag }}">{{ tag }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+$(document).ready(function() {
+    const ingredientSelectUrl = "{{ url_for('ingredients.ingredient_select_ajax') }}";
+
+    // Add ingredient row
+    $('#add-ingredient').click(function() {
+        $.get(ingredientSelectUrl, function(data) {
+            const row = `
+                <div class="ingredient-row mb-2 p-2 border rounded">
+                    <div class="row">
+                        <div class="col-md-5">
+                            <select class="form-control ingredient-select" style="width:100%">
+                                <option value="">Select ingredient...</option>
+                                {{ data|safe }}
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <input type="number" class="form-control ingredient-qty" step="0.01" min="0" placeholder="Qty">
+                        </div>
+                        <div class="col-md-3">
+                            <input type="text" class="form-control ingredient-unit" placeholder="Unit (optional)">
+                        </div>
+                        <div class="col-md-1">
+                            <button type="button" class="btn btn-outline-danger btn-sm remove-ingredient">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            $('#ingredients-container').append(row);
+        });
+    });
+
+    // Remove ingredient row
+    $(document).on('click', '.remove-ingredient', function() {
+        $(this).closest('.ingredient-row').remove();
+    });
+
+    // Tag suggestions
+    $('.tag-suggestion').click(function() {
+        const tagInput = $('#tags');
+        const current = tagInput.val().trim();
+        const tag = $(this).data('tag');
+        if (current && !current.includes(tag)) {
+            tagInput.val(current + ', ' + tag);
+        } else if (!current) {
+            tagInput.val(tag);
+        }
+    });
+});
+</script>
+{% endblock %}

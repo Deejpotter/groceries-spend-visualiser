@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Recipes — Grocery Visualiser{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Recipes</h1>
+    <div>
+        <a href="{{ url_for('recipes.recipe_form') }}" class="btn btn-primary">
+            <i class="fas fa-plus"></i> Add Recipe
+        </a>
+    </div>
+</div>
+
+<form method="get" class="mb-4">
+    <div class="row">
+        <div class="col-md-6">
+            <input type="text" name="search" class="form-control" placeholder="Search recipes..." value="{{ request.args.get('search', '') }}">
+        </div>
+        <div class="col-md-3">
+            <input type="text" name="tag" class="form-control" placeholder="Filter by tag (e.g. dinner)" value="{{ request.args.get('tag', '') }}">
+        </div>
+        <div class="col-md-2">
+            <button type="submit" class="btn btn-secondary">Filter</button>
+        </div>
+        <div class="col-md-1">
+            <a href="{{ url_for('recipes.recipe_list') }}" class="btn btn-link">Clear</a>
+        </div>
+    </div>
+</form>
+
+{% if recipes %}
+<div class="row">
+    {% for recipe in recipes %}
+    <div class="col-md-4 mb-3">
+        <div class="card h-100">
+            {% if recipe.image_url %}
+            <img src="{{ recipe.image_url }}" class="card-img-top" alt="{{ recipe.name }}" style="height: 160px; object-fit: cover;">
+            {% endif %}
+            <div class="card-body">
+                <h5 class="card-title">{{ recipe.name }}</h5>
+                {% if recipe.description %}
+                <p class="card-text text-muted small">{{ recipe.description[:100] }}{% if recipe.description|length > 100 %}...{% endif %}</p>
+                {% endif %}
+                <p class="text-muted small mb-1">
+                    <i class="far fa-clock"></i> Prep: {{ recipe.prep_time or '—' }} min
+                    &middot; Cook: {{ recipe.cook_time or '—' }} min
+                    &middot; Serves: {{ recipe.servings }}
+                </p>
+                {% if recipe.tags %}
+                <div class="mb-2">
+                    {% for tag in recipe.tags.split(',') %}
+                    <span class="badge badge-secondary">{{ tag.strip() }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            <div class="card-footer bg-white text-center">
+                <a href="{{ url_for('recipes.recipe_detail', recipe_id=recipe.id) }}" class="btn btn-sm btn-outline-primary">View</a>
+                                    <a href="{{ url_for('recipes.recipe_form', recipe_id=recipe.id) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                                    <a href="{{ url_for('recipes.recipe_delete', recipe_id=recipe.id) }}"
+                                       class="btn btn-sm btn-outline-danger"
+                                       onclick="return confirm('Delete this recipe?')">Delete</a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info text-center">
+    <p>No recipes found.</p>
+    <a href="{{ url_for('recipes.recipe_form') }}" class="btn btn-primary">Add your first recipe</a>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}{{ recipe.name }} — Grocery Visualiser{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12 mb-3">
+        <a href="{{ url_for('recipes.recipe_list') }}" class="btn btn-secondary btn-sm">
+            <i class="fas fa-arrow-left"></i> Back to Recipes
+        </a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card mb-4">
+            {% if recipe.image_url %}
+            <img src="{{ recipe.image_url }}" class="card-img-top" alt="{{ recipe.name }}" style="height: 250px; object-fit: cover;">
+            {% endif %}
+            <div class="card-body">
+                <h1 class="card-title">{{ recipe.name }}</h1>
+                {% if recipe.description %}
+                <p class="text-muted">{{ recipe.description }}</p>
+                {% endif %}
+
+                <div class="row text-muted mb-3">
+                    <div class="col-md-3">
+                        <strong>Prep:</strong> {{ recipe.prep_time or '—' }} min
+                    </div>
+                    <div class="col-md-3">
+                        <strong>Cook:</strong> {{ recipe.cook_time or '—' }} min
+                    </div>
+                    <div class="col-md-3">
+                        <strong>Serves:</strong> {{ recipe.servings }}
+                    </div>
+                    <div class="col-md-3">
+                        {% if recipe.is_two_night %}
+                        <span class="badge badge-warning">Two-night recipe</span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                {% if recipe.tags %}
+                <div class="mb-3">
+                    {% for tag in recipe.tags.split(',') %}
+                    <span class="badge badge-secondary">{{ tag.strip() }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>Ingredients</h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-group list-group-flush">
+                    {% for ri in recipe.recipe_ingredients %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>{{ ri.quantity }} {{ ri.unit_display }} {{ ri.ingredient_name }}</span>
+                        {% if ri.unit_override %}
+                        <small class="text-muted">({{ ri.unit_override }})</small>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h5>Instructions</h5>
+            </div>
+            <div class="card-body">
+                {{ recipe.instructions or 'No instructions provided.' }}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        {% if recipe.source_url %}
+        <div class="card mb-3">
+            <div class="card-header">Source</div>
+            <div class="card-body">
+                <a href="{{ recipe.source_url }}" target="_blank" class="btn btn-sm btn-outline-primary w-100">
+                    View Original Recipe
+                </a>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card mb-3">
+            <div class="card-header">Actions</div>
+            <div class="card-body">
+                <a href="{{ url_for('recipes.recipe_form', recipe_id=recipe.id) }}" class="btn btn-primary btn-block">
+                    Edit Recipe
+                </a>
+                <a href="{{ url_for('recipes.recipe_delete', recipe_id=recipe.id) }}"
+                   class="btn btn-danger btn-block mt-2"
+                   onclick="return confirm('Delete this recipe? This cannot be undone.')">
+                    Delete
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
