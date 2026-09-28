@@ -1,7 +1,8 @@
 """Routes for app settings."""
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
-from database import get_db
+from database import get_db, get_setting, set_setting, get_plan_dates
+from models import parse_date
 from auth import login_required, hash_password, verify_password
 
 settings_bp = Blueprint("settings", __name__)
@@ -10,69 +11,56 @@ settings_bp = Blueprint("settings", __name__)
 @settings_bp.route("/settings")
 @login_required
 def settings():
-    db = get_db()
-
-    plan_start = db.execute("SELECT value FROM settings WHERE key = 'plan_start_date'").fetchone()
-    plan_end = db.execute("SELECT value FROM settings WHERE key = 'plan_end_date'").fetchone()
-    unit_preference = db.execute("SELECT value FROM settings WHERE key = 'unit_preference'").fetchone()
-    default_servings = db.execute("SELECT value FROM settings WHERE key = 'default_servings'").fetchone()
-    subtract_pantry = db.execute("SELECT value FROM settings WHERE key = 'subtract_pantry_from_list'").fetchone()
-
+    plan_start, plan_end = get_plan_dates()
     return render_template(
         "settings.html",
-        plan_start=plan_start["value"] if plan_start else "",
-        plan_end=plan_end["value"] if plan_end else "",
-        unit_preference=unit_preference["value"] if unit_preference else "metric",
-        default_servings=default_servings["value"] if default_servings else 1,
-        subtract_pantry=bool(subtract_pantry and subtract_pantry["value"] == "1"),
+        plan_start=plan_start,
+        plan_end=plan_end,
+        unit_preference=get_setting("unit_preference", "metric"),
+        default_servings=get_setting("default_servings", "2"),
+        subtract_pantry=get_setting("subtract_pantry_from_list", "0") == "1",
     )
 
 
 @settings_bp.route("/settings/save", methods=["POST"])
 @login_required
 def save():
-    # Support both 옛날 action-based and field-based form submissions
+    """Save one of the two settings forms (identified by the submit button's action)."""
     action = request.form.get("action", "").strip()
-    has_dates = bool(request.form.get("plan_start_date") or request.form.get("plan_start"))
-    has_prefs = bool(request.form.get("unit_preference") or request.form.get("default_servings") is not None)
-
-    if not action and not has_dates and not has_prefs:
-        flash("No settings to save.", "error")
-        return redirect(url_for("settings.settings"))
-
     db = get_db()
 
-    # Save dates if present (from either field naming convention)
-    plan_start = request.form.get("plan_start", "").strip() or request.form.get("plan_start_date", "").strip()
-    plan_end = request.form.get("plan_end", "").strip() or request.form.get("plan_end_date", "").strip()
-
-    if plan_start or plan_end or action == "save_dates":
-        if not plan_start or not plan_end:
+    if action == "save_dates":
+        plan_start = request.form.get("plan_start", "").strip()
+        plan_end = request.form.get("plan_end", "").strip()
+        start, end = parse_date(plan_start), parse_date(plan_end)
+        if not start or not end:
             flash("Both dates are required.", "error")
-            return redirect(url_for("settings.settings"))
-        db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('plan_start_date', ?)", (plan_start,))
-        db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('plan_end_date', ?)", (plan_end,))
-        db.commit()
-        flash("Plan dates saved.", "success")
+        elif end < start:
+            flash("The end date must be on or after the start date.", "error")
+        elif (end - start).days > 92:
+            flash("Plans are limited to about three months.", "error")
+        else:
+            set_setting("plan_start_date", plan_start)
+            set_setting("plan_end_date", plan_end)
+            db.commit()
+            flash("Plan dates saved.", "success")
 
-    # Save preferences if present
-    unit_preference = request.form.get("unit_preference", "").strip()
-    default_servings = request.form.get("default_servings", type=int)
-    subtract_pantry = request.form.get("subtract_pantry_from_list") or request.form.get("subtract_pantry")
-
-    if unit_preference or default_servings is not None or subtract_pantry is not None or action == "save_prefs":
-        if not unit_preference:
+    elif action == "save_prefs":
+        unit_preference = request.form.get("unit_preference", "metric")
+        default_servings = request.form.get("default_servings", type=int)
+        if unit_preference not in ("metric", "imperial"):
             unit_preference = "metric"
-        if default_servings is None:
-            default_servings = 1
-        if default_servings < 1:
+        if not default_servings or default_servings < 1:
             flash("Default servings must be at least 1.", "error")
             return redirect(url_for("settings.settings"))
-        db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('unit_preference', ?)", (unit_preference,))
-        db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('default_servings', ?)", (str(default_servings),))
-        db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('subtract_pantry_from_list', ?)", (str(1 if subtract_pantry else 0),))
+        set_setting("unit_preference", unit_preference)
+        set_setting("default_servings", default_servings)
+        set_setting("subtract_pantry_from_list", 1 if request.form.get("subtract_pantry") else 0)
         db.commit()
         flash("Preferences saved.", "success")
+
+    else:
+        flash("No settings to save.", "error")
 
     return redirect(url_for("settings.settings"))
 

@@ -1,12 +1,22 @@
 """Routes for meal rules and meal plan generation."""
 
-from datetime import datetime, timedelta
-from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app
-from database import get_db
+import random
+
+from flask import Blueprint, render_template, request, redirect, url_for, flash
+
 from auth import login_required
-from models import DAYS_OF_WEEK, DAY_LABELS, MEAL_TYPES, MEAL_TYPE_LABELS, parse_date, date_range, get_day_key, is_weekday
+from database import get_db, get_plan_dates, set_setting
+from models import DAYS_OF_WEEK, DAY_LABELS, MEAL_TYPES, date_range, validate_date_format
+from services.plan_generator import generate_plan_entries
+from services.repository import load_rules, load_recipes, load_manual_entries
 
 meal_bp = Blueprint("meal_plan", __name__)
+
+RULE_DAYS = DAYS_OF_WEEK + ["weekday", "weekend", "all"]
+
+
+def _back_to_plan():
+    return redirect(url_for("meal_plan.meal_plan_view"))
 
 
 # ---------------------------------------------------------------------------
@@ -16,8 +26,7 @@ meal_bp = Blueprint("meal_plan", __name__)
 @meal_bp.route("/meal-rules")
 @login_required
 def meal_rule_list():
-    db = get_db()
-    rules = db.execute("SELECT * FROM meal_rules WHERE is_active = 1 ORDER BY sort_order").fetchall()
+    rules = get_db().execute("SELECT * FROM meal_rules ORDER BY is_active DESC, sort_order, id").fetchall()
     return render_template("meal_rules/list.html", rules=rules)
 
 
@@ -34,41 +43,46 @@ def meal_rule_form(rule_id=None):
             return redirect(url_for("meal_plan.meal_rule_list"))
 
     if request.method == "POST":
-        day_of_week = request.form.get("day_of_week", "all").strip()
-        meal_type = request.form.get("meal_type", "dinner").strip()
+        day_of_week = request.form.get("day_of_week", "").strip()
+        meal_type = request.form.get("meal_type", "").strip()
         tag_filter = request.form.get("tag_filter", "").strip()
-        servings_override = request.form.get("servings_override", type=int, default=0)
+        servings_override = request.form.get("servings_override", type=int) or None
         is_active = 1 if request.form.get("is_active") else 0
+        sort_order = request.form.get("sort_order", type=int)
 
         errors = []
-        if not day_of_week:
-            errors.append("Day of week is required.")
-        if not meal_type:
-            errors.append("Meal type is required.")
-
+        if day_of_week not in RULE_DAYS:
+            errors.append("Choose which day(s) the rule applies to.")
+        if meal_type not in MEAL_TYPES:
+            errors.append("Choose a meal type.")
+        if servings_override is not None and servings_override < 1:
+            errors.append("Servings override must be at least 1.")
         if errors:
             for err in errors:
                 flash(err, "error")
-            return render_template("meal_rules/form.html", rule=rule)
+            return render_template("meal_rules/form.html", rule=rule or request.form)
+
+        if sort_order is None:
+            if rule:
+                sort_order = rule["sort_order"]
+            else:
+                sort_order = (db.execute("SELECT MAX(sort_order) FROM meal_rules").fetchone()[0] or 0) + 1
 
         if rule_id:
             db.execute(
                 """UPDATE meal_rules SET day_of_week=?, meal_type=?, tag_filter=?,
-                   servings_override=?, is_active=?, sort_order=?
-                   WHERE id=?""",
-                (day_of_week, meal_type, tag_filter, servings_override, is_active, rule["sort_order"], rule_id)
+                   servings_override=?, is_active=?, sort_order=? WHERE id=?""",
+                (day_of_week, meal_type, tag_filter, servings_override, is_active, sort_order, rule_id),
             )
             flash("Rule updated.", "success")
         else:
-            max_order = db.execute("SELECT MAX(sort_order) as max FROM meal_rules").fetchone()["max"] or 0
-            submitted_order = request.form.get("sort_order", "").strip()
-            sort_order = int(submitted_order) if submitted_order else max_order + 1
             db.execute(
                 """INSERT INTO meal_rules (day_of_week, meal_type, tag_filter, servings_override, is_active, sort_order)
                    VALUES (?, ?, ?, ?, ?, ?)""",
-                (day_of_week, meal_type, tag_filter, servings_override, is_active, sort_order)
+                (day_of_week, meal_type, tag_filter, servings_override, is_active, sort_order),
             )
             flash("Rule created.", "success")
+        db.commit()
         return redirect(url_for("meal_plan.meal_rule_list"))
 
     return render_template("meal_rules/form.html", rule=rule)
@@ -85,226 +99,174 @@ def meal_rule_delete(rule_id):
 
 
 # ---------------------------------------------------------------------------
-# Plan Generation
+# Plan generation
 # ---------------------------------------------------------------------------
 
-def generate_plan(start_date_str, end_date_str):
-    """Generate meal plan entries for the given date range."""
-    start = parse_date(start_date_str)
-    end = parse_date(end_date_str)
-    if not start or not end or end < start:
-        return None, "Invalid date range."
+def generate_plan(start_date_str, end_date_str, chooser=random.choice):
+    """Regenerate auto entries in the range, keeping manual entries. Returns (count, error)."""
+    manual = load_manual_entries(start_date_str, end_date_str)
+    entries, error = generate_plan_entries(
+        start_date_str, end_date_str, load_rules(), load_recipes(), manual, chooser=chooser,
+    )
+    if error:
+        return None, error
 
     db = get_db()
-
-    # Clear existing AUTO-GENERATED entries in range (preserve manual overrides)
     db.execute(
-        "DELETE FROM meal_plan_entries WHERE date >= ? AND date <= ? AND is_auto_generated = 1",
-        (start_date_str, end_date_str)
+        "DELETE FROM meal_plan_entries WHERE date BETWEEN ? AND ? AND is_auto_generated = 1",
+        (start_date_str, end_date_str),
     )
-
-    entries_created = 0
-
-    for date in date_range(start_date_str, end_date_str):
-        day_key = get_day_key(date)
-        for meal_type in MEAL_TYPES:
-            # Find matching rules in order
-            rules = db.execute(
-                """SELECT mr.*, r.id as recipe_id, r.name as recipe_name
-                   FROM meal_rules mr
-                   LEFT JOIN recipes r ON 1=1
-                   WHERE mr.is_active = 1 AND mr.meal_type = ?
-                   AND (mr.day_of_week = ? OR mr.day_of_week = 'weekday' AND ?
-                        OR mr.day_of_week = 'weekend' AND ? OR mr.day_of_week = 'all')
-                   ORDER BY mr.sort_order""",
-                (meal_type, day_key, is_weekday(date), not is_weekday(date))
-            ).fetchall()
-
-            for rule in rules:
-                # Check if entry already exists (manual override protection)
-                existing = db.execute(
-                    "SELECT id FROM meal_plan_entries WHERE date = ? AND meal_type = ?",
-                    (date.strftime("%Y-%m-%d"), meal_type)
-                ).fetchone()
-                if existing:
-                    continue
-
-                # Pick a recipe
-                if rule["tag_filter"]:
-                    tag_clause = " AND tags LIKE ?"
-                    tag_params = [f"%{rule['tag_filter']}%"]
-                    recipe_query = db.execute(
-                        f"SELECT id, name, servings, is_two_night FROM recipes WHERE 1=1{tag_clause} ORDER BY RANDOM() LIMIT 1",
-                        tag_params
-                    ).fetchone()
-                else:
-                    recipe_query = db.execute(
-                        "SELECT id, name, servings, is_two_night FROM recipes ORDER BY RANDOM() LIMIT 1"
-                    ).fetchone()
-
-                if not recipe_query:
-                    continue
-
-                recipe_id = recipe_query["id"]
-                recipe_servings = recipe_query["servings"] or 1
-                servings = rule["servings_override"] if rule["servings_override"] else recipe_servings
-
-                # Create entry
-                db.execute(
-                    """INSERT INTO meal_plan_entries (date, meal_type, recipe_id, servings, is_auto_generated, source_rule_id)
-                       VALUES (?, ?, ?, ?, 1, ?)""",
-                    (date.strftime("%Y-%m-%d"), meal_type, recipe_id, servings, rule["id"])
-                )
-                entries_created += 1
-
-                # Handle two-night recipes
-                if recipe_query["is_two_night"]:
-                    next_date = date + timedelta(days=1)
-                    if next_date <= end:
-                        next_existing = db.execute(
-                            "SELECT id FROM meal_plan_entries WHERE date = ? AND meal_type = ?",
-                            (next_date.strftime("%Y-%m-%d"), meal_type)
-                        ).fetchone()
-                        if not next_existing:
-                            db.execute(
-                                """INSERT INTO meal_plan_entries (date, meal_type, recipe_id, servings, is_auto_generated, source_rule_id)
-                                   VALUES (?, ?, ?, ?, 1, ?)""",
-                                (next_date.strftime("%Y-%m-%d"), meal_type, recipe_id, servings, rule["id"])
-                            )
-                            entries_created += 1
-
+    db.executemany(
+        """INSERT INTO meal_plan_entries (date, meal_type, recipe_id, servings, is_auto_generated, source_rule_id)
+           VALUES (:date, :meal_type, :recipe_id, :servings, 1, :source_rule_id)""",
+        entries,
+    )
     db.commit()
-    return entries_created, None
+    return len(entries), None
+
+
+def _build_days(start, end, entries):
+    """One row per date in the plan with a slot for each meal type."""
+    by_slot = {(e["date"], e["meal_type"]): e for e in entries}
+    days = []
+    for day in date_range(start, end):
+        key = day.strftime("%Y-%m-%d")
+        days.append({
+            "date": key,
+            "label": f"{DAY_LABELS[day.strftime('%a').lower()]} {day.strftime('%d %b')}",
+            "meals": {mt: by_slot.get((key, mt)) for mt in MEAL_TYPES},
+        })
+    return days
 
 
 @meal_bp.route("/meal-plan")
 @login_required
 def meal_plan_view():
     db = get_db()
-
-    # Get plan dates from settings
-    plan_start = db.execute("SELECT value FROM settings WHERE key = 'plan_start_date'").fetchone()
-    plan_end = db.execute("SELECT value FROM settings WHERE key = 'plan_end_date'").fetchone()
-
-    start_str = plan_start["value"] if plan_start else ""
-    end_str = plan_end["value"] if plan_end else ""
-
-    entries = []
-    error = None
-
+    start_str, end_str = get_plan_dates()
+    days = []
     if start_str and end_str:
-        entries_raw = db.execute(
-            """SELECT mpe.*, r.name as recipe_name, r.tags, r.is_two_night,
-                      r.servings as recipe_servings
-               FROM meal_plan_entries mpe
-               JOIN recipes r ON mpe.recipe_id = r.id
-               WHERE mpe.date >= ? AND mpe.date <= ?
-               ORDER BY mpe.date, mpe.meal_type""",
-            (start_str, end_str)
-        ).fetchall()
-
-        # Convert sqlite3.Row to dicts and date strings to datetime.date
-        from datetime import datetime
-        entries = []
-        for row in entries_raw:
-            entry = dict(row)
-            entry["date"] = datetime.strptime(entry["date"], "%Y-%m-%d").date()
-            entries.append(entry)
-
+        entries = [dict(r) for r in db.execute(
+            """SELECT mpe.*, r.name AS recipe_name, r.is_two_night
+               FROM meal_plan_entries mpe JOIN recipes r ON mpe.recipe_id = r.id
+               WHERE mpe.date BETWEEN ? AND ? ORDER BY mpe.date""",
+            (start_str, end_str),
+        )]
+        days = _build_days(start_str, end_str, entries)
+    # Only show meal-type columns that have a rule or an entry, so unused slots don't clutter the grid.
+    used_types = {r["meal_type"] for r in db.execute("SELECT meal_type FROM meal_rules WHERE is_active = 1")}
+    used_types |= {mt for d in days for mt, e in d["meals"].items() if e}
+    shown_types = [mt for mt in MEAL_TYPES if mt in used_types] or ["dinner"]
+    recipes = db.execute("SELECT id, name FROM recipes ORDER BY name").fetchall()
     return render_template(
         "meal_plan/view.html",
-        entries=entries,
+        days=days,
+        shown_types=shown_types,
+        recipes=recipes,
         plan_start=start_str,
         plan_end=end_str,
-        error=error,
-        meal_types=MEAL_TYPES,
-        meal_type_labels=MEAL_TYPE_LABELS,
+        has_entries=any(e for d in days for e in d["meals"].values()),
     )
 
 
 @meal_bp.route("/meal-plan/generate", methods=["POST"])
 @login_required
 def meal_plan_generate():
-    plan_start = request.form.get("plan_start", "").strip()
-    plan_end = request.form.get("plan_end", "").strip()
+    stored_start, stored_end = get_plan_dates()
+    plan_start = request.form.get("plan_start", "").strip() or stored_start
+    plan_end = request.form.get("plan_end", "").strip() or stored_end
 
-    if not plan_start or not plan_end:
-        flash("Please set plan start and end dates in Settings first.", "error")
-        return redirect(url_for("meal_plan.meal_plan_view"))
+    if not (validate_date_format(plan_start) and validate_date_format(plan_end)):
+        flash("Please set valid plan start and end dates first.", "error")
+        return _back_to_plan()
 
-    # Save dates to settings
-    db = get_db()
-    db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('plan_start_date', ?)", (plan_start,))
-    db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('plan_end_date', ?)", (plan_end,))
-    db.commit()
+    set_setting("plan_start_date", plan_start)
+    set_setting("plan_end_date", plan_end)
+    get_db().commit()
 
     count, error = generate_plan(plan_start, plan_end)
-
     if error:
         flash(error, "error")
+    elif count == 0:
+        flash("No meals were generated. Check that you have active meal rules and matching recipes.", "warning")
     else:
         flash(f"Meal plan generated with {count} entries.", "success")
+    return _back_to_plan()
 
-    return redirect(url_for("meal_plan.meal_plan_view"))
+
+@meal_bp.route("/meal-plan/add", methods=["POST"])
+@login_required
+def meal_plan_add():
+    """Manually place a recipe in an empty slot."""
+    date = request.form.get("date", "").strip()
+    meal_type = request.form.get("meal_type", "").strip()
+    recipe_id = request.form.get("recipe_id", type=int)
+    db = get_db()
+    recipe = db.execute("SELECT servings FROM recipes WHERE id = ?", (recipe_id,)).fetchone() if recipe_id else None
+    if not validate_date_format(date) or meal_type not in MEAL_TYPES or not recipe:
+        flash("Choose a recipe to add.", "error")
+        return _back_to_plan()
+    servings = request.form.get("servings", type=int) or recipe["servings"] or 1
+    db.execute("DELETE FROM meal_plan_entries WHERE date = ? AND meal_type = ?", (date, meal_type))
+    db.execute(
+        "INSERT INTO meal_plan_entries (date, meal_type, recipe_id, servings, is_auto_generated) VALUES (?, ?, ?, ?, 0)",
+        (date, meal_type, recipe_id, servings),
+    )
+    db.commit()
+    flash("Meal added.", "success")
+    return _back_to_plan()
 
 
 @meal_bp.route("/meal-plan/swap/<int:entry_id>", methods=["POST"])
 @login_required
 def meal_plan_swap(entry_id):
-    """Replace a meal plan entry with a different recipe."""
+    """Replace a meal plan entry with a different recipe (marks it manual)."""
     db = get_db()
-    entry = db.execute(
-        "SELECT * FROM meal_plan_entries WHERE id = ?", (entry_id,)
-    ).fetchone()
-
+    entry = db.execute("SELECT * FROM meal_plan_entries WHERE id = ?", (entry_id,)).fetchone()
     if not entry:
         flash("Entry not found.", "error")
-        return redirect(url_for("meal_plan.meal_plan_view"))
+        return _back_to_plan()
 
     new_recipe_id = request.form.get("recipe_id", type=int) or request.form.get("new_recipe_id", type=int)
-    if not new_recipe_id:
+    if not new_recipe_id or not db.execute("SELECT 1 FROM recipes WHERE id = ?", (new_recipe_id,)).fetchone():
         flash("No recipe selected.", "error")
-        return redirect(url_for("meal_plan.meal_plan_view"))
+        return _back_to_plan()
 
-    servings = request.form.get("servings", type=int, default=entry["servings"])
-
+    servings = request.form.get("servings", type=int) or entry["servings"]
     db.execute(
         "UPDATE meal_plan_entries SET recipe_id = ?, servings = ?, is_auto_generated = 0 WHERE id = ?",
-        (new_recipe_id, servings, entry_id)
+        (new_recipe_id, servings, entry_id),
     )
     db.commit()
     flash("Meal swapped.", "success")
-    return redirect(url_for("meal_plan.meal_plan_view"))
+    return _back_to_plan()
 
 
 @meal_bp.route("/meal-plan/remove/<int:entry_id>", methods=["POST"])
 @login_required
 def meal_plan_remove(entry_id):
-    """Remove a meal plan entry."""
     db = get_db()
     db.execute("DELETE FROM meal_plan_entries WHERE id = ?", (entry_id,))
     db.commit()
     flash("Meal removed.", "success")
-    return redirect(url_for("meal_plan.meal_plan_view"))
+    return _back_to_plan()
 
 
 @meal_bp.route("/meal-plan/edit-servings/<int:entry_id>", methods=["POST"])
 @login_required
 def meal_plan_edit_servings(entry_id):
-    """Update servings for a meal plan entry."""
     servings = request.form.get("servings", type=int)
     if not servings or servings < 1:
         flash("Invalid servings value.", "error")
-        return redirect(url_for("meal_plan.meal_plan_view"))
-
+        return _back_to_plan()
     db = get_db()
     db.execute(
         "UPDATE meal_plan_entries SET servings = ?, is_auto_generated = 0 WHERE id = ?",
-        (servings, entry_id)
+        (servings, entry_id),
     )
     db.commit()
     flash("Servings updated.", "success")
-    return redirect(url_for("meal_plan.meal_plan_view"))
+    return _back_to_plan()
 
 
 def register_meal_routes(app):

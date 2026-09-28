@@ -4,7 +4,7 @@ Extracted from routes/meal_plan.py so generation logic is testable without Flask
 """
 
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 from models import MEAL_TYPES, parse_date, date_range, get_day_key, is_weekday
 
@@ -25,25 +25,42 @@ def rule_matches_day(rule_day_of_week: str, date: datetime) -> bool:
     return rule_day_of_week == day_key
 
 
+def parse_tags(tags: Optional[str]) -> List[str]:
+    """Split a comma-separated tag string into lower-cased, trimmed tags."""
+    return [t.strip().lower() for t in (tags or "").split(",") if t.strip()]
+
+
+def recipe_matches_filter(recipe: Dict, tag_filter: Optional[str]) -> bool:
+    """A recipe matches if it has ANY of the filter's tags (no filter = match)."""
+    wanted = parse_tags(tag_filter)
+    if not wanted:
+        return True
+    return bool(set(wanted) & set(parse_tags(recipe.get("tags"))))
+
+
+def first_choice(candidates: List[Dict]) -> Dict:
+    """Deterministic chooser (used by tests); the app passes random.choice."""
+    return candidates[0]
+
+
 def select_recipe_for_rule(
     tag_filter: Optional[str],
     recipes: List[Dict],
+    used_ids: Optional[Set[int]] = None,
+    chooser: Callable[[List[Dict]], Dict] = first_choice,
 ) -> Optional[Dict]:
-    """Pick a recipe for a rule. Returns None if no matching recipe."""
-    if not recipes:
-        return None
-    if tag_filter:
-        filtered = [
-            r for r in recipes
-            if tag_filter in (r.get("tags") or "").split(",")
-        ]
-        candidates = filtered
-    else:
-        candidates = recipes
+    """Pick a recipe for a rule, preferring recipes not already used in the plan.
 
+    Returns None if no recipe matches the tag filter.
+    """
+    candidates = [r for r in recipes if recipe_matches_filter(r, tag_filter)]
     if not candidates:
         return None
-    return candidates[0]
+    if used_ids:
+        fresh = [r for r in candidates if r["id"] not in used_ids]
+        if fresh:
+            candidates = fresh
+    return chooser(candidates)
 
 
 # ---------------------------------------------------------------------------
@@ -56,9 +73,11 @@ def generate_plan_entries(
     rules: List[Dict],
     recipes: List[Dict],
     existing_entries: List[Dict],
+    chooser: Callable[[List[Dict]], Dict] = first_choice,
 ) -> Tuple[List[Dict], Optional[str]]:
     """Generate meal plan entries for the given date range.
 
+    existing_entries are slots that must not be overwritten (manual entries).
     Returns (entries, error_message).
     """
     start = parse_date(start_date_str)
@@ -72,6 +91,7 @@ def generate_plan_entries(
     }
 
     entries = []
+    used_ids: Set[int] = {e["recipe_id"] for e in existing_entries if "recipe_id" in e}
 
     for date in date_range(start_date_str, end_date_str):
         for meal_type in MEAL_TYPES:
@@ -84,14 +104,12 @@ def generate_plan_entries(
                 key=lambda r: r.get("sort_order", 0),
             )
 
-            matched = False
             for rule in matching_rules:
                 entry_key = (date.strftime("%Y-%m-%d"), meal_type)
                 if entry_key in existing_set:
-                    matched = True
                     break  # Manual override blocks auto-generation
 
-                recipe = select_recipe_for_rule(rule.get("tag_filter"), recipes)
+                recipe = select_recipe_for_rule(rule.get("tag_filter"), recipes, used_ids, chooser)
                 if not recipe:
                     continue
 
@@ -110,7 +128,7 @@ def generate_plan_entries(
                     "is_auto_generated": 1,
                     "source_rule_id": rule["id"],
                 })
-                matched = True
+                used_ids.add(recipe["id"])
 
                 # Handle two-night recipes
                 if recipe.get("is_two_night"):
@@ -118,20 +136,16 @@ def generate_plan_entries(
                     if next_date <= end:
                         next_key = (next_date.strftime("%Y-%m-%d"), meal_type)
                         if next_key not in existing_set:
-                            if next_key not in {
-                                (e["date"], e["meal_type"]) for e in entries
-                            }:
-                                entries.append({
-                                    "date": next_date.strftime("%Y-%m-%d"),
-                                    "meal_type": meal_type,
-                                    "recipe_id": recipe["id"],
-                                    "servings": servings,
-                                    "is_auto_generated": 1,
-                                    "source_rule_id": rule["id"],
-                                })
-                                # Also block this cascade target from being filled
-                                # by another rule on its own day
-                                existing_set.add(next_key)
+                            entries.append({
+                                "date": next_date.strftime("%Y-%m-%d"),
+                                "meal_type": meal_type,
+                                "recipe_id": recipe["id"],
+                                "servings": servings,
+                                "is_auto_generated": 1,
+                                "source_rule_id": rule["id"],
+                            })
+                            # Block the cascade target from being filled by a rule on its own day
+                            existing_set.add(next_key)
                 break  # First matching rule wins
 
     return entries, None

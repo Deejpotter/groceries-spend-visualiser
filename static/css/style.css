@@ -7,10 +7,6 @@ body {
     flex-direction: column;
 }
 
-.container {
-    flex: 1;
-}
-
 footer {
     margin-top: auto;
 }
@@ -124,4 +120,50 @@ footer {
         box-shadow: none;
         border: 1px solid #ddd;
     }
+}
+
+main.container {
+    flex: 1;
+}
+
+/* Meal plan grid */
+.meal-grid td.meal-slot {
+    min-width: 11rem;
+    vertical-align: top;
+}
+.meal-grid details summary {
+    cursor: pointer;
+}
+
+/* Shopping list */
+.big-check {
+    width: 1.3rem;
+    height: 1.3rem;
+    cursor: pointer;
+}
+.checked-item .item-name {
+    text-decoration: line-through;
+    color: #6c757d;
+}
+
+/* Spend dashboard */
+.stat-value {
+    font-size: 1.6rem;
+    font-weight: 700;
+}
+.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.chart-box {
+    position: relative;
+    height: 300px;
+}
+.tag-suggestion {
+    cursor: pointer;
+}
+
+@media print {
+    body { background: #fff; }
+    .card { box-shadow: none; border: 1px solid #ddd; }
 }

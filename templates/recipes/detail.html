@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import post_button, csrf %}
 
 {% block title %}{{ recipe.name }} — Grocery Visualiser{% endblock %}
 
@@ -96,11 +97,10 @@
                 <a href="{{ url_for('recipes.recipe_form', recipe_id=recipe.id) }}" class="btn btn-primary btn-block">
                     Edit Recipe
                 </a>
-                <a href="{{ url_for('recipes.recipe_delete', recipe_id=recipe.id) }}"
-                   class="btn btn-danger btn-block mt-2"
-                   onclick="return confirm('Delete this recipe? This cannot be undone.')">
-                    Delete
-                </a>
+                <div class="mt-2">
+                    {{ post_button(url_for('recipes.recipe_delete', recipe_id=recipe.id), 'Delete Recipe',
+                                   class='btn btn-danger btn-block', confirm='Delete this recipe? This cannot be undone.') }}
+                </div>
             </div>
         </div>
     </div>

@@ -11,6 +11,7 @@
             </div>
             <div class="card-body">
                 <form method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="form-group">
                         <label for="ingredient_id">Ingredient <span class="text-danger">*</span></label>
                         <select class="form-control" id="ingredient_id" name="ingredient_id" required>

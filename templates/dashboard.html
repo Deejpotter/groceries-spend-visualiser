@@ -3,104 +3,75 @@
 {% block title %}Dashboard — Grocery Visualiser{% endblock %}
 
 {% block content %}
-<div class="row">
-    <div class="col-12 mb-4">
-        <h1>Dashboard</h1>
-        <p class="text-muted">Welcome, {{ current_user }}. Manage your ingredients, recipes, meal rules, and shopping lists.</p>
-    </div>
-</div>
+<h1>Dashboard</h1>
+<p class="text-muted">Welcome, {{ current_user }}.</p>
 
-<div class="row mb-4">
-    <div class="col-md-3">
+<div class="row mb-2">
+    {% for count, label, endpoint, action in [
+        (ingredient_count, 'Ingredients', 'ingredients.ingredient_list', 'Manage'),
+        (recipe_count, 'Recipes', 'recipes.recipe_list', 'Manage'),
+        (rule_count, 'Active meal rules', 'meal_plan.meal_rule_list', 'Manage'),
+        (entry_count, 'Planned meals', 'meal_plan.meal_plan_view', 'View plan'),
+    ] %}
+    <div class="col-6 col-md-3 mb-3">
         <div class="card text-center h-100">
             <div class="card-body">
-                <h2 class="card-title">{{ ingredient_count }}</h2>
-                <p class="card-text text-muted">Ingredients</p>
-                <a href="{{ url_for('ingredients.ingredient_list') }}" class="btn btn-sm btn-outline-primary">Manage</a>
+                <div class="stat-value">{{ count }}</div>
+                <p class="card-text text-muted">{{ label }}</p>
+                <a href="{{ url_for(endpoint) }}" class="btn btn-sm btn-outline-primary">{{ action }}</a>
             </div>
         </div>
     </div>
-    <div class="col-md-3">
-        <div class="card text-center h-100">
-            <div class="card-body">
-                <h2 class="card-title">{{ recipe_count }}</h2>
-                <p class="card-text text-muted">Recipes</p>
-                <a href="{{ url_for('recipes.recipe_list') }}" class="btn btn-sm btn-outline-primary">Manage</a>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card text-center h-100">
-            <div class="card-body">
-                <h2 class="card-title">{{ rule_count }}</h2>
-                <p class="card-text text-muted">Active Meal Rules</p>
-                <a href="{{ url_for('meal_plan.meal_rule_list') }}" class="btn btn-sm btn-outline-primary">Manage</a>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card text-center h-100">
-            <div class="card-body">
-                <h2 class="card-title">{{ entry_count }}</h2>
-                <p class="card-text text-muted">Meal Plan Entries</p>
-                <a href="{{ url_for('meal_plan.meal_plan_view') }}" class="btn btn-sm btn-outline-primary">View Plan</a>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <h5>Quick Actions</h5>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="list-group">
-                            <a href="{{ url_for('ingredients.ingredient_list') }}" class="list-group-item list-group-item-action">
-                                <strong>Add Ingredient</strong> — Start building your ingredient database
-                            </a>
-                            <a href="{{ url_for('recipes.recipe_form') }}" class="list-group-item list-group-item-action">
-                                <strong>Add Recipe</strong> — Add a recipe with ingredients
-                            </a>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="list-group">
-                            <a href="{{ url_for('meal_plan.meal_rule_list') }}" class="list-group-item list-group-item-action">
-                                <strong>Configure Meal Rules</strong> — Set up auto-generation rules
-                            </a>
-                            <a href="{{ url_for('settings.settings') }}" class="list-group-item list-group-item-action">
-                                <strong>Settings</strong> — Set plan dates, unit preference
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+    {% endfor %}
 </div>
 
 <div class="row">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <h5>Getting Started Guide</h5>
-            </div>
+    <div class="col-lg-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header"><strong>Current plan</strong></div>
             <div class="card-body">
-                <ol>
-                    <li><strong>Add ingredients</strong> — Create your ingredient database with prices and units</li>
-                    <li><strong>Add recipes</strong> — Link recipes to ingredients with quantities</li>
-                    <li><strong>Set plan dates</strong> — Go to Settings and set your start and end dates</li>
-                    <li><strong>Configure meal rules</strong> — Tell the app which recipes to use for each meal slot</li>
-                    <li><strong>Generate meal plan</strong> — Click "Generate Plan" to auto-fill your calendar</li>
-                    <li><strong>Generate shopping list</strong> — Get a consolidated list from your plan</li>
-                </ol>
-                <p class="mt-3 text-muted">Tip: Start with a few ingredients and recipes, then build your rules as you go.</p>
+                {% if plan_start and plan_end %}
+                <p>{{ plan_start }} to {{ plan_end }}</p>
+                <a href="{{ url_for('meal_plan.meal_plan_view') }}" class="btn btn-primary btn-sm">Meal plan</a>
+                <a href="{{ url_for('shopping_list.shopping_list_view') }}" class="btn btn-success btn-sm">Shopping list</a>
+                {% else %}
+                <p class="text-muted">No plan dates set yet.</p>
+                <a href="{{ url_for('settings.settings') }}" class="btn btn-primary btn-sm">Set plan dates</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header"><strong>Recent spend</strong></div>
+            <div class="card-body">
+                {% if spend %}
+                <p class="mb-1">Last {{ spend.window_days }} days of purchases:
+                    <strong>{{ spend.total_spend|money }}</strong> over {{ spend.total_shops }} shops</p>
+                <p class="text-muted small">About {{ spend.avg_spend_per_shop|money }} a shop, every {{ spend.avg_days_between_shops }} days.</p>
+                <a href="{{ url_for('spend.spend_dashboard') }}" class="btn btn-outline-primary btn-sm">Spend dashboard</a>
+                {% else %}
+                <p class="text-muted">Import your order history to track what you spend.</p>
+                <a href="{{ url_for('spend.spend_import') }}" class="btn btn-outline-primary btn-sm">Import purchases</a>
+                {% endif %}
             </div>
         </div>
     </div>
 </div>
+
+{% if not (ingredient_count and recipe_count and rule_count) %}
+<div class="card">
+    <div class="card-header"><strong>Getting started</strong></div>
+    <div class="card-body">
+        <ol class="mb-0">
+            <li class="{{ 'text-muted' if ingredient_count }}"><a href="{{ url_for('ingredients.ingredient_add') }}">Add ingredients</a> with prices and units
+                (or <a href="{{ url_for('spend.spend_products') }}">create them from your purchase history</a>)</li>
+            <li class="{{ 'text-muted' if recipe_count }}"><a href="{{ url_for('recipes.recipe_form') }}">Add recipes</a> and link their ingredients</li>
+            <li class="{{ 'text-muted' if plan_start }}"><a href="{{ url_for('settings.settings') }}">Set your plan dates</a></li>
+            <li class="{{ 'text-muted' if rule_count }}"><a href="{{ url_for('meal_plan.meal_rule_form') }}">Add meal rules</a> so the plan can fill itself</li>
+            <li>Generate the <a href="{{ url_for('meal_plan.meal_plan_view') }}">meal plan</a>, then the <a href="{{ url_for('shopping_list.shopping_list_view') }}">shopping list</a></li>
+        </ol>
+    </div>
+</div>
+{% endif %}
 {% endblock %}

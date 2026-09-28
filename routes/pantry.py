@@ -1,10 +1,10 @@
 """Routes for pantry inventory."""
 
 from datetime import datetime, timedelta
-from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app
+from flask import Blueprint, render_template, request, redirect, url_for, flash
 from database import get_db
 from auth import login_required
-from models import CATEGORIES, UNIT_LOOKUP
+from models import category_label, validate_date_format
 
 pantry_bp = Blueprint("pantry", __name__)
 
@@ -13,13 +13,14 @@ pantry_bp = Blueprint("pantry", __name__)
 @login_required
 def pantry_list():
     db = get_db()
-
-    items = db.execute(
-        """SELECT p.*, i.name as ingredient_name, i.category, i.unit as ingredient_unit
-           FROM pantry_items p
-           JOIN ingredients i ON p.ingredient_id = i.id
-           ORDER BY p.expiry_date NULLS LAST, p.expiry_date"""
-    ).fetchall()
+    location = request.args.get("location", "").strip()
+    sql = """SELECT p.*, i.name as ingredient_name, i.category, i.unit as ingredient_unit
+             FROM pantry_items p JOIN ingredients i ON p.ingredient_id = i.id"""
+    params = []
+    if location:
+        sql += " WHERE p.location = ?"
+        params.append(location)
+    items = db.execute(sql + " ORDER BY p.expiry_date IS NULL, p.expiry_date, i.name", params).fetchall()
 
     # Add computed fields
     result = []
@@ -27,7 +28,7 @@ def pantry_list():
     for item in items:
         entry = dict(item)
         entry["ingredient_label"] = f"{item['ingredient_name']} ({item['ingredient_unit']})"
-        entry["category_label"] = CATEGORIES[[c[0] for c in CATEGORIES].index(item["category"])][1] if item["category"] in [c[0] for c in CATEGORIES] else item["category"]
+        entry["category_label"] = category_label(item["category"])
 
         if item["expiry_date"]:
             try:
@@ -65,21 +66,30 @@ def pantry_form(item_id=None):
             flash("Item not found.", "error")
             return redirect(url_for("pantry.pantry_list"))
 
+    ingredients = db.execute("SELECT id, name, unit, category FROM ingredients ORDER BY name").fetchall()
+
     if request.method == "POST":
         ingredient_id = request.form.get("ingredient_id", type=int)
         quantity = request.form.get("quantity", type=float, default=0)
         unit = request.form.get("unit", "").strip()
-        expiry_date = request.form.get("expiry_date", "").strip()
+        expiry_date = request.form.get("expiry_date", "").strip() or None
         location = request.form.get("location", "pantry").strip()
 
+        ingredient = db.execute("SELECT unit FROM ingredients WHERE id = ?", (ingredient_id,)).fetchone() if ingredient_id else None
         errors = []
-        if not ingredient_id:
+        if not ingredient:
             errors.append("Ingredient is required.")
+        if quantity is None or quantity < 0:
+            errors.append("Quantity must be zero or more.")
+        if expiry_date and not validate_date_format(expiry_date):
+            errors.append("Expiry date must be a valid date.")
 
         if errors:
             for err in errors:
                 flash(err, "error")
-            return render_template("pantry/form.html", item=existing)
+            return render_template("pantry/form.html", item=existing, ingredients=ingredients)
+
+        unit = unit or ingredient["unit"]
 
         if item_id:
             db.execute(
@@ -96,10 +106,8 @@ def pantry_form(item_id=None):
                 (ingredient_id, quantity, unit, expiry_date, location)
             )
             flash("Pantry item added.", "success")
+        db.commit()
         return redirect(url_for("pantry.pantry_list"))
-
-    # Get ingredient options
-    ingredients = db.execute("SELECT id, name, unit, category FROM ingredients ORDER BY name").fetchall()
 
     return render_template("pantry/form.html", item=existing, ingredients=ingredients)
 

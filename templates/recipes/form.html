@@ -10,8 +10,8 @@
                 <h4>{{ 'Edit' if recipe else 'Add' }} Recipe</h4>
             </div>
             <div class="card-body">
-                <form method="post" enctype="multipart/form-data">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+                <form method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                     <div class="form-group">
                         <label for="name">Recipe Name <span class="text-danger">*</span></label>
@@ -91,41 +91,43 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="ingredients_data">Ingredients <span class="text-danger">*</span></label>
+                        <label>Ingredients</label>
                         <div id="ingredients-container">
-                            {% if recipe and recipe.recipe_ingredients %}
-                            {% for ri in recipe.recipe_ingredients %}
-                            <div class="ingredient-row mb-2 p-2 border rounded">
-                                <input type="hidden" name="ingredient_ids" value="{{ ri.ingredient_id }}">
-                                <div class="row">
-                                    <div class="col-md-5">
-                                        <input type="text" class="form-control" value="{{ ri.ingredient_name }}"
-                                               readonly tabindex="-1">
-                                    </div>
-                                    <div class="col-md-3">
-                                        <input type="number" class="form-control" name="quantities"
-                                               step="0.01" min="0" value="{{ ri.quantity }}"
-                                               placeholder="Qty">
-                                    </div>
-                                    <div class="col-md-3">
-                                        <input type="text" class="form-control" name="unit_overrides"
-                                               value="{{ ri.unit_override or '' }}"
-                                               placeholder="Unit (optional)">
-                                    </div>
-                                    <div class="col-md-1">
-                                        <button type="button" class="btn btn-outline-danger btn-sm remove-ingredient">
-                                            <i class="fas fa-times"></i>
-                                        </button>
-                                    </div>
+                            {% for ri in recipe_ingredients or [] %}
+                            <div class="ingredient-row form-row mb-2">
+                                <div class="col-md-6">
+                                    <select class="form-control ingredient-select" name="ingredient_ids"
+                                            data-selected="{{ ri.ingredient_id }}">
+                                        <option value="{{ ri.ingredient_id }}" selected>{{ ri.ingredient_name }} ({{ ri.unit }})</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <input type="number" class="form-control" name="quantities"
+                                           step="any" min="0" value="{{ ri.quantity }}" placeholder="Qty" aria-label="Quantity">
+                                </div>
+                                <div class="col-md-3">
+                                    <select class="form-control" name="unit_overrides" aria-label="Unit">
+                                        <option value="">Ingredient's unit</option>
+                                        {% for code, label in units %}
+                                        <option value="{{ code }}" {% if ri.unit_override == code %}selected{% endif %}>{{ label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-1">
+                                    <button type="button" class="btn btn-outline-danger remove-ingredient" title="Remove ingredient">
+                                        <i class="fas fa-times"></i>
+                                    </button>
                                 </div>
                             </div>
                             {% endfor %}
-                            {% endif %}
                         </div>
                         <button type="button" id="add-ingredient" class="btn btn-outline-secondary btn-sm">
-                            + Add Ingredient
+                            <i class="fas fa-plus"></i> Add Ingredient
                         </button>
-                        <small class="text-muted">Select ingredients from your database and set quantities.</small>
+                        <small class="form-text text-muted">
+                            Quantities are for the recipe's default servings. Missing an ingredient?
+                            <a href="{{ url_for('ingredients.ingredient_add') }}" target="_blank" rel="noopener">Add it</a>, then click Add Ingredient again.
+                        </small>
                     </div>
 
                     <div class="form-group text-right">
@@ -166,56 +168,83 @@
 {% endblock %}
 
 {% block scripts %}
+<template id="ingredient-row-template">
+    <div class="ingredient-row form-row mb-2">
+        <div class="col-md-6">
+            <select class="form-control ingredient-select" name="ingredient_ids" aria-label="Ingredient">
+                <option value="">Select ingredient...</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <input type="number" class="form-control" name="quantities" step="any" min="0" placeholder="Qty" aria-label="Quantity">
+        </div>
+        <div class="col-md-3">
+            <select class="form-control" name="unit_overrides" aria-label="Unit">
+                <option value="">Ingredient's unit</option>
+                {% for code, label in units %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="col-md-1">
+            <button type="button" class="btn btn-outline-danger remove-ingredient" title="Remove ingredient">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    </div>
+</template>
 <script>
-$(document).ready(function() {
-    const ingredientSelectUrl = "{{ url_for('ingredients.ingredient_select_ajax') }}";
+(function () {
+    const optionsUrl = {{ url_for('ingredients.ingredient_options')|tojson }};
+    const container = document.getElementById('ingredients-container');
+    const template = document.getElementById('ingredient-row-template');
+    let ingredientsPromise = null;
 
-    // Add ingredient row
-    $('#add-ingredient').click(function() {
-        $.get(ingredientSelectUrl, function(data) {
-            const row = `
-                <div class="ingredient-row mb-2 p-2 border rounded">
-                    <div class="row">
-                        <div class="col-md-5">
-                            <select class="form-control ingredient-select" style="width:100%">
-                                <option value="">Select ingredient...</option>
-                                {{ data|safe }}
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <input type="number" class="form-control ingredient-qty" step="0.01" min="0" placeholder="Qty">
-                        </div>
-                        <div class="col-md-3">
-                            <input type="text" class="form-control ingredient-unit" placeholder="Unit (optional)">
-                        </div>
-                        <div class="col-md-1">
-                            <button type="button" class="btn btn-outline-danger btn-sm remove-ingredient">
-                                <i class="fas fa-times"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            $('#ingredients-container').append(row);
+    function loadIngredients() {
+        // Fetch fresh each time the page loads, so ingredients added in another tab show up.
+        if (!ingredientsPromise) {
+            ingredientsPromise = fetch(optionsUrl, { credentials: 'same-origin' }).then(r => r.json());
+        }
+        return ingredientsPromise;
+    }
+
+    function fillSelect(select, ingredients) {
+        const selected = select.dataset.selected || select.value;
+        select.innerHTML = '';
+        select.add(new Option('Select ingredient...', ''));
+        ingredients.forEach(ing => {
+            const opt = new Option(`${ing.name} (${ing.unit})`, ing.id);
+            if (String(ing.id) === String(selected)) opt.selected = true;
+            select.add(opt);
+        });
+    }
+
+    // Upgrade the server-rendered rows to full dropdowns so the ingredient can be changed.
+    loadIngredients().then(list => {
+        container.querySelectorAll('.ingredient-select').forEach(sel => fillSelect(sel, list));
+    });
+
+    document.getElementById('add-ingredient').addEventListener('click', () => {
+        ingredientsPromise = null;
+        loadIngredients().then(list => {
+            const row = template.content.firstElementChild.cloneNode(true);
+            fillSelect(row.querySelector('.ingredient-select'), list);
+            container.appendChild(row);
+            row.querySelector('.ingredient-select').focus();
         });
     });
 
-    // Remove ingredient row
-    $(document).on('click', '.remove-ingredient', function() {
-        $(this).closest('.ingredient-row').remove();
+    container.addEventListener('click', e => {
+        const btn = e.target.closest('.remove-ingredient');
+        if (btn) btn.closest('.ingredient-row').remove();
     });
 
-    // Tag suggestions
-    $('.tag-suggestion').click(function() {
-        const tagInput = $('#tags');
-        const current = tagInput.val().trim();
-        const tag = $(this).data('tag');
-        if (current && !current.includes(tag)) {
-            tagInput.val(current + ', ' + tag);
-        } else if (!current) {
-            tagInput.val(tag);
-        }
+    document.querySelectorAll('.tag-suggestion').forEach(badge => {
+        badge.addEventListener('click', () => {
+            const input = document.getElementById('tags');
+            const tags = input.value.split(',').map(t => t.trim()).filter(Boolean);
+            if (!tags.includes(badge.dataset.tag)) tags.push(badge.dataset.tag);
+            input.value = tags.join(', ');
+        });
     });
-});
+})();
 </script>
 {% endblock %}

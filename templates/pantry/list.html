@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import post_button, csrf %}
 
 {% block title %}Pantry — Grocery Visualiser{% endblock %}
 
@@ -15,7 +16,7 @@
     <div class="col-md-3">
         <select class="form-control" id="locationFilter" onchange="filterPantry()">
             <option value="">All Locations</option>
-            <option value="pantry" {% if not request.args.get('location') or request.args.get('location') == 'pantry' %}selected{% endif %}>Pantry</option>
+            <option value="pantry" {% if request.args.get('location') == 'pantry' %}selected{% endif %}>Pantry</option>
             <option value="fridge" {% if request.args.get('location') == 'fridge' %}selected{% endif %}>Fridge</option>
             <option value="freezer" {% if request.args.get('location') == 'freezer' %}selected{% endif %}>Freezer</option>
         </select>
@@ -74,11 +75,14 @@
             <td>
                 <div class="btn-group btn-group-sm">
                     <a href="{{ url_for('pantry.pantry_form', item_id=item.id) }}" class="btn btn-outline-secondary">Edit</a>
-                                        <a href="{{ url_for('pantry.pantry_consume', item_id=item.id) }}" class="btn btn-outline-primary">Consume</a>
-                                        <a href="{{ url_for('pantry.pantry_delete', item_id=item.id) }}"
-                                           class="btn btn-outline-danger"
-                                           onclick="return confirm('Remove this item?')">Delete</a>
                 </div>
+                <form method="post" action="{{ url_for('pantry.pantry_consume', item_id=item.id) }}" class="form-inline d-inline-flex ml-1">
+                    {{ csrf() }}
+                    <input type="number" name="amount" step="any" min="0" class="form-control form-control-sm" style="width: 5rem"
+                           placeholder="Qty" aria-label="Amount to use" required>
+                    <button type="submit" class="btn btn-sm btn-outline-primary ml-1">Use</button>
+                </form>
+                {{ post_button(url_for('pantry.pantry_delete', item_id=item.id), 'Delete', confirm='Remove this item?') }}
             </td>
         </tr>
         {% endfor %}
@@ -104,8 +108,8 @@
 <script>
 function filterPantry() {
     const location = document.getElementById('locationFilter').value;
-    window.location.href = '{{ url_for("pantry.pantry_list") }}' + 
-        (location ? '?location=' + location : '');
+    window.location.href = {{ url_for("pantry.pantry_list")|tojson }} +
+        (location ? '?location=' + encodeURIComponent(location) : '');
 }
 </script>
 {% endblock %}

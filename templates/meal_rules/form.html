@@ -11,6 +11,7 @@
             </div>
             <div class="card-body">
                 <form method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="form-group">
                         <label for="day_of_week">When?</label>
                         <select class="form-control" id="day_of_week" name="day_of_week" required>
@@ -56,9 +57,17 @@
                     </div>
 
                     <div class="form-group">
+                        <label for="sort_order">Priority</label>
+                        <input type="number" class="form-control" id="sort_order" name="sort_order"
+                               value="{{ rule.sort_order if rule and rule.sort_order is not none else '' }}"
+                               placeholder="Leave blank to add at the end">
+                        <small class="text-muted">Lower numbers are tried first when several rules match the same meal.</small>
+                    </div>
+
+                    <div class="form-group">
                         <div class="custom-control custom-checkbox">
                             <input type="checkbox" class="custom-control-input" id="is_active"
-                                   name="is_active" {% if rule and rule.is_active %}checked{% endif %} checked>
+                                   name="is_active" {% if not rule or rule.is_active %}checked{% endif %}>
                             <label class="custom-control-label" for="is_active">Rule is active</label>
                         </div>
                     </div>

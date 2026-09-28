@@ -1,226 +1,136 @@
 """Routes for shopping list generation and management."""
 
-from datetime import datetime
-from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app
-from database import get_db
+from flask import Blueprint, render_template, request, redirect, url_for, flash
+
 from auth import login_required
-from models import CATEGORY_LOOKUP, UNIT_LOOKUP, convert_unit, TO_BASE
+from database import get_db, get_plan_dates
+from models import CATEGORY_LOOKUP, UNIT_LOOKUP, validate_date_format
+from services.repository import load_shopping_inputs, load_pantry_stock, shopping_preferences
+from services.shopping_list_generator import generate_shopping_list
+from services.spend_analysis import average_spend_per_shop
 
 shopping_bp = Blueprint("shopping_list", __name__)
 
 
-def generate_shopping_list(start_date_str, end_date_str):
-    """Generate shopping list from meal plan entries in date range."""
-    db = get_db()
-
-    # Get all meal plan entries in range
-    entries = db.execute(
-        "SELECT * FROM meal_plan_entries WHERE date >= ? AND date <= ?",
-        (start_date_str, end_date_str)
-    ).fetchall()
-
-    if not entries:
-        return {}
-
-    # Aggregate ingredients
-    aggregated = {}  # key: (ingredient_name, unit) -> {quantity, category, recipe_refs}
-
-    for entry in entries:
-        recipe = db.execute(
-            "SELECT * FROM recipes WHERE id = ?", (entry["recipe_id"],)
-        ).fetchone()
-        if not recipe:
-            continue
-
-        recipe_servings = recipe["servings"] or 1
-        scale_factor = entry["servings"] / recipe_servings
-
-        recipe_ingredients = db.execute(
-            """SELECT ri.quantity, ri.unit_override, i.name, i.unit, i.category
-               FROM recipe_ingredients ri
-               JOIN ingredients i ON ri.ingredient_id = i.id
-               WHERE ri.recipe_id = ?""",
-            (recipe["id"],)
-        ).fetchall()
-
-        for ri in recipe_ingredients:
-            qty = ri["quantity"] * scale_factor
-            name = ri["name"]
-            unit = ri["unit_override"] if ri["unit_override"] else ri["unit"]
-            category = ri["category"] or "other"
-            key = (name, unit)
-
-            if key in aggregated:
-                aggregated[key]["quantity"] += qty
-                if recipe["name"] not in aggregated[key]["recipe_refs"]:
-                    aggregated[key]["recipe_refs"].append(recipe["name"])
-            else:
-                aggregated[key] = {
-                    "ingredient_name": name,
-                    "quantity": qty,
-                    "unit": unit,
-                    "category": category,
-                    "recipe_refs": [recipe["name"]],
-                    "meal_date": entry["date"],
-                }
-
-    # Convert units if imperial preference
-    unit_pref = db.execute("SELECT value FROM settings WHERE key = 'unit_preference'").fetchone()
-    if unit_pref and unit_pref["value"] == "imperial":
-        for key, item in aggregated.items():
-            # Convert to imperial equivalents
-            metric_unit = item["unit"]
-            if metric_unit == "kg":
-                item["quantity"] = round(item["quantity"] * 2.20462, 2)
-                item["unit"] = "lb"
-            elif metric_unit == "g":
-                item["quantity"] = round(item["quantity"] * 0.035274, 2)
-                item["unit"] = "oz"
-            elif metric_unit == "L":
-                item["quantity"] = round(item["quantity"] * 0.264172, 2)
-                item["unit"] = "gal"
-            elif metric_unit == "mL":
-                item["quantity"] = round(item["quantity"] * 0.033814, 2)
-                item["unit"] = "fl_oz"
-
-    # Round quantities for display
-    for key, item in aggregated.items():
-        item["quantity"] = round(item["quantity"], 2)
-        if item["quantity"] == int(item["quantity"]):
-            item["quantity"] = int(item["quantity"])
-        # Add synthetic id for template and toggle/delete compatibility
-        item["id"] = abs(hash(f"{item['ingredient_name']}|{item['unit']}|{item.get('meal_date','')}")) % 1000000 + 100
-
-    # Group by category
-    grouped = {}
-    for item in aggregated.values():
-        cat = item["category"] or "other"
-        if cat not in grouped:
-            grouped[cat] = []
-        grouped[cat].append(item)
-
-    # Sort categories and items
-    sorted_categories = sorted(grouped.keys())
-    for cat in sorted_categories:
-        grouped[cat] = sorted(grouped[cat], key=lambda x: x["ingredient_name"])
-
-    return grouped
+def _back():
+    return redirect(url_for("shopping_list.shopping_list_view"))
 
 
-def get_shopping_list_persistent():
-    """Get the persistent shopping list items."""
-    db = get_db()
-    items = db.execute(
-        "SELECT * FROM shopping_list_items ORDER BY category, ingredient_name"
-    ).fetchall()
-    return items
+def build_list(start, end):
+    """Run the shopping-list service over the plan with the user's preferences."""
+    unit_pref, subtract = shopping_preferences()
+    entries, recipes, recipe_ingredients, ingredients = load_shopping_inputs(start, end)
+    return generate_shopping_list(
+        entries, recipes, recipe_ingredients, ingredients,
+        unit_preference=unit_pref,
+        subtract_pantry=subtract,
+        pantry_items=load_pantry_stock() if subtract else None,
+    )
 
 
 @shopping_bp.route("/shopping-list")
 @login_required
 def shopping_list_view():
     db = get_db()
+    start_str, end_str = get_plan_dates()
+    rows = db.execute(
+        "SELECT * FROM shopping_list_items ORDER BY checked, category, ingredient_name"
+    ).fetchall()
 
-    # Get plan dates from settings
-    plan_start = db.execute("SELECT value FROM settings WHERE key = 'plan_start_date'").fetchone()
-    plan_end = db.execute("SELECT value FROM settings WHERE key = 'plan_end_date'").fetchone()
+    grouped = {}
+    for row in rows:
+        grouped.setdefault(row["category"] or "other", []).append(row)
+    ordered = {cat: grouped[cat] for cat in sorted(grouped, key=lambda c: CATEGORY_LOOKUP.get(c, c))}
 
-    start_str = plan_start["value"] if plan_start else ""
-    end_str = plan_end["value"] if plan_end else ""
-
-    generated_list = {}
-    cost_estimate = 0
-
-    if start_str and end_str:
-        generated_list = generate_shopping_list(start_str, end_str)
-
-        # Calculate cost estimate
-        for cat, items in generated_list.items():
-            for item in items:
-                ing = db.execute(
-                    "SELECT price FROM ingredients WHERE name = ? AND unit = ?",
-                    (item["ingredient_name"], item["unit"])
-                ).fetchone()
-                if ing and ing["price"]:
-                    cost_estimate += item["quantity"] * ing["price"]
-
-    persistent_items = get_shopping_list_persistent()
+    cost_estimate = round(sum(r["estimated_cost"] or 0 for r in rows if not r["is_manual"]), 2)
+    has_plan = bool(start_str and end_str and db.execute(
+        "SELECT 1 FROM meal_plan_entries WHERE date BETWEEN ? AND ? LIMIT 1", (start_str, end_str)
+    ).fetchone())
 
     return render_template(
         "shopping_lists/view.html",
-        generated_list=generated_list,
-        persistent_items=persistent_items,
+        grouped=ordered,
+        item_count=len(rows),
+        checked_count=sum(1 for r in rows if r["checked"]),
+        has_generated=any(not r["is_manual"] for r in rows),
+        has_plan=has_plan,
         plan_start=start_str,
         plan_end=end_str,
-        cost_estimate=round(cost_estimate, 2),
-        category_labels=CATEGORY_LOOKUP,
+        cost_estimate=cost_estimate,
+        avg_shop_spend=average_spend_per_shop(db),
     )
 
 
 @shopping_bp.route("/shopping-list/generate", methods=["POST"])
 @login_required
 def shopping_list_generate():
-    plan_start = request.form.get("plan_start", "").strip()
-    plan_end = request.form.get("plan_end", "").strip()
-
-    if not plan_start or not plan_end:
+    stored_start, stored_end = get_plan_dates()
+    plan_start = request.form.get("plan_start", "").strip() or stored_start
+    plan_end = request.form.get("plan_end", "").strip() or stored_end
+    if not (validate_date_format(plan_start) and validate_date_format(plan_end)):
         flash("Please set plan dates in Settings.", "error")
-        return redirect(url_for("shopping_list.shopping_list_view"))
+        return _back()
 
-    # Clear old persistent items and refill from generated list
     db = get_db()
-    db.execute("DELETE FROM shopping_list_items")
-    db.commit()
+    # Remember what was already ticked so a regenerate doesn't lose progress.
+    previously_checked = {
+        (r["ingredient_name"], r["unit"])
+        for r in db.execute("SELECT ingredient_name, unit FROM shopping_list_items WHERE checked = 1 AND is_manual = 0")
+    }
+    db.execute("DELETE FROM shopping_list_items WHERE is_manual = 0")
 
-    # Generate and save
-    list_data = generate_shopping_list(plan_start, plan_end)
+    list_data = build_list(plan_start, plan_end)
     for cat, items in list_data.items():
         for item in items:
             db.execute(
-                """INSERT INTO shopping_list_items (ingredient_name, quantity, unit, category, checked, is_manual, meal_date, recipe_ref)
-                   VALUES (?, ?, ?, ?, 0, 0, ?, ?)""",
-                (item["ingredient_name"], item["quantity"], item["unit"], cat, item["meal_date"], ", ".join(item["recipe_refs"]))
+                """INSERT INTO shopping_list_items
+                   (ingredient_name, quantity, unit, category, checked, is_manual, meal_date, recipe_ref, estimated_cost)
+                   VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)""",
+                (item["ingredient_name"], item["quantity"], item["unit"], cat,
+                 1 if (item["ingredient_name"], item["unit"]) in previously_checked else 0,
+                 item["meal_date"], ", ".join(item["recipe_refs"]), item["estimated_cost"]),
             )
     db.commit()
 
     item_count = sum(len(items) for items in list_data.values())
     flash(f"Shopping list generated with {item_count} items.", "success")
-    return redirect(url_for("shopping_list.shopping_list_view"))
+    return _back()
 
 
 @shopping_bp.route("/shopping-list/toggle/<int:item_id>", methods=["POST"])
 @login_required
 def shopping_list_toggle(item_id):
     db = get_db()
-    db.execute(
-        "UPDATE shopping_list_items SET checked = CASE WHEN checked = 0 THEN 1 ELSE 0 END WHERE id = ?",
-        (item_id,)
-    )
+    db.execute("UPDATE shopping_list_items SET checked = 1 - checked WHERE id = ?", (item_id,))
     db.commit()
-    return redirect(url_for("shopping_list.shopping_list_view"))
+    return _back()
 
 
 @shopping_bp.route("/shopping-list/add-manual", methods=["POST"])
 @login_required
 def shopping_list_add_manual():
     name = request.form.get("name", "").strip() or request.form.get("ingredient_name", "").strip()
-    quantity = request.form.get("quantity", type=float, default=1)
+    quantity = request.form.get("quantity", type=float) or 1
     unit = request.form.get("unit", "each").strip()
     category = request.form.get("category", "other").strip()
 
     if not name:
         flash("Item name is required.", "error")
-        return redirect(url_for("shopping_list.shopping_list_view"))
+        return _back()
+    if unit not in UNIT_LOOKUP:
+        unit = "each"
+    if category not in CATEGORY_LOOKUP:
+        category = "other"
 
     db = get_db()
     db.execute(
         """INSERT INTO shopping_list_items (ingredient_name, quantity, unit, category, checked, is_manual, recipe_ref)
            VALUES (?, ?, ?, ?, 0, 1, '')""",
-        (name, quantity, unit, category)
+        (name, quantity, unit, category),
     )
     db.commit()
     flash("Item added to shopping list.", "success")
-    return redirect(url_for("shopping_list.shopping_list_view"))
+    return _back()
 
 
 @shopping_bp.route("/shopping-list/delete/<int:item_id>", methods=["POST"])
@@ -230,7 +140,7 @@ def shopping_list_delete(item_id):
     db.execute("DELETE FROM shopping_list_items WHERE id = ?", (item_id,))
     db.commit()
     flash("Item removed.", "success")
-    return redirect(url_for("shopping_list.shopping_list_view"))
+    return _back()
 
 
 @shopping_bp.route("/shopping-list/clear-checked", methods=["POST"])
@@ -240,7 +150,7 @@ def shopping_list_clear_checked():
     db.execute("DELETE FROM shopping_list_items WHERE checked = 1")
     db.commit()
     flash("Checked items cleared.", "success")
-    return redirect(url_for("shopping_list.shopping_list_view"))
+    return _back()
 
 
 def register_shopping_routes(app):

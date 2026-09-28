@@ -10,6 +10,17 @@ import tempfile
 from werkzeug.security import generate_password_hash
 
 
+def _create_user(client, username, password):
+    from database import get_db
+    with client.application.app_context():
+        db = get_db()
+        db.execute(
+            "INSERT OR IGNORE INTO users (username, password_hash) VALUES (?, ?)",
+            (username, generate_password_hash(password)),
+        )
+        db.commit()
+
+
 def _login(client, username, password):
     """Helper to create a user and log them in."""
     from database import get_db
@@ -82,7 +93,8 @@ class TestAuthentication:
     """Test login, logout, and protected route access."""
 
     def test_login_page_loads(self, client):
-        """GET /login returns the login form."""
+        """GET /login returns the login form once an account exists."""
+        _create_user(client, "someone", "test12345")
         resp = client.get("/login")
         assert resp.status_code == 200
         assert b"Username" in resp.data
@@ -95,6 +107,7 @@ class TestAuthentication:
 
     def test_unauthenticated_access_redirects(self, client):
         """Protected routes redirect to login when not authenticated."""
+        _create_user(client, "someone", "test12345")
         for path in ["/", "/ingredients", "/recipes", "/meal-rules"]:
             resp = client.get(path)
             assert resp.status_code == 302
@@ -342,8 +355,8 @@ class TestRecipes:
             "is_two_night": "",
             "tags": "dinner, italian",
             "ingredient_ids": str(ingredient_id),
-            "ingredient_quantities": "200",
-            "ingredient_unit_overrides": "g",
+            "quantities": "200",
+            "unit_overrides": "g",
         }, follow_redirects=True)
         assert resp.status_code == 200
 
@@ -377,8 +390,8 @@ class TestRecipes:
             "servings": "4",
             "tags": "dinner",
             "ingredient_ids": str(ing_id),
-            "ingredient_quantities": "1",
-            "ingredient_unit_overrides": "bunch",
+            "quantities": "1",
+            "unit_overrides": "bunch",
         }, follow_redirects=True)
 
         recipe_id = db.execute("SELECT id FROM recipes WHERE name = ?", ("Pesto Pasta",)).fetchone()["id"]
@@ -579,8 +592,9 @@ class TestMealPlanGeneration:
 
         # Set dates
         client.post("/settings/save", data={
-            "plan_start_date": "2026-10-05",
-            "plan_end_date": "2026-10-09",
+            "action": "save_dates",
+            "plan_start": "2026-10-05",
+            "plan_end": "2026-10-09",
             "unit_preference": "metric",
             "default_servings": "4",
         }, follow_redirects=True)
@@ -595,7 +609,8 @@ class TestMealPlanGeneration:
         resp = client.get("/meal-plan")
         assert resp.status_code == 200
         # No entries because no rules
-        assert b"No meal plan entries yet" in resp.data or b"generated with 0" in resp.data.lower()
+        assert b"Nothing planned yet" in resp.data
+        assert db.execute("SELECT COUNT(*) FROM meal_plan_entries").fetchone()[0] == 0
 
     def test_generate_plan_with_rules_and_recipes(self, client, db):
         """Full workflow: add ingredient → recipe → rule → set dates → generate plan."""
@@ -617,8 +632,8 @@ class TestMealPlanGeneration:
             "is_two_night": "",
             "tags": "dinner, italian",
             "ingredient_ids": "1",
-            "ingredient_quantities": "400",
-            "ingredient_unit_overrides": "g",
+            "quantities": "400",
+            "unit_overrides": "g",
         }, follow_redirects=True)
 
         # 3. Add another recipe
@@ -641,8 +656,9 @@ class TestMealPlanGeneration:
 
         # 5. Set plan dates
         client.post("/settings/save", data={
-            "plan_start_date": "2026-10-05",
-            "plan_end_date": "2026-10-09",
+            "action": "save_dates",
+            "plan_start": "2026-10-05",
+            "plan_end": "2026-10-09",
             "unit_preference": "metric",
             "default_servings": "4",
         }, follow_redirects=True)
@@ -693,8 +709,9 @@ class TestMealPlanGeneration:
 
         # Set dates
         client.post("/settings/save", data={
-            "plan_start_date": "2026-10-05",
-            "plan_end_date": "2026-10-09",
+            "action": "save_dates",
+            "plan_start": "2026-10-05",
+            "plan_end": "2026-10-09",
             "unit_preference": "metric",
             "default_servings": "4",
         }, follow_redirects=True)
@@ -757,8 +774,9 @@ class TestMealPlanGeneration:
         }, follow_redirects=True)
 
         client.post("/settings/save", data={
-            "plan_start_date": "2026-10-05",
-            "plan_end_date": "2026-10-09",
+            "action": "save_dates",
+            "plan_start": "2026-10-05",
+            "plan_end": "2026-10-09",
             "unit_preference": "metric",
         }, follow_redirects=True)
 
@@ -809,8 +827,9 @@ class TestMealPlanGeneration:
         }, follow_redirects=True)
 
         client.post("/settings/save", data={
-            "plan_start_date": "2026-10-05",
-            "plan_end_date": "2026-10-09",
+            "action": "save_dates",
+            "plan_start": "2026-10-05",
+            "plan_end": "2026-10-09",
             "unit_preference": "metric",
         }, follow_redirects=True)
 
@@ -850,8 +869,9 @@ class TestMealPlanGeneration:
         }, follow_redirects=True)
 
         client.post("/settings/save", data={
-            "plan_start_date": "2026-10-05",
-            "plan_end_date": "2026-10-09",
+            "action": "save_dates",
+            "plan_start": "2026-10-05",
+            "plan_end": "2026-10-09",
             "unit_preference": "metric",
         }, follow_redirects=True)
 
@@ -905,8 +925,8 @@ class TestShoppingList:
             "servings": "4",
             "tags": "dinner, italian",
             "ingredient_ids": "1",
-            "ingredient_quantities": "500",
-            "ingredient_unit_overrides": "g",
+            "quantities": "500",
+            "unit_overrides": "g",
         }, follow_redirects=True)
 
         client.post("/meal-rules/add", data={
@@ -917,8 +937,9 @@ class TestShoppingList:
         }, follow_redirects=True)
 
         client.post("/settings/save", data={
-            "plan_start_date": "2026-10-05",
-            "plan_end_date": "2026-10-09",
+            "action": "save_dates",
+            "plan_start": "2026-10-05",
+            "plan_end": "2026-10-09",
             "unit_preference": "metric",
             "default_servings": "4",
         }, follow_redirects=True)
@@ -959,12 +980,13 @@ class TestShoppingList:
             "servings": "4",
             "tags": "dinner",
             "ingredient_ids": "1",
-            "ingredient_quantities": "1",
+            "quantities": "1",
         }, follow_redirects=True)
 
         client.post("/settings/save", data={
-            "plan_start_date": "2026-10-05",
-            "plan_end_date": "2026-10-05",
+            "action": "save_dates",
+            "plan_start": "2026-10-05",
+            "plan_end": "2026-10-05",
             "unit_preference": "metric",
         }, follow_redirects=True)
 
@@ -1031,12 +1053,13 @@ class TestShoppingList:
             "servings": "4",
             "tags": "dinner",
             "ingredient_ids": "1",
-            "ingredient_quantities": "1",
+            "quantities": "1",
         }, follow_redirects=True)
 
         client.post("/settings/save", data={
-            "plan_start_date": "2026-10-05",
-            "plan_end_date": "2026-10-05",
+            "action": "save_dates",
+            "plan_start": "2026-10-05",
+            "plan_end": "2026-10-05",
             "unit_preference": "metric",
         }, follow_redirects=True)
 
@@ -1108,12 +1131,13 @@ class TestShoppingList:
             "servings": "4",
             "tags": "dinner",
             "ingredient_ids": "1",
-            "ingredient_quantities": "1",
+            "quantities": "1",
         }, follow_redirects=True)
 
         client.post("/settings/save", data={
-            "plan_start_date": "2026-10-05",
-            "plan_end_date": "2026-10-05",
+            "action": "save_dates",
+            "plan_start": "2026-10-05",
+            "plan_end": "2026-10-05",
             "unit_preference": "metric",
         }, follow_redirects=True)
 
@@ -1312,12 +1336,16 @@ class TestSettings:
         _login(client, "setuser", "test123")
 
         resp = client.post("/settings/save", data={
-            "plan_start_date": "2026-10-05",
-            "plan_end_date": "2026-10-18",
+            "action": "save_dates",
+            "plan_start": "2026-10-05",
+            "plan_end": "2026-10-18",
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+        resp = client.post("/settings/save", data={
+            "action": "save_prefs",
             "unit_preference": "imperial",
             "default_servings": "2",
-            "subtract_pantry_from_list": "1",
-            "email_notifications": "",
+            "subtract_pantry": "on",
         }, follow_redirects=True)
         assert resp.status_code == 200
 
@@ -1343,8 +1371,7 @@ class TestSettings:
         _login(client, "setuser", "test123")
 
         client.post("/settings/save", data={
-            "plan_start_date": "2026-10-05",
-            "plan_end_date": "2026-10-18",
+            "action": "save_prefs",
             "unit_preference": "metric",
             "default_servings": "4",
         }, follow_redirects=True)

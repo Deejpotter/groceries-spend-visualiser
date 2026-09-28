@@ -1,157 +1,135 @@
 """Shopping list generation service — pure functions for aggregating ingredients.
 
-Extracted from routes/shopping_list.py so aggregation logic is testable without Flask.
+Routes load data from the DB and call generate_shopping_list(); keeping this
+module free of Flask/SQL makes the aggregation logic easy to test.
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple, Union
 
-from models import convert_unit
+from models import convert_unit, to_display_unit, units_compatible
+
+# Pantry stock by ingredient name: either a bare quantity (assumed to be in the
+# same unit as the list line) or a (quantity, unit) pair that gets converted.
+PantryStock = Dict[str, Union[float, Tuple[float, str]]]
 
 
-# ---------------------------------------------------------------------------
-# Unit conversion for display
-# ---------------------------------------------------------------------------
+def convert_to_display_unit(quantity: float, unit: str, preference: str) -> Dict[str, float]:
+    """Convert a quantity+unit to the preferred display system.
 
-def convert_to_display_unit(
-    quantity: float,
-    unit: str,
-    preference: str,  # "metric" or "imperial"
-) -> Dict[str, float]:
-    """Convert a quantity+unit to the preferred display unit.
-
-    Returns dict with 'quantity' and 'unit' keys.
-    Count units (each, pack, etc.) are not converted.
+    Returns dict with 'quantity' and 'unit' keys. Count units are not converted.
     """
-    COUNT_UNITS = {
-        "each", "pack", "bunch", "roll", "can", "jar", "box",
-        "bag", "tube", "carton", "slice", "cup", "tbsp", "tsp",
-    }
-
-    if unit in COUNT_UNITS:
-        return {"quantity": quantity, "unit": unit}
-
-    if preference == "imperial":
-        # Convert metric -> imperial
-        conversions = {
-            "kg": ("lb", 2.20462),
-            "g": ("oz", 0.035274),
-            "L": ("gal", 0.264172),
-            "mL": ("fl_oz", 0.033814),
-        }
-        if unit in conversions:
-            new_unit, factor = conversions[unit]
-            return {
-                "quantity": round(quantity * factor, 2),
-                "unit": new_unit,
-            }
-
-    # Metric preference or no conversion needed
-    return {"quantity": quantity, "unit": unit}
+    qty, display_unit = to_display_unit(quantity, unit, preference)
+    return {"quantity": qty, "unit": display_unit}
 
 
-# ---------------------------------------------------------------------------
-# Shopping list aggregation (pure function — no DB)
-# ---------------------------------------------------------------------------
+def _tidy(quantity: float):
+    """Round to 2dp and drop a trailing .0 for display."""
+    quantity = round(quantity, 2)
+    return int(quantity) if quantity == int(quantity) else quantity
+
+
+def _pantry_amount(stock, unit: str) -> float:
+    """How much of `unit` the pantry holds (0 when units can't be compared)."""
+    if isinstance(stock, (tuple, list)):
+        qty, stock_unit = stock
+        if not units_compatible(stock_unit, unit):
+            return 0.0
+        return convert_unit(qty, stock_unit, unit)
+    return float(stock)
+
+
+def _line_cost(quantity: float, unit: str, ingredient: Dict) -> Optional[float]:
+    """Estimated cost: ingredient price is per ingredient unit."""
+    price = ingredient.get("price")
+    if not price:
+        return None
+    base_unit = ingredient.get("unit") or unit
+    if not units_compatible(unit, base_unit):
+        return None
+    return round(convert_unit(quantity, unit, base_unit) * price, 2)
+
 
 def generate_shopping_list(
-    plan_entries: List[Dict],           # [{date, meal_type, recipe_id, servings}]
-    recipes: Dict[int, Dict],           # {id: {name, servings, ...}}
+    plan_entries: List[Dict],                   # [{date, meal_type, recipe_id, servings}]
+    recipes: Dict[int, Dict],                   # {id: {name, servings, ...}}
     recipe_ingredients: Dict[int, List[Dict]],  # {recipe_id: [{quantity, unit_override, ingredient_id}]}
-    ingredients: Dict[int, Dict],       # {id: {name, unit, category, price}}
+    ingredients: Dict[int, Dict],               # {id: {name, unit, category, price}}
     unit_preference: str = "metric",
     subtract_pantry: bool = False,
-    pantry_items: Optional[Dict[str, float]] = None,  # {ingredient_name: quantity}
+    pantry_items: Optional[PantryStock] = None,
 ) -> Dict[str, List[Dict]]:
     """Generate a grouped shopping list from meal plan entries.
 
-    Returns {category: [{ingredient_name, quantity, unit, category, recipe_refs, meal_date}]}
+    Returns {category: [{ingredient_id, ingredient_name, quantity, unit, category,
+    recipe_refs, meal_date, estimated_cost}]} with categories and items sorted.
     """
     if not plan_entries:
         return {}
 
-    # Aggregate ingredients across all entries
     aggregated: Dict[tuple, dict] = {}
 
     for entry in plan_entries:
-        recipe_id = entry["recipe_id"]
-        recipe = recipes.get(recipe_id)
+        recipe = recipes.get(entry["recipe_id"])
         if not recipe:
             continue
+        scale_factor = entry["servings"] / (recipe.get("servings") or 1)
 
-        recipe_servings = recipe.get("servings") or 1
-        scale_factor = entry["servings"] / recipe_servings
-
-        ri_list = recipe_ingredients.get(recipe_id, [])
-        for ri in ri_list:
-            ingredient_id = ri["ingredient_id"]
-            ingredient = ingredients.get(ingredient_id)
+        for ri in recipe_ingredients.get(entry["recipe_id"], []):
+            ingredient = ingredients.get(ri["ingredient_id"])
             if not ingredient:
                 continue
 
-            qty = ri["quantity"] * scale_factor
-            name = ingredient["name"]
             unit = ri.get("unit_override") or ingredient["unit"]
-            category = ingredient.get("category") or "other"
-
-            key = (name, unit)
+            key = (ri["ingredient_id"], unit)
+            qty = ri["quantity"] * scale_factor
 
             if key in aggregated:
-                aggregated[key]["quantity"] += qty
-                if recipe["name"] not in aggregated[key]["recipe_refs"]:
-                    aggregated[key]["recipe_refs"].append(recipe["name"])
+                item = aggregated[key]
+                item["quantity"] += qty
+                if recipe["name"] not in item["recipe_refs"]:
+                    item["recipe_refs"].append(recipe["name"])
+                item["meal_date"] = min(item["meal_date"], entry.get("date", "")) or item["meal_date"]
             else:
                 aggregated[key] = {
-                    "ingredient_name": name,
+                    "ingredient_id": ri["ingredient_id"],
+                    "ingredient_name": ingredient["name"],
                     "quantity": qty,
                     "unit": unit,
-                    "category": category,
+                    "category": ingredient.get("category") or "other",
                     "recipe_refs": [recipe["name"]],
                     "meal_date": entry.get("date", ""),
                 }
 
-    # Apply unit conversion
-    for key, item in aggregated.items():
-        converted = convert_to_display_unit(
-            item["quantity"], item["unit"], unit_preference
-        )
-        item["quantity"] = converted["quantity"]
-        item["unit"] = converted["unit"]
-
-    # Round quantities
-    for key, item in aggregated.items():
-        item["quantity"] = round(item["quantity"], 2)
-        if item["quantity"] == int(item["quantity"]):
-            item["quantity"] = int(item["quantity"])
-
-    # Subtract pantry if enabled
+    # Subtract pantry stock (in the recipe's unit, before display conversion)
     if subtract_pantry and pantry_items:
-        keys_to_remove = []
-        for key, item in aggregated.items():
-            name = item["ingredient_name"]
-            if name in pantry_items:
-                remaining = item["quantity"] - pantry_items[name]
-                if remaining <= 0:
-                    keys_to_remove.append(key)
-                else:
-                    item["quantity"] = round(remaining, 2)
-                    if item["quantity"] == int(item["quantity"]):
-                        item["quantity"] = int(item["quantity"])
-        for key in keys_to_remove:
-            del aggregated[key]
+        for key in list(aggregated):
+            item = aggregated[key]
+            stock = pantry_items.get(item["ingredient_name"])
+            if stock is None:
+                continue
+            item["quantity"] -= _pantry_amount(stock, item["unit"])
+            if round(item["quantity"], 2) <= 0:
+                del aggregated[key]
 
-    # Group by category, sort
+    for item in aggregated.values():
+        ingredient = ingredients[item["ingredient_id"]]
+        item["estimated_cost"] = _line_cost(item["quantity"], item["unit"], ingredient)
+        qty, unit = to_display_unit(item["quantity"], item["unit"], unit_preference)
+        item["quantity"], item["unit"] = _tidy(qty), unit
+
     grouped: Dict[str, list] = {}
     for item in aggregated.values():
-        cat = item["category"] or "other"
-        if cat not in grouped:
-            grouped[cat] = []
-        grouped[cat].append(item)
+        grouped.setdefault(item["category"], []).append(item)
 
-    sorted_categories = sorted(grouped.keys())
-    for cat in sorted_categories:
-        grouped[cat] = sorted(grouped[cat], key=lambda x: x["ingredient_name"])
+    return {
+        cat: sorted(grouped[cat], key=lambda x: x["ingredient_name"])
+        for cat in sorted(grouped)
+    }
 
-    return grouped
+
+def total_cost(grouped: Dict[str, List[Dict]]) -> float:
+    """Sum of estimated line costs (lines without a price are ignored)."""
+    return round(sum(i.get("estimated_cost") or 0 for items in grouped.values() for i in items), 2)
 
 
 # ---------------------------------------------------------------------------
@@ -165,19 +143,10 @@ def make_plan_entry(
     servings: int = 4,
 ) -> Dict:
     """Create a plan entry dict for testing."""
-    return {
-        "date": date,
-        "meal_type": meal_type,
-        "recipe_id": recipe_id,
-        "servings": servings,
-    }
+    return {"date": date, "meal_type": meal_type, "recipe_id": recipe_id, "servings": servings}
 
 
-def make_recipe_dict(
-    id: int = 1,
-    name: str = "Test Recipe",
-    servings: int = 4,
-) -> Dict:
+def make_recipe_dict(id: int = 1, name: str = "Test Recipe", servings: int = 4) -> Dict:
     """Create a recipe dict for testing."""
     return {"id": id, "name": name, "servings": servings}
 
@@ -188,11 +157,7 @@ def make_recipe_ingredient(
     unit_override: Optional[str] = None,
 ) -> Dict:
     """Create a recipe ingredient link dict for testing."""
-    return {
-        "ingredient_id": ingredient_id,
-        "quantity": quantity,
-        "unit_override": unit_override,
-    }
+    return {"ingredient_id": ingredient_id, "quantity": quantity, "unit_override": unit_override}
 
 
 def make_ingredient(
@@ -203,10 +168,4 @@ def make_ingredient(
     price: Optional[float] = None,
 ) -> Dict:
     """Create an ingredient dict for testing."""
-    return {
-        "id": id,
-        "name": name,
-        "unit": unit,
-        "category": category,
-        "price": price,
-    }
+    return {"id": id, "name": name, "unit": unit, "category": category, "price": price}

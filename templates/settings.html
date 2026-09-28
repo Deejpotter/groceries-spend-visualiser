@@ -14,6 +14,7 @@
             </div>
             <div class="card-body">
                 <form method="post" action="{{ url_for('settings.save') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="form-row">
                         <div class="form-group col-md-6">
                             <label for="plan_start">Plan Start Date</label>
@@ -43,6 +44,7 @@
             </div>
             <div class="card-body">
                 <form method="post" action="{{ url_for('settings.save') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="form-group">
                         <label for="unit_preference">Unit Preference</label>
                         <select class="form-control" id="unit_preference" name="unit_preference">

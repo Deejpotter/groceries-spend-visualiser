@@ -1,145 +1,111 @@
 {% extends "base.html" %}
+{% from "_macros.html" import csrf, post_button %}
 
 {% block title %}Shopping List — Grocery Visualiser{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h1>Shopping List</h1>
-    <div>
-        {% if plan_start and plan_end %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+    <h1 class="mb-2">Shopping List</h1>
+    <div class="mb-2 d-print-none">
+        {% if has_plan %}
         <form method="post" action="{{ url_for('shopping_list.shopping_list_generate') }}" class="d-inline">
-            <input type="hidden" name="plan_start" value="{{ plan_start }}">
-            <input type="hidden" name="plan_end" value="{{ plan_end }}">
+            {{ csrf() }}
             <button type="submit" class="btn btn-info">
-                <i class="fas fa-sync"></i> Regenerate from Plan
+                <i class="fas fa-sync"></i> {{ 'Regenerate' if has_generated else 'Generate' }} from Plan
             </button>
         </form>
         {% endif %}
-        <button onclick="window.print()" class="btn btn-secondary">
-            <i class="fas fa-print"></i> Print
-        </button>
+        <button type="button" onclick="window.print()" class="btn btn-secondary"><i class="fas fa-print"></i> Print</button>
     </div>
 </div>
 
 {% if plan_start and plan_end %}
-<div class="alert alert-info">
-    <strong>Plan Period:</strong> {{ plan_start }} to {{ plan_end }}
+<p class="text-muted">Plan period {{ plan_start }} to {{ plan_end }}.
+    {% if has_plan and not has_generated %}Click <strong>Generate from Plan</strong> to build the list from your meal plan.{% endif %}
+    {% if not has_plan %}<a href="{{ url_for('meal_plan.meal_plan_view') }}">Generate a meal plan</a> first.{% endif %}
+</p>
+{% else %}
+<div class="alert alert-warning">Set your plan dates in <a href="{{ url_for('settings.settings') }}">Settings</a>, then generate a meal plan.</div>
+{% endif %}
+
+{% if cost_estimate or avg_shop_spend %}
+<div class="row mb-3">
+    {% if cost_estimate %}
+    <div class="col-sm-6 mb-2">
+        <div class="card"><div class="card-body py-2">
+            <div class="text-muted small">Estimated cost (priced ingredients)</div>
+            <div class="h4 mb-0">${{ "%.2f"|format(cost_estimate) }}</div>
+        </div></div>
+    </div>
+    {% endif %}
+    {% if avg_shop_spend %}
+    <div class="col-sm-6 mb-2">
+        <div class="card"><div class="card-body py-2">
+            <div class="text-muted small">Your average shop (from <a href="{{ url_for('spend.spend_dashboard') }}">spend history</a>)</div>
+            <div class="h4 mb-0">${{ "%.2f"|format(avg_shop_spend) }}</div>
+        </div></div>
+    </div>
+    {% endif %}
 </div>
 {% endif %}
 
-{% if generated_list or persistent_items %}
-{% if cost_estimate %}
-<div class="alert alert-light border border-dark text-right mb-4">
-    <strong>Estimated Total: ${{ "%.2f"|format(cost_estimate) }}</strong>
-</div>
-{% endif %}
-
-{% for category, items in generated_list.items() %}
+{% if grouped %}
+<p class="small text-muted">{{ checked_count }} of {{ item_count }} items ticked.</p>
+{% for category, items in grouped.items() %}
 <div class="card mb-3">
-    <div class="card-header bg-{% if category == 'produce' %}success{% elif category == 'meat' %}danger{% elif category == 'dairy' %}info{% elif category == 'bakery' %}warning{% elif category == 'frozen' %}secondary{% else %}light{% endif %} text-white">
-        <strong>{{ category_lookup.get(category, category) }}</strong>
-        <span class="float-right text-white-50">{{ items|length }} items</span>
+    <div class="card-header py-2"><strong>{{ category_label(category) }}</strong>
+        <span class="float-right text-muted small">{{ items|length }} item{{ '' if items|length == 1 else 's' }}</span>
     </div>
-    <div class="card-body p-0">
-        <table class="table table-sm mb-0">
-            <tbody>
-                {% for item in items %}
-                <tr class="{{ 'table-primary' if item.meal_date else '' }}">
-                    <td>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox"
-                                   {% if item.checked %}checked{% endif %}
-                                   onchange="window.location.href='{{ url_for('shopping_list.shopping_list_toggle', item_id=item.id) }}'">
-                        </div>
-                    </td>
-                    <td style="width: 40px; text-align: right;">{{ item.quantity }}</td>
-                    <td>{{ item.unit }}</td>
-                    <td>{{ item.ingredient_name }}</td>
-                    <td class="text-muted small" style="max-width: 200px;">
-                        {% if item.recipe_refs %}
-                        <span title="{{ item.recipe_refs|join(', ') }}">
-                            {{ item.recipe_refs|join(', ') }}
-                        </span>
-                        {% endif %}
-                    </td>
-                    <td class="text-right">
-                        <a href="{{ url_for('shopping_list.shopping_list_delete', item_id=item.id) }}"
-                           class="btn btn-sm btn-outline-danger"
-                           onclick="return confirm('Remove this item?')">
-                            <i class="fas fa-times"></i>
-                        </a>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
+    <ul class="list-group list-group-flush">
+        {% for item in items %}
+        <li class="list-group-item d-flex align-items-center py-2 {{ 'list-group-item-light checked-item' if item.checked }}">
+            <form method="post" action="{{ url_for('shopping_list.shopping_list_toggle', item_id=item.id) }}" class="mr-3">
+                {{ csrf() }}
+                <input type="checkbox" class="big-check" onchange="this.form.submit()" {% if item.checked %}checked{% endif %}
+                       aria-label="Mark {{ item.ingredient_name }} as bought">
+            </form>
+            <div class="flex-grow-1">
+                <span class="item-name">{{ item.quantity|qty }}{{ ' ' ~ (item.unit|replace('_', ' ')) if item.unit != 'each' }} {{ item.ingredient_name }}</span>
+                {% if item.is_manual %}<span class="badge badge-secondary">manual</span>{% endif %}
+                {% if item.recipe_ref %}<div class="small text-muted">{{ item.recipe_ref }}</div>{% endif %}
+            </div>
+            {% if item.estimated_cost %}<span class="text-muted small mr-3">${{ "%.2f"|format(item.estimated_cost) }}</span>{% endif %}
+            <div class="d-print-none">
+            {{ post_button(url_for('shopping_list.shopping_list_delete', item_id=item.id), '', class='btn btn-sm btn-link text-danger',
+                           icon='times', title='Remove item') }}
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
 </div>
 {% endfor %}
+{% if checked_count %}
+<div class="d-print-none mb-4">
+    {{ post_button(url_for('shopping_list.shopping_list_clear_checked'), 'Clear ticked items', class='btn btn-outline-secondary',
+                   confirm='Remove all ticked items from the list?') }}
+</div>
+{% endif %}
+{% endif %}
 
-<hr class="my-4">
-
-<h4>Add Manual Item</h4>
-<form method="post" action="{{ url_for('shopping_list.shopping_list_add_manual') }}" class="row g-3 mb-4">
-    <div class="col-md-5">
-        <input type="text" class="form-control" name="name" placeholder="Item name" required>
-    </div>
-    <div class="col-md-2">
-        <input type="number" class="form-control" name="quantity" value="1" min="0.01" step="0.01" required>
-    </div>
-    <div class="col-md-3">
-        <select class="form-control" name="unit">
-            {% for code, label in units %}
-            <option value="{{ code }}">{{ label }}</option>
-            {% endfor %}
-        </select>
-    </div>
-    <div class="col-md-2">
-        <button type="submit" class="btn btn-primary w-100">Add Item</button>
-    </div>
-</form>
-
-{% if persistent_items %}
-<div class="card">
-    <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-        <strong>Manual Items</strong>
-        <form method="post" action="{{ url_for('shopping_list.shopping_list_clear_checked') }}">
-            <button type="submit" class="btn btn-sm btn-outline-light">Clear Checked Items</button>
+<div class="card d-print-none">
+    <div class="card-header py-2"><strong>Add an item</strong></div>
+    <div class="card-body">
+        <form method="post" action="{{ url_for('shopping_list.shopping_list_add_manual') }}" class="form-row">
+            {{ csrf() }}
+            <div class="col-md-4 mb-2"><input type="text" class="form-control" name="name" placeholder="Item name" required aria-label="Item name"></div>
+            <div class="col-md-2 mb-2"><input type="number" class="form-control" name="quantity" value="1" min="0.01" step="any" required aria-label="Quantity"></div>
+            <div class="col-md-2 mb-2">
+                <select class="form-control" name="unit" aria-label="Unit">
+                    {% for code, label in units %}<option value="{{ code }}" {% if code == 'each' %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2 mb-2">
+                <select class="form-control" name="category" aria-label="Category">
+                    {% for code, label in categories %}<option value="{{ code }}" {% if code == 'other' %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2 mb-2"><button type="submit" class="btn btn-primary btn-block">Add</button></div>
         </form>
     </div>
-    <div class="card-body p-0">
-        <table class="table table-sm mb-0">
-            <tbody>
-                {% for item in persistent_items %}
-                <tr class="{{ 'table-success' if item.checked else '' }}">
-                    <td>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox"
-                                   {% if item.checked %}checked{% endif %}
-                                   onchange="window.location.href='{{ url_for('shopping_list.shopping_list_toggle', item_id=item.id) }}'">
-                        </div>
-                    </td>
-                    <td style="width: 40px; text-align: right;">{{ item.quantity }}</td>
-                    <td>{{ item.unit }}</td>
-                    <td>{{ item.ingredient_name }}</td>
-                    <td class="text-right">
-                        <a href="{{ url_for('shopping_list.shopping_list_delete', item_id=item.id) }}"
-                           class="btn btn-sm btn-outline-danger"
-                           onclick="return confirm('Remove this item?')">
-                            <i class="fas fa-times"></i>
-                        </a>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
 </div>
-{% endif %}
-
-{% else %}
-<div class="alert alert-secondary text-center">
-    <p>No shopping list generated yet. Set your plan dates in Settings, then go to the Meal Plan and generate a plan.</p>
-</div>
-{% endif %}
 {% endblock %}

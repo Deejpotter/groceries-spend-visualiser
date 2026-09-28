@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf %}
+
+{% block title %}Import Purchases — Grocery Visualiser{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-7">
+        <div class="card">
+            <div class="card-header"><h4 class="mb-0">Import purchases</h4></div>
+            <div class="card-body">
+                <form method="post" enctype="multipart/form-data">
+                    {{ csrf() }}
+                    <div class="form-group">
+                        <label for="file">Purchase history CSV</label>
+                        <input type="file" class="form-control-file" id="file" name="file" accept=".csv,text/csv" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="store">Store</label>
+                        <input type="text" class="form-control" id="store" name="store" value="Woolworths">
+                    </div>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-file-import"></i> Import</button>
+                    <a href="{{ url_for('spend.spend_dashboard') }}" class="btn btn-secondary">Cancel</a>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-5 mt-3 mt-lg-0">
+        <div class="card">
+            <div class="card-header">CSV format</div>
+            <div class="card-body small">
+                <p>One row per product per shop. Columns (header row required):</p>
+                <ul>
+                    <li><code>date</code> — YYYY-MM-DD or DD/MM/YYYY</li>
+                    <li><code>product_name</code>, <code>quantity</code></li>
+                    <li><code>unit_price</code> or <code>line_total</code></li>
+                    <li>Optional: <code>basket_id</code>, <code>channel</code>, <code>cup_price</code> (e.g. <code>$1.51 / 100G</code>), <code>stockcode</code></li>
+                </ul>
+                <p class="mb-0">Re-importing the same file is safe: lines already imported are skipped.
+                    The Woolworths order-history export already uses this format.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,11 +1,9 @@
 """Routes for ingredient management."""
 
-import os
-import uuid
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from database import get_db
 from auth import login_required
-from models import CATEGORIES, UNIT_LOOKUP, convert_unit
+from models import CATEGORY_LOOKUP, UNIT_LOOKUP, category_label
 
 ingredients_bp = Blueprint("ingredients", __name__)
 
@@ -27,6 +25,29 @@ def get_ingredients(search=None, category=None):
     return db.execute(query, params).fetchall()
 
 
+def _read_form():
+    """Parse and validate the ingredient form. Returns (values, errors)."""
+    values = {
+        "name": request.form.get("name", "").strip(),
+        "category": request.form.get("category", "").strip(),
+        "unit": request.form.get("unit", "each").strip(),
+        "price": request.form.get("price", type=float),
+        "url": request.form.get("url", "").strip(),
+        "store": request.form.get("store", "").strip(),
+        "minimum_stock": request.form.get("minimum_stock", type=float, default=0) or 0,
+    }
+    errors = []
+    if not values["name"]:
+        errors.append("Name is required.")
+    if values["category"] not in CATEGORY_LOOKUP:
+        errors.append("Category is required.")
+    if values["unit"] not in UNIT_LOOKUP:
+        errors.append("Choose a valid unit.")
+    if values["price"] is not None and values["price"] < 0:
+        errors.append("Price can't be negative.")
+    return values, errors
+
+
 @ingredients_bp.route("/ingredients")
 @login_required
 def ingredient_list():
@@ -38,7 +59,7 @@ def ingredient_list():
     result = []
     for ing in ingredients:
         item = dict(ing)
-        item["category_label"] = CATEGORIES[[c[0] for c in CATEGORIES].index(ing["category"])][1] if ing["category"] in [c[0] for c in CATEGORIES] else ing["category"]
+        item["category_label"] = category_label(ing["category"])
         item["unit_label"] = UNIT_LOOKUP.get(ing["unit"], ing["unit"])
         result.append(item)
 
@@ -49,30 +70,18 @@ def ingredient_list():
 @login_required
 def ingredient_add():
     if request.method == "POST":
-        name = request.form.get("name", "").strip()
-        category = request.form.get("category", "").strip()
-        unit = request.form.get("unit", "each").strip()
-        price = request.form.get("price", type=float)
-        url = request.form.get("url", "").strip()
-        store = request.form.get("store", "").strip()
-        minimum_stock = request.form.get("minimum_stock", type=float, default=0)
-
-        errors = []
-        if not name:
-            errors.append("Name is required.")
-        if not category:
-            errors.append("Category is required.")
-
+        values, errors = _read_form()
         if errors:
             for err in errors:
                 flash(err, "error")
-            return render_template("ingredients/form.html")
+            return render_template("ingredients/form.html", ingredient=values)
 
         db = get_db()
         db.execute(
             """INSERT INTO ingredients (name, category, unit, price, url, store, minimum_stock)
                VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (name, category, unit, price, url, store, minimum_stock)
+            (values["name"], values["category"], values["unit"], values["price"],
+             values["url"], values["store"], values["minimum_stock"])
         )
         db.commit()
         flash("Ingredient added successfully.", "success")
@@ -94,36 +103,24 @@ def ingredient_edit(ingredient_id):
         return redirect(url_for("ingredients.ingredient_list"))
 
     if request.method == "POST":
-        name = request.form.get("name", "").strip()
-        category = request.form.get("category", "").strip()
-        unit = request.form.get("unit", "each").strip()
-        price = request.form.get("price", type=float)
-        url = request.form.get("url", "").strip()
-        store = request.form.get("store", "").strip()
-        minimum_stock = request.form.get("minimum_stock", type=float, default=0)
-
-        errors = []
-        if not name:
-            errors.append("Name is required.")
-        if not category:
-            errors.append("Category is required.")
-
+        values, errors = _read_form()
         if errors:
             for err in errors:
                 flash(err, "error")
-            return render_template("ingredients/form.html", ingredient=dict(ingredient))
+            return render_template("ingredients/form.html", ingredient={**dict(ingredient), **values})
 
         db.execute(
             """UPDATE ingredients SET name=?, category=?, unit=?, price=?, url=?, store=?, minimum_stock=?
                WHERE id=?""",
-            (name, category, unit, price, url, store, minimum_stock, ingredient_id)
+            (values["name"], values["category"], values["unit"], values["price"],
+             values["url"], values["store"], values["minimum_stock"], ingredient_id)
         )
         db.commit()
         flash("Ingredient updated successfully.", "success")
         return redirect(url_for("ingredients.ingredient_list"))
 
     item = dict(ingredient)
-    item["category_label"] = CATEGORIES[[c[0] for c in CATEGORIES].index(ingredient["category"])][1] if ingredient["category"] in [c[0] for c in CATEGORIES] else ingredient["category"]
+    item["category_label"] = category_label(ingredient["category"])
     item["unit_label"] = UNIT_LOOKUP.get(ingredient["unit"], ingredient["unit"])
     return render_template("ingredients/form.html", ingredient=item)
 
@@ -138,16 +135,12 @@ def ingredient_delete(ingredient_id):
     return redirect(url_for("ingredients.ingredient_list"))
 
 
-@ingredients_bp.route("/ingredients/select-ajax")
+@ingredients_bp.route("/ingredients/options.json")
 @login_required
-def ingredient_select_ajax():
-    """Return HTML options for ingredient select (used by recipe form)."""
-    db = get_db()
-    rows = db.execute("SELECT id, name, unit FROM ingredients ORDER BY name").fetchall()
-    options = []
-    for row in rows:
-        options.append(f'<option value="{row["id"]}">{row["name"]} ({row["unit"]})</option>')
-    return "\n".join(options)
+def ingredient_options():
+    """Ingredient choices for client-side pickers (JSON, so names are never injected as HTML)."""
+    rows = get_db().execute("SELECT id, name, unit FROM ingredients ORDER BY name").fetchall()
+    return jsonify([dict(r) for r in rows])
 
 
 def register_ingredient_routes(app):

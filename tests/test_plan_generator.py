@@ -326,10 +326,11 @@ class TestPlanGenerationWorkflow:
         entries, err = generate_plan_entries("2026-10-05", "2026-10-07", rules, recipes, [])
         assert err is None
         dinners = [e for e in entries if e["meal_type"] == "dinner"]
-        # Mon→Bolognese (two-night), Tue→Bolognese (cascade), Wed→Bolognese (cascade)
-        # Bolognese is first recipe (no tag filter), cascades fill all 3 days
+        # Mon→Bolognese (two-night), Tue→Bolognese (cascade), Wed→Grilled Fish
+        # (unused recipes are preferred, so Bolognese isn't picked a third night)
         assert len(dinners) == 3
-        assert all(d["recipe_id"] == 1 for d in dinners)
+        by_date = {d["date"]: d["recipe_id"] for d in dinners}
+        assert by_date == {"2026-10-05": 1, "2026-10-06": 1, "2026-10-07": 2}
 
     def test_two_night_cascade_prevents_next_day_rule(self):
         """A two-night cascade blocks the next day's independent rule evaluation."""

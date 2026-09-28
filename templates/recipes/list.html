@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import post_button, csrf %}
 
 {% block title %}Recipes — Grocery Visualiser{% endblock %}
 
@@ -58,9 +59,7 @@
             <div class="card-footer bg-white text-center">
                 <a href="{{ url_for('recipes.recipe_detail', recipe_id=recipe.id) }}" class="btn btn-sm btn-outline-primary">View</a>
                                     <a href="{{ url_for('recipes.recipe_form', recipe_id=recipe.id) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
-                                    <a href="{{ url_for('recipes.recipe_delete', recipe_id=recipe.id) }}"
-                                       class="btn btn-sm btn-outline-danger"
-                                       onclick="return confirm('Delete this recipe?')">Delete</a>
+                {{ post_button(url_for('recipes.recipe_delete', recipe_id=recipe.id), 'Delete', confirm='Delete this recipe?') }}
             </div>
         </div>
     </div>

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import post_button %}
 
 {% block title %}Meal Rules — Grocery Visualiser{% endblock %}
 
@@ -7,9 +8,9 @@
     <h1>Meal Rules</h1>
     <div class="d-flex gap-2">
             <a href="{{ url_for('meal_plan.meal_plan_view') }}" class="btn btn-info">
-                <i class="fas fa-calendar"></i> Generate Plan
+                <i class="fas fa-calendar"></i> Go to Meal Plan
             </a>
-            <a href="{{ url_for('meal_plan.meal_rule_form', rule_id=None) }}" class="btn btn-primary">
+            <a href="{{ url_for('meal_plan.meal_rule_form') }}" class="btn btn-primary">
             <i class="fas fa-plus"></i> Add Rule
             </a>
         </div>
@@ -53,8 +54,8 @@
     </thead>
     <tbody>
         {% for rule in rules %}
-        <tr>
-            <td>{{ loop.index }}</td>
+        <tr class="{{ '' if rule.is_active else 'text-muted' }}">
+            <td>{{ rule.sort_order }}</td>
             <td><strong>{{ day_labels[rule.day_of_week] }}</strong></td>
             <td>{{ meal_type_labels.get(rule.meal_type, rule.meal_type) }}</td>
             <td>
@@ -79,10 +80,8 @@
             <td>
                 <div class="btn-group btn-group-sm">
                     <a href="{{ url_for('meal_plan.meal_rule_form', rule_id=rule.id) }}" class="btn btn-outline-secondary">Edit</a>
-                                        <a href="{{ url_for('meal_plan.meal_rule_delete', rule_id=rule.id) }}"
-                                           class="btn btn-outline-danger"
-                                           onclick="return confirm('Delete this rule?')">Delete</a>
                 </div>
+                {{ post_button(url_for('meal_plan.meal_rule_delete', rule_id=rule.id), 'Delete', confirm='Delete this rule?') }}
             </td>
         </tr>
         {% endfor %}
@@ -91,30 +90,11 @@
 {% else %}
 <div class="alert alert-info">
     <p>No meal rules configured. Add rules to enable automatic meal plan generation.</p>
-    <a href="{{ url_for('meal_plan.meal_rule_list') }}" class="btn btn-primary">Add your first rule</a>
+    <a href="{{ url_for('meal_plan.meal_rule_form') }}" class="btn btn-primary">Add your first rule</a>
 </div>
 {% endif %}
 
 <div class="alert alert-warning mt-4">
     <strong>Note:</strong> After adding or changing rules, go to the <a href="{{ url_for('meal_plan.meal_plan_view') }}">Meal Plan</a> page and click "Generate Plan" to see the results.
 </div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-function dayLabel(code) {
-    const labels = {
-        'mon': 'Monday', 'tue': 'Tuesday', 'wed': 'Wednesday',
-        'thu': 'Thursday', 'fri': 'Friday', 'sat': 'Saturday', 'sun': 'Sunday',
-        'weekday': 'Weekday', 'weekend': 'Weekend', 'all': 'Every day'
-    };
-    return labels[code] || code;
-}
-function mealTypeLabel(code) {
-    const labels = {
-        'breakfast': 'Breakfast', 'lunch': 'Lunch', 'dinner': 'Dinner', 'snack': 'Snack'
-    };
-    return labels[code] || code;
-}
-</script>
 {% endblock %}

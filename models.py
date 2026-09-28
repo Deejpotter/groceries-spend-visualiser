@@ -24,6 +24,11 @@ CATEGORIES = [
 CATEGORY_LOOKUP = {code: label for code, label in CATEGORIES}
 
 
+def category_label(code):
+    """Human-readable label for a category code (falls back to the code)."""
+    return CATEGORY_LOOKUP.get(code, code)
+
+
 # ---------------------------------------------------------------------------
 # Unit constants
 # ---------------------------------------------------------------------------
@@ -130,9 +135,30 @@ def convert_from_base(value: float, unit: str) -> float:
     return value / factor
 
 
+# Metric unit -> (imperial unit) used when the user prefers imperial display.
+IMPERIAL_EQUIVALENT = {"kg": "lb", "g": "oz", "L": "gal", "mL": "fl_oz"}
+
+
+def to_display_unit(quantity: float, unit: str, preference: str):
+    """Return (quantity, unit) converted for display in the preferred system."""
+    if preference == "imperial" and unit in IMPERIAL_EQUIVALENT:
+        target = IMPERIAL_EQUIVALENT[unit]
+        return round(convert_unit(quantity, unit, target), 2), target
+    return quantity, unit
+
+
+def units_compatible(a: str, b: str) -> bool:
+    """True if two units can be converted between (same unit or same weight/volume family)."""
+    if a == b:
+        return True
+    weight = {"kg", "g", "lb", "oz"}
+    volume = {"L", "mL", "gal", "fl_oz"}
+    return (a in weight and b in weight) or (a in volume and b in volume)
+
+
 def convert_unit(value: float, from_unit: str, to_unit: str) -> float:
-    """Convert a value from one unit to another (metric/imperial only)."""
-    if from_unit in COUNT_UNITS or to_unit in COUNT_UNITS:
+    """Convert a value between compatible units; incompatible units are returned unchanged."""
+    if not units_compatible(from_unit, to_unit):
         return value
     base = convert_to_base(value, from_unit)
     return convert_from_base(base, to_unit)

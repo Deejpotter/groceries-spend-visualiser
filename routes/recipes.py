@@ -1,11 +1,10 @@
 """Routes for recipe management."""
 
-import os
-import uuid
-from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app
+from flask import Blueprint, render_template, request, redirect, url_for, flash
 from database import get_db
 from auth import login_required
-from models import CATEGORIES, UNIT_LOOKUP, MEAL_TYPES, convert_unit
+from models import UNIT_LOOKUP
+from services.plan_generator import parse_tags
 
 recipes_bp = Blueprint("recipes", __name__)
 
@@ -27,7 +26,7 @@ def get_recipe_with_ingredients(recipe_id):
     ).fetchall()
 
     result = dict(recipe)
-    result["tags_list"] = [t.strip() for t in (recipe["tags"] or "").split(",") if t.strip()]
+    result["tags_list"] = parse_tags(recipe["tags"])
     result["recipe_ingredients"] = []
     for ing in ingredients:
         ri = dict(ing)
@@ -36,6 +35,38 @@ def get_recipe_with_ingredients(recipe_id):
         result["recipe_ingredients"].append(ri)
 
     return result, result["recipe_ingredients"]
+
+
+def _read_ingredient_rows():
+    """Parse the parallel ingredient_ids/quantities/unit_overrides lists.
+
+    Returns ([(ingredient_id, quantity, unit_override|None)], errors). Blank rows are skipped.
+    """
+    ids = request.form.getlist("ingredient_ids")
+    quantities = request.form.getlist("quantities")
+    units = request.form.getlist("unit_overrides")
+    db = get_db()
+    rows, errors = [], []
+    for i, raw_id in enumerate(ids):
+        if not raw_id:
+            continue
+        try:
+            ing_id = int(raw_id)
+            qty = float(quantities[i]) if i < len(quantities) and quantities[i] else 0
+        except ValueError:
+            errors.append("Ingredient quantities must be numbers.")
+            continue
+        if qty <= 0:
+            continue
+        if not db.execute("SELECT 1 FROM ingredients WHERE id = ?", (ing_id,)).fetchone():
+            errors.append("One of the selected ingredients no longer exists.")
+            continue
+        unit = units[i].strip() if i < len(units) else ""
+        if unit and unit not in UNIT_LOOKUP:
+            errors.append(f"Unknown unit '{unit}'.")
+            continue
+        rows.append((ing_id, qty, unit or None))
+    return rows, errors
 
 
 @recipes_bp.route("/recipes")
@@ -51,17 +82,17 @@ def recipe_list():
     if search:
         query += " AND (name LIKE ? OR description LIKE ?)"
         params.extend([f"%{search}%", f"%{search}%"])
-    if tag_filter:
-        query += " AND tags LIKE ?"
-        params.append(f"%{tag_filter}%")
 
     query += " ORDER BY name"
     recipes = db.execute(query, params).fetchall()
 
     result = []
+    wanted = tag_filter.lower()
     for recipe in recipes:
         item = dict(recipe)
-        item["tags_list"] = [t.strip() for t in (recipe["tags"] or "").split(",") if t.strip()]
+        item["tags_list"] = parse_tags(recipe["tags"])
+        if wanted and wanted not in item["tags_list"]:
+            continue
         result.append(item)
 
     return render_template("recipes/list.html", recipes=result)
@@ -84,25 +115,28 @@ def recipe_form(recipe_id=None):
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         description = request.form.get("description", "").strip()
-        servings = request.form.get("servings", type=int, default=1)
+        servings = request.form.get("servings", type=int) or 0
         prep_time = request.form.get("prep_time", type=int)
         cook_time = request.form.get("cook_time", type=int)
         source_url = request.form.get("source_url", "").strip()
         image_url = request.form.get("image_url", "").strip()
         instructions = request.form.get("instructions", "").strip()
-        tags = request.form.get("tags", "").strip()
+        tags = ", ".join(dict.fromkeys(parse_tags(request.form.get("tags", ""))))
         is_two_night = 1 if request.form.get("is_two_night") else 0
 
+        rows, row_errors = _read_ingredient_rows()
         errors = []
         if not name:
             errors.append("Recipe name is required.")
         if servings < 1:
             errors.append("Servings must be at least 1.")
+        errors.extend(row_errors)
 
         if errors:
             for err in errors:
                 flash(err, "error")
-            return render_template("recipes/form.html", recipe=recipe)
+            return render_template("recipes/form.html", recipe={**(recipe or {}), **request.form.to_dict()},
+                                   recipe_ingredients=recipe_ingredients)
 
         if recipe_id:
             db.execute(
@@ -124,26 +158,11 @@ def recipe_form(recipe_id=None):
             recipe_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
             flash("Recipe created successfully.", "success")
 
-        # Handle ingredients
-        ingredient_ids = request.form.getlist("ingredient_ids")
-        quantities = request.form.getlist("quantities") or request.form.getlist("ingredient_quantities")
-        unit_overrides = request.form.getlist("unit_overrides") or request.form.getlist("ingredient_unit_overrides")
-
-        # Delete existing ingredients if editing
-        if recipe_id:
-            db.execute("DELETE FROM recipe_ingredients WHERE recipe_id = ?", (recipe_id,))
-
-        for i, ing_id in enumerate(ingredient_ids):
-            if ing_id:
-                qty = float(quantities[i]) if quantities[i] else 0
-                if qty > 0:
-                    unit_ov = unit_overrides[i].strip() if i < len(unit_overrides) else ""
-                    db.execute(
-                        """INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit_override)
-                           VALUES (?, ?, ?, ?)""",
-                        (recipe_id, int(ing_id), qty, unit_ov if unit_ov else None)
-                    )
-
+        db.execute("DELETE FROM recipe_ingredients WHERE recipe_id = ?", (recipe_id,))
+        db.executemany(
+            "INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit_override) VALUES (?, ?, ?, ?)",
+            [(recipe_id, ing_id, qty, unit) for ing_id, qty, unit in rows],
+        )
         db.commit()
         return redirect(url_for("recipes.recipe_detail", recipe_id=recipe_id))
 

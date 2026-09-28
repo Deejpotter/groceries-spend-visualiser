@@ -1,204 +1,109 @@
 {% extends "base.html" %}
+{% from "_macros.html" import csrf, post_button %}
 
 {% block title %}Meal Plan — Grocery Visualiser{% endblock %}
 
+{% macro recipe_select(name="recipe_id", selected=None) -%}
+<select name="{{ name }}" class="form-control form-control-sm" required aria-label="Recipe">
+    <option value="">Choose recipe…</option>
+    {% for r in recipes %}
+    <option value="{{ r.id }}" {% if r.id == selected %}selected{% endif %}>{{ r.name }}</option>
+    {% endfor %}
+</select>
+{%- endmacro %}
+
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h1>Meal Plan</h1>
-    <a href="{{ url_for('meal_plan.meal_plan_generate') }}" class="btn btn-primary">
-            <i class="fas fa-sync"></i> Generate Plan
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+    <h1 class="mb-2">Meal Plan</h1>
+    <div class="mb-2">
+        {% if plan_start and plan_end %}
+        <form method="post" action="{{ url_for('meal_plan.meal_plan_generate') }}" class="d-inline"
+              {% if has_entries %}onsubmit="return confirm('Regenerate? Auto-generated meals will be replaced; meals you picked by hand are kept.')"{% endif %}>
+            {{ csrf() }}
+            <button type="submit" class="btn btn-primary"><i class="fas fa-sync"></i> {{ 'Regenerate' if has_entries else 'Generate' }} Plan</button>
+        </form>
+        {% endif %}
+        <a href="{{ url_for('shopping_list.shopping_list_view') }}" class="btn btn-success">
+            <i class="fas fa-shopping-cart"></i> Shopping List
         </a>
+    </div>
 </div>
 
 {% if plan_start and plan_end %}
 <div class="alert alert-info">
-    <strong>Plan Period:</strong> {{ plan_start }} to {{ plan_end }}
+    <strong>Plan period:</strong> {{ plan_start }} to {{ plan_end }}
     &middot; <a href="{{ url_for('settings.settings') }}">Change dates</a>
+    &middot; <a href="{{ url_for('meal_plan.meal_rule_list') }}">Edit rules</a>
 </div>
 {% else %}
 <div class="alert alert-warning">
-    <strong>No plan dates set.</strong> Go to <a href="{{ url_for('settings.settings') }}">Settings</a> to set your plan start and end dates.
+    <strong>No plan dates set.</strong> Go to <a href="{{ url_for('settings.settings') }}">Settings</a> to choose your plan start and end dates.
 </div>
 {% endif %}
 
-{% if error %}
-<div class="alert alert-danger">{{ error }}</div>
+{% if days %}
+{% if not has_entries %}
+<p class="text-muted">Nothing planned yet. Click <strong>Generate Plan</strong> to fill the plan from your meal rules, or pick recipes for individual slots below.</p>
 {% endif %}
-
-{% if entries %}
-<div class="row">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-body">
-                {% for date, day_entries in entries|groupby('date') %}
-                <h5 class="mb-3 border-bottom pb-2">
-                    {{ date }} — {{ day_labels[date.strftime('%a').lower()] }}
-                </h5>
-                <div class="row mb-3">
-                    {% set meals = {'breakfast': '', 'lunch': '', 'dinner': '', 'snack': ''} %}
-                    {% for entry in day_entries %}
-                    {% set meals = meals.update({entry.meal_type: entry}) %}
-                    {% endfor %}
-
-                    <div class="col-md-3 mb-2">
-                        {% set entry = meals['breakfast'] %}
-                        {% if entry %}
-                        <div class="card h-100 mb-2">
-                            <div class="card-header bg-primary text-white text-center">
-                                <small>Breakfast</small>
-                            </div>
-                            <div class="card-body text-center">
-                                <strong>{{ entry.recipe_name }}</strong>
-                                <div class="text-muted small">Serves: {{ entry.servings }}</div>
-                                <div class="mt-2">
-                                    <a href="{{ url_for('meal_plan.meal_plan_swap', entry_id=entry.id) }}"
-                                       class="btn btn-sm btn-outline-secondary"
-                                       onclick="event.preventDefault(); document.getElementById('swap-form-{{ entry.id }}').submit();">
-                                        Swap
-                                    </a>
-                                    <a href="{{ url_for('meal_plan.meal_plan_remove', entry_id=entry.id) }}"
-                                       class="btn btn-sm btn-outline-danger"
-                                       onclick="return confirm('Remove this meal?')">Remove</a>
-                                </div>
-                            </div>
+<div class="table-responsive">
+<table class="table table-bordered meal-grid bg-white">
+    <thead class="thead-light">
+        <tr>
+            <th style="width: 9rem">Day</th>
+            {% for mt in shown_types %}<th>{{ meal_type_label(mt) }}</th>{% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+    {% for day in days %}
+        <tr>
+            <th scope="row" class="text-nowrap">{{ day.label }}</th>
+            {% for mt in shown_types %}
+            {% set entry = day.meals[mt] %}
+            <td class="meal-slot">
+                {% if entry %}
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <strong>{{ entry.recipe_name }}</strong>
+                        <div class="small text-muted">
+                            Serves {{ entry.servings }}
+                            {% if entry.is_two_night %}<span class="badge badge-warning">Two-night</span>{% endif %}
+                            {% if not entry.is_auto_generated %}<span class="badge badge-info" title="Kept when you regenerate">Manual</span>{% endif %}
                         </div>
-                        <form id="swap-form-{{ entry.id }}" method="post" action="{{ url_for('meal_plan.meal_plan_swap', entry_id=entry.id) }}" style="display:none;">
-                            <input type="hidden" name="recipe_id" value="">
-                        </form>
-                        {% else %}
-                        <div class="card h-100 border-dashed border">
-                            <div class="card-body text-center text-muted">
-                                No breakfast planned
-                            </div>
-                        </div>
-                        {% endif %}
                     </div>
-
-                    <div class="col-md-3 mb-2">
-                        {% set entry = meals['lunch'] %}
-                        {% if entry %}
-                        <div class="card h-100 mb-2">
-                            <div class="card-header bg-success text-white text-center">
-                                <small>Lunch</small>
-                            </div>
-                            <div class="card-body text-center">
-                                <strong>{{ entry.recipe_name }}</strong>
-                                <div class="text-muted small">Serves: {{ entry.servings }}</div>
-                                <div class="mt-2">
-                                    <a href="{{ url_for('meal_plan.meal_plan_swap', entry_id=entry.id) }}"
-                                       class="btn btn-sm btn-outline-secondary"
-                                       onclick="event.preventDefault(); document.getElementById('swap-form-{{ entry.id }}').submit();">
-                                        Swap
-                                    </a>
-                                    <a href="{{ url_for('meal_plan.meal_plan_remove', entry_id=entry.id) }}"
-                                       class="btn btn-sm btn-outline-danger"
-                                       onclick="return confirm('Remove this meal?')">Remove</a>
-                                </div>
-                            </div>
-                        </div>
-                        <form id="swap-form-{{ entry.id }}" method="post" action="{{ url_for('meal_plan.meal_plan_swap', entry_id=entry.id) }}" style="display:none;">
-                            <input type="hidden" name="recipe_id" value="">
-                        </form>
-                        {% else %}
-                        <div class="card h-100 border-dashed border">
-                            <div class="card-body text-center text-muted">
-                                No lunch planned
-                            </div>
-                        </div>
-                        {% endif %}
-                    </div>
-
-                    <div class="col-md-3 mb-2">
-                        {% set entry = meals['dinner'] %}
-                        {% if entry %}
-                        <div class="card h-100 mb-2">
-                            <div class="card-header bg-danger text-white text-center">
-                                <small>Dinner</small>
-                            </div>
-                            <div class="card-body text-center">
-                                <strong>{{ entry.recipe_name }}</strong>
-                                <div class="text-muted small">Serves: {{ entry.servings }}</div>
-                                {% if entry.is_two_night %}
-                                <span class="badge badge-warning">Two-night</span>
-                                {% endif %}
-                                <div class="mt-2">
-                                    <a href="{{ url_for('meal_plan.meal_plan_swap', entry_id=entry.id) }}"
-                                       class="btn btn-sm btn-outline-secondary"
-                                       onclick="event.preventDefault(); document.getElementById('swap-form-{{ entry.id }}').submit();">
-                                        Swap
-                                    </a>
-                                    <a href="{{ url_for('meal_plan.meal_plan_remove', entry_id=entry.id) }}"
-                                       class="btn btn-sm btn-outline-danger"
-                                       onclick="return confirm('Remove this meal?')">Remove</a>
-                                </div>
-                            </div>
-                        </div>
-                        <form id="swap-form-{{ entry.id }}" method="post" action="{{ url_for('meal_plan.meal_plan_swap', entry_id=entry.id) }}" style="display:none;">
-                            <input type="hidden" name="recipe_id" value="">
-                        </form>
-                        {% else %}
-                        <div class="card h-100 border-dashed border">
-                            <div class="card-body text-center text-muted">
-                                No dinner planned
-                            </div>
-                        </div>
-                        {% endif %}
-                    </div>
-
-                    <div class="col-md-3 mb-2">
-                        {% set entry = meals['snack'] %}
-                        {% if entry %}
-                        <div class="card h-100 mb-2">
-                            <div class="card-header bg-secondary text-white text-center">
-                                <small>Snack</small>
-                            </div>
-                            <div class="card-body text-center">
-                                <strong>{{ entry.recipe_name }}</strong>
-                                <div class="text-muted small">Serves: {{ entry.servings }}</div>
-                                <div class="mt-2">
-                                    <a href="{{ url_for('meal_plan.meal_plan_swap', entry_id=entry.id) }}"
-                                       class="btn btn-sm btn-outline-secondary"
-                                       onclick="event.preventDefault(); document.getElementById('swap-form-{{ entry.id }}').submit();">
-                                        Swap
-                                    </a>
-                                    <a href="{{ url_for('meal_plan.meal_plan_remove', entry_id=entry.id) }}"
-                                       class="btn btn-sm btn-outline-danger"
-                                       onclick="return confirm('Remove this meal?')">Remove</a>
-                                </div>
-                            </div>
-                        </div>
-                        {% else %}
-                        <div class="card h-100 border-dashed border">
-                            <div class="card-body text-center text-muted">
-                                No snack planned
-                            </div>
-                        </div>
-                        {% endif %}
-                    </div>
+                    {{ post_button(url_for('meal_plan.meal_plan_remove', entry_id=entry.id), '', class='btn btn-sm btn-link text-danger p-0',
+                                   icon='times', title='Remove meal') }}
                 </div>
-                {% endfor %}
-            </div>
-        </div>
-    </div>
+                <details class="mt-1">
+                    <summary class="small text-primary">Change</summary>
+                    <form method="post" action="{{ url_for('meal_plan.meal_plan_swap', entry_id=entry.id) }}" class="mt-1">
+                        {{ csrf() }}
+                        {{ recipe_select(selected=entry.recipe_id) }}
+                        <div class="input-group input-group-sm mt-1">
+                            <input type="number" name="servings" min="1" value="{{ entry.servings }}" class="form-control" aria-label="Servings">
+                            <div class="input-group-append"><button class="btn btn-outline-primary" type="submit">Save</button></div>
+                        </div>
+                    </form>
+                </details>
+                {% else %}
+                <form method="post" action="{{ url_for('meal_plan.meal_plan_add') }}" class="empty-slot">
+                    {{ csrf() }}
+                    <input type="hidden" name="date" value="{{ day.date }}">
+                    <input type="hidden" name="meal_type" value="{{ mt }}">
+                    <div class="input-group input-group-sm">
+                        {{ recipe_select() }}
+                        <div class="input-group-append"><button class="btn btn-outline-secondary" type="submit" title="Add meal"><i class="fas fa-plus"></i></button></div>
+                    </div>
+                </form>
+                {% endif %}
+            </td>
+            {% endfor %}
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
 </div>
-{% else %}
-<div class="alert alert-secondary text-center">
-    <p>No meal plan entries yet. Set your plan dates in Settings, then click "Generate Plan" above.</p>
-</div>
+{% if not recipes %}
+<div class="alert alert-secondary">You don't have any recipes yet. <a href="{{ url_for('recipes.recipe_form') }}">Add a recipe</a> to start planning.</div>
 {% endif %}
-
-<div class="mt-4">
-    <a href="{{ url_for('shopping_list.shopping_list_view') }}" class="btn btn-success">
-        <i class="fas fa-shopping-cart"></i> View Shopping List
-    </a>
-</div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-function dayLabel(dateStr) {
-    const date = new Date(dateStr + 'T00:00:00');
-    return date.toLocaleDateString('en-US', { weekday: 'long' });
-}
-</script>
+{% endif %}
 {% endblock %}
