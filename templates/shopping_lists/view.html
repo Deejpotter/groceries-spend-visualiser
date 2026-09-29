@@ -10,7 +10,7 @@
         {% if has_plan %}
         <form method="post" action="{{ url_for('shopping_list.shopping_list_generate') }}" class="d-inline">
             {{ csrf() }}
-            <button type="submit" class="btn btn-info">
+            <button type="submit" class="btn btn-primary">
                 <i class="fas fa-sync"></i> {{ 'Regenerate' if has_generated else 'Generate' }} from Plan
             </button>
         </form>

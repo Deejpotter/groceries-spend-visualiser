@@ -1,13 +1,13 @@
 """Routes for meal rules and meal plan generation."""
 
 import random
-from datetime import date, timedelta
+from datetime import timedelta
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 
 from auth import login_required
 from database import get_db, get_plan_dates, get_setting, set_setting
-from models import DAYS_OF_WEEK, DAY_LABELS, MEAL_TYPES, date_range, parse_date, validate_date_format
+from models import today as local_today, DAYS_OF_WEEK, DAY_LABELS, MEAL_TYPES, date_range, parse_date, validate_date_format
 from services.plan_generator import generate_plan_entries
 from services.repository import load_rules, load_recipes, load_manual_entries
 
@@ -137,7 +137,7 @@ def _build_days(start, end, entries):
     """One row per date in the plan with a slot for each meal type."""
     by_slot = {(e["date"], e["meal_type"]): e for e in entries}
     days = []
-    today = date.today()
+    today = local_today()
     for day in date_range(start, end):
         key = day.strftime("%Y-%m-%d")
         days.append({

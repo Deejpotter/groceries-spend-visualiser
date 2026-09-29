@@ -198,3 +198,11 @@ a {
 .border-left-brand {
     border-left: 4px solid var(--brand) !important;
 }
+.nav-pills .nav-link.active,
+.badge-primary {
+    background-color: var(--brand);
+}
+.nav-pills .nav-link:not(.active),
+.text-primary {
+    color: var(--brand-dark) !important;
+}

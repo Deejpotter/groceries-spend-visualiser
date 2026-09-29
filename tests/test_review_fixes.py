@@ -200,3 +200,14 @@ def test_static_urls_are_cache_busted(app):
     with app.test_request_context():
         from flask import url_for
         assert "?v=" in url_for("static", filename="css/style.css")
+
+
+def test_today_uses_app_timezone(monkeypatch):
+    """'Today' follows APP_TIMEZONE so evenings in Australia aren't shown as yesterday (UTC)."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    import models
+    monkeypatch.setenv("APP_TIMEZONE", "Pacific/Kiritimati")  # UTC+14
+    assert models.today() == datetime.now(ZoneInfo("Pacific/Kiritimati")).date()
+    monkeypatch.delenv("APP_TIMEZONE")
+    assert models.today() == datetime.now(ZoneInfo("Australia/Sydney")).date()

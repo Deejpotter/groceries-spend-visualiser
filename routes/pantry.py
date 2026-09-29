@@ -4,7 +4,7 @@ from datetime import datetime
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from database import get_db
 from auth import login_required
-from models import category_label, validate_date_format
+from models import category_label, today as local_today, validate_date_format
 
 pantry_bp = Blueprint("pantry", __name__)
 
@@ -24,7 +24,7 @@ def pantry_list():
 
     # Add computed fields
     result = []
-    today = datetime.now().date()
+    today = local_today()
     for item in items:
         entry = dict(item)
         entry["ingredient_label"] = f"{item['ingredient_name']} ({item['ingredient_unit']})"

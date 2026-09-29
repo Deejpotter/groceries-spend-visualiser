@@ -1,7 +1,16 @@
 """Constants, validation, and helper functions for Grocery Visualiser."""
 
-from datetime import datetime, timedelta
+import os
+from datetime import date, datetime, timedelta
 from typing import Optional
+from zoneinfo import ZoneInfo
+
+DEFAULT_TIMEZONE = "Australia/Sydney"
+
+
+def today() -> date:
+    """Today's date in the household's timezone (APP_TIMEZONE), not the server's UTC clock."""
+    return datetime.now(ZoneInfo(os.getenv("APP_TIMEZONE") or DEFAULT_TIMEZONE)).date()
 
 
 # ---------------------------------------------------------------------------
