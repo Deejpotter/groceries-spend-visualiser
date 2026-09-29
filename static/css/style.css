@@ -206,3 +206,131 @@ a {
 .text-primary {
     color: var(--brand-dark) !important;
 }
+
+/* Dashboard stat strip */
+.stat-strip {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+.stat-tile {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    padding: 0.6rem 0.9rem;
+    min-width: 0;
+}
+.stat-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #6c757d;
+}
+.stat-main {
+    font-size: 1.15rem;
+    font-weight: 700;
+    line-height: 1.3;
+}
+.stat-sub {
+    font-size: 0.8rem;
+    color: #6c757d;
+}
+.stat-strip .progress-bar {
+    background-color: var(--brand);
+}
+
+/* Meal plan week: a grid of day cards (7 across on wide screens, stacked on phones) */
+.week-grid {
+    display: grid;
+    gap: 0.6rem;
+    grid-template-columns: 1fr;
+}
+@media (min-width: 576px) { .week-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 992px) { .week-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 1200px) { .week-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
+
+.day-card {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    border-top: 3px solid transparent;
+    min-width: 0;
+}
+.day-card.is-today {
+    border-top-color: var(--brand);
+    background: #f7f8ff;
+}
+.day-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    padding: 0.5rem 0.7rem 0.25rem;
+}
+.day-dow {
+    font-weight: 700;
+}
+.day-date {
+    color: #6c757d;
+    font-size: 0.85rem;
+}
+.day-slots {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+}
+.slot {
+    padding: 0.4rem 0.7rem 0.55rem;
+    border-top: 1px solid #f1f3f5;
+    min-width: 0;
+}
+.slot-label {
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #adb5bd;
+}
+.slot-recipe {
+    font-weight: 600;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+.slot-meta {
+    font-size: 0.78rem;
+    color: #6c757d;
+}
+.slot-edit summary {
+    font-size: 0.78rem;
+    color: var(--brand-dark);
+    cursor: pointer;
+    list-style: none;
+}
+.slot-edit summary::-webkit-details-marker { display: none; }
+.slot-empty .slot-edit summary {
+    color: #6c757d;
+}
+.slot-empty .slot-edit summary:hover {
+    color: var(--brand-dark);
+}
+.slot-remove {
+    line-height: 1;
+}
+.slot-remove:hover {
+    color: #dc3545 !important;
+}
+
+/* On phones, day cards read as rows: day on the left, meals on the right */
+@media (max-width: 575.98px) {
+    .stat-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .day-card { display: grid; grid-template-columns: 4.2rem 1fr; border-top: none; border-left: 3px solid transparent; }
+    .day-card.is-today { border-left-color: var(--brand); }
+    .day-head { flex-direction: column; align-items: flex-start; gap: 0; padding: 0.5rem 0.2rem 0.5rem 0.6rem; }
+    .day-head .badge { margin-left: 0 !important; margin-top: 0.2rem; }
+    .slot { border-top: none; border-left: 1px solid #f1f3f5; }
+}
+
+/* Shopping list pack count */
+.pack-badge {
+    font-weight: 500;
+    color: #495057;
+}

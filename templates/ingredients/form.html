@@ -59,6 +59,14 @@
                     </div>
 
                     <div class="form-group">
+                        <label for="pack_size">Pack size <span class="text-muted font-weight-normal">(optional, in the unit above)</span></label>
+                        <input type="number" class="form-control" id="pack_size" name="pack_size" min="0" step="any"
+                               value="{{ ingredient.pack_size if ingredient and ingredient.pack_size else '' }}"
+                               placeholder="Worked out from the name when blank, e.g. 500g → 0.5 kg">
+                        <small class="text-muted">Used to show how many packs to buy on the shopping list.</small>
+                    </div>
+
+                    <div class="form-group">
                         <label for="url">Product URL</label>
                         <input type="url" class="form-control" id="url" name="url"
                                value="{{ ingredient.url if ingredient else '' }}"

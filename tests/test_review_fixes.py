@@ -229,3 +229,15 @@ def test_http_url_filter(app):
     assert f("https://www.woolworths.com.au/shop/productdetails/1") == "https://www.woolworths.com.au/shop/productdetails/1"
     assert f("javascript:alert(1)") is None
     assert f(None) is None
+
+
+def test_meal_plan_week_and_rules_tabs(client, db):
+    """The meal plan page is split into a Week tab (day cards) and a Rules tab; rule edits land on Rules."""
+    from conftest import login
+    login(client)
+    db.execute("INSERT INTO settings (key, value) VALUES ('plan_start_date', '2026-10-05'), ('plan_end_date', '2026-10-11')")
+    db.commit()
+    week = client.get("/meal-plan").data
+    assert week.count(b'class="day-card') == 7 and b"Meals planned" in week
+    resp = client.post("/meal-rules/add", data={"day_of_week": "mon", "meal_type": "dinner", "is_active": "on"})
+    assert "tab=rules" in resp.headers["Location"]

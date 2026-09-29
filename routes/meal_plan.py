@@ -8,7 +8,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 from auth import login_required
 from database import get_db, get_plan_dates, get_setting, set_setting
 from models import today as local_today, DAYS_OF_WEEK, DAY_LABELS, MEAL_TYPES, date_range, parse_date, validate_date_format
-from services.plan_generator import generate_plan_entries
+from services.plan_generator import generate_plan_entries, plan_summary
 from services.repository import load_rules, load_recipes, load_manual_entries
 
 meal_bp = Blueprint("meal_plan", __name__)
@@ -16,10 +16,12 @@ meal_bp = Blueprint("meal_plan", __name__)
 RULE_DAYS = DAYS_OF_WEEK + ["weekday", "weekend", "all"]
 
 
-def _back_to_plan(edit=None):
-    if edit:
-        return redirect(url_for("meal_plan.meal_plan_view", edit=edit))
+def _back_to_plan():
     return redirect(url_for("meal_plan.meal_plan_view"))
+
+
+def _back_to_rules(edit=None):
+    return redirect(url_for("meal_plan.meal_plan_view", tab="rules", edit=edit))
 
 
 # ---------------------------------------------------------------------------
@@ -29,7 +31,7 @@ def _back_to_plan(edit=None):
 @meal_bp.route("/meal-rules")
 @login_required
 def meal_rule_list():
-    return redirect(url_for("meal_plan.meal_plan_view"))
+    return _back_to_rules()
 
 
 @meal_bp.route("/meal-rules/add", methods=["GET", "POST"])
@@ -42,12 +44,12 @@ def meal_rule_form(rule_id=None):
         rule = db.execute("SELECT * FROM meal_rules WHERE id = ?", (rule_id,)).fetchone()
         if not rule:
             flash("Rule not found.", "error")
-            return _back_to_plan()
+            return _back_to_rules()
 
     if request.method == "GET":
         if rule_id:
-            return _back_to_plan(edit=rule_id)
-        return _back_to_plan()
+            return _back_to_rules(edit=rule_id)
+        return _back_to_rules()
 
     day_of_week = request.form.get("day_of_week", "").strip()
     meal_type = request.form.get("meal_type", "").strip()
@@ -69,7 +71,7 @@ def meal_rule_form(rule_id=None):
     if errors:
         for err in errors:
             flash(err, "error")
-        return _back_to_plan(edit=rule_id)
+        return _back_to_rules(edit=rule_id)
 
     if sort_order is None:
         if rule:
@@ -92,7 +94,7 @@ def meal_rule_form(rule_id=None):
         )
         flash("Rule created.", "success")
     db.commit()
-    return _back_to_plan()
+    return _back_to_rules()
 
 
 @meal_bp.route("/meal-rules/delete/<int:rule_id>", methods=["POST"])
@@ -102,7 +104,7 @@ def meal_rule_delete(rule_id):
     db.execute("DELETE FROM meal_rules WHERE id = ?", (rule_id,))
     db.commit()
     flash("Rule deleted.", "success")
-    return _back_to_plan()
+    return _back_to_rules()
 
 
 # ---------------------------------------------------------------------------
@@ -143,6 +145,8 @@ def _build_days(start, end, entries):
         days.append({
             "date": key,
             "label": f"{DAY_LABELS[day.strftime('%a').lower()]} {day.strftime('%d %b')}",
+            "weekday": day.strftime("%a"),
+            "day_month": day.strftime("%d %b").lstrip("0"),
             "is_today": day.date() == today,
             "meals": {mt: by_slot.get((key, mt)) for mt in MEAL_TYPES},
         })
@@ -172,6 +176,7 @@ def meal_plan_view():
     edit_id = request.args.get("edit", type=int)
     if edit_id:
         editing_rule = db.execute("SELECT * FROM meal_rules WHERE id = ?", (edit_id,)).fetchone()
+    tab = "rules" if editing_rule or request.args.get("tab") == "rules" else "week"
     return render_template(
         "meal_plan/view.html",
         days=days,
@@ -182,6 +187,8 @@ def meal_plan_view():
         has_entries=any(e for d in days for e in d["meals"].values()),
         rules=rules,
         editing_rule=editing_rule,
+        tab=tab,
+        summary=plan_summary(days, shown_types),
     )
 
 

@@ -9,6 +9,9 @@ from services.shopping_list_generator import (
     make_recipe_dict,
     make_recipe_ingredient,
     make_ingredient,
+    pack_plan,
+    packs_to_buy,
+    parse_pack_size,
 )
 
 
@@ -356,3 +359,38 @@ class TestShoppingListWorkflow:
         )
         # Need 800g total, have 500g, buy 300g
         assert result["pantry"][0]["quantity"] == 300
+
+
+@pytest.mark.parametrize("name,unit,expected", [
+    ("Woolworths Pork & Beef Mince 500g", "kg", 0.5),
+    ("The Odd Bunch Carrots 1.5kg", "kg", 1.5),
+    ("Liddells yoghurt blueberry 140g x 4 pack", "kg", 0.56),
+    ("Pepsi max cans 30x375ml", "L", 11.25),
+    ("Golden crumpet squares 6 pack", "each", 6),
+    ("Milk UHT 1L", "L", 1.0),
+    ("Onion Brown each", "each", None),
+    ("Woolworths 6 Extra Large Free Range Eggs 350g", "each", None),
+    ("Spaghetti 500g", "L", None),
+    ("", "kg", None),
+])
+def test_parse_pack_size(name, unit, expected):
+    result = parse_pack_size(name, unit)
+    assert result == (pytest.approx(expected) if expected is not None else None)
+
+
+def test_packs_to_buy():
+    assert packs_to_buy(3, "kg", 0.5, "kg") == 6
+    assert packs_to_buy(0.3, "kg", 1.5, "kg") == 1
+    assert packs_to_buy(1500, "g", 0.5, "kg") == 3
+    assert packs_to_buy(1.0000001, "kg", 0.5, "kg") == 2
+    assert packs_to_buy(1, "kg", None, "kg") is None
+    assert packs_to_buy(1, "kg", 0.5, "L") is None
+
+
+def test_pack_plan_prefers_explicit_pack_size_and_shows_small_packs_in_grams():
+    mince = {"name": "Pork & Beef Mince 500g", "unit": "kg", "pack_size": None}
+    assert pack_plan(3, "kg", mince) == {"count": 6, "size": 500, "unit": "g"}
+    eggs = {"name": "6 Extra Large Eggs 350g", "unit": "each", "pack_size": 6}
+    assert pack_plan(12, "each", eggs) == {"count": 2, "size": 6, "unit": "each"}
+    assert pack_plan(2, "each", {"name": "Onion Brown each", "unit": "each", "pack_size": None}) is None
+    assert pack_plan(1, "kg", None) is None

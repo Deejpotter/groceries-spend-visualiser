@@ -13,68 +13,107 @@
 {%- endmacro %}
 
 {% block content %}
-<div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
-    <h1 class="mb-2">Meal Plan</h1>
+<div class="page-head d-flex flex-wrap justify-content-between align-items-center mb-3">
     <div class="mb-2">
+        <h1 class="h3 mb-0">Meal Plan</h1>
         {% if plan_start and plan_end %}
-        <form method="post" action="{{ url_for('meal_plan.meal_plan_generate') }}" class="d-inline"
+        <div class="text-muted small">{{ plan_start|nice_date }} – {{ plan_end|nice_date }}
+            · <a href="{{ url_for('settings.settings') }}">Change dates</a></div>
+        {% endif %}
+    </div>
+    <div class="mb-2 d-flex">
+        {% if plan_start and plan_end %}
+        <form method="post" action="{{ url_for('meal_plan.meal_plan_generate') }}" class="mr-2"
               {% if has_entries %}onsubmit="return confirm('Regenerate? Auto-generated meals will be replaced; meals you picked by hand are kept.')"{% endif %}>
             {{ csrf() }}
-            <button type="submit" class="btn btn-primary"><i class="fas fa-sync"></i> {{ 'Regenerate' if has_entries else 'Generate' }} Plan</button>
+            <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-sync"></i> {{ 'Regenerate' if has_entries else 'Generate' }}</button>
         </form>
         {% endif %}
-        <a href="{{ url_for('shopping_list.shopping_list_view') }}" class="btn btn-success">
-            <i class="fas fa-shopping-cart"></i> Shopping List
+        <a href="{{ url_for('shopping_list.shopping_list_view') }}" class="btn btn-success btn-sm">
+            <i class="fas fa-shopping-cart"></i> Shopping list
         </a>
     </div>
 </div>
 
-{% if plan_start and plan_end %}
-<div class="alert alert-info">
-    <strong>Plan period:</strong> {{ plan_start|nice_date }} to {{ plan_end|nice_date }}
-    &middot; <a href="{{ url_for('settings.settings') }}">Change dates</a>
-    &middot; <a href="#rules-section">Edit rules</a>
-</div>
-{% else %}
+{% if not (plan_start and plan_end) %}
 <div class="alert alert-warning">
     <strong>No plan dates set.</strong> Go to <a href="{{ url_for('settings.settings') }}">Settings</a> to choose your plan start and end dates.
 </div>
 {% endif %}
 
 {% if days %}
-{% if not has_entries %}
-<p class="text-muted">Nothing planned yet. Click <strong>Generate Plan</strong> to fill the plan from your meal rules, or pick recipes for individual slots below.</p>
+<div class="stat-strip mb-3">
+    <div class="stat-tile">
+        <div class="stat-label">Tonight</div>
+        {% if summary.today %}
+        {% set last = summary.today[-1] %}
+        <div class="stat-main text-truncate" title="{{ last[1].recipe_name }}">{{ last[1].recipe_name }}</div>
+        <div class="stat-sub">{{ meal_type_label(last[0]) }} · serves {{ last[1].servings }}</div>
+        {% else %}
+        <div class="stat-main text-muted">Nothing planned</div>
+        {% endif %}
+    </div>
+    <div class="stat-tile">
+        <div class="stat-label">Meals planned</div>
+        <div class="stat-main">{{ summary.planned }}<span class="text-muted"> / {{ summary.slots }}</span></div>
+        <div class="progress mt-1" style="height: 4px"><div class="progress-bar" style="width: {{ (100 * summary.planned / summary.slots) if summary.slots else 0 }}%"></div></div>
+    </div>
+    <div class="stat-tile">
+        <div class="stat-label">Open slots</div>
+        <div class="stat-main {{ 'text-warning' if summary.open }}">{{ summary.open }}</div>
+        <div class="stat-sub">{{ 'fill by hand or add a rule' if summary.open else 'every slot filled' }}</div>
+    </div>
+    <div class="stat-tile">
+        <div class="stat-label">Different recipes</div>
+        <div class="stat-main">{{ summary.recipes }}</div>
+        <div class="stat-sub">{{ summary.manual }} picked by hand</div>
+    </div>
+</div>
 {% endif %}
-<div class="table-responsive">
-<table class="table table-bordered meal-grid bg-white">
-    <thead class="thead-light">
-        <tr>
-            <th style="width: 9rem">Day</th>
-            {% for mt in shown_types %}<th>{{ meal_type_label(mt) }}</th>{% endfor %}
-        </tr>
-    </thead>
-    <tbody>
+
+<ul class="nav nav-tabs mb-3" role="tablist">
+    <li class="nav-item">
+        <a class="nav-link {{ 'active' if tab == 'week' }}" href="{{ url_for('meal_plan.meal_plan_view') }}"
+           {% if tab == 'week' %}aria-current="page"{% endif %}><i class="far fa-calendar"></i> Week</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {{ 'active' if tab == 'rules' }}" href="{{ url_for('meal_plan.meal_plan_view', tab='rules') }}"
+           {% if tab == 'rules' %}aria-current="page"{% endif %}><i class="fas fa-sliders-h"></i> Rules
+           <span class="badge badge-pill badge-secondary">{{ rules|selectattr('is_active')|list|length }}</span></a>
+    </li>
+</ul>
+
+{% if tab == 'week' %}
+{% if days %}
+{% if not has_entries %}
+<p class="text-muted">Nothing planned yet. Press <strong>Generate</strong> to fill the week from your rules, or add meals to individual days.</p>
+{% endif %}
+<div class="week-grid">
     {% for day in days %}
-        <tr class="{{ 'today-row' if day.is_today }}"{% if day.is_today %} aria-current="date"{% endif %}>
-            <th scope="row" class="text-nowrap">{{ day.label }}{% if day.is_today %} <span class="badge badge-primary">Today</span>{% endif %}</th>
+    <section class="day-card {{ 'is-today' if day.is_today }}" aria-label="{{ day.label }}"{% if day.is_today %} aria-current="date"{% endif %}>
+        <header class="day-head">
+            <span class="day-dow">{{ day.weekday }}</span>
+            <span class="day-date">{{ day.day_month }}</span>
+            {% if day.is_today %}<span class="badge badge-primary ml-auto">Today</span>{% endif %}
+        </header>
+        <div class="day-slots">
             {% for mt in shown_types %}
             {% set entry = day.meals[mt] %}
-            <td class="meal-slot">
+            <div class="slot {{ 'slot-empty' if not entry }}">
+                <div class="slot-label">{{ meal_type_label(mt) }}</div>
                 {% if entry %}
                 <div class="d-flex justify-content-between align-items-start">
-                    <div>
-                        <strong>{{ entry.recipe_name }}</strong>
-                        <div class="small text-muted">
-                            Serves {{ entry.servings }}
-                            {% if entry.is_two_night %}<span class="badge badge-warning">Two-night</span>{% endif %}
-                            {% if not entry.is_auto_generated %}<span class="badge badge-info" title="Kept when you regenerate">Manual</span>{% endif %}
-                        </div>
-                    </div>
-                    {{ post_button(url_for('meal_plan.meal_plan_remove', entry_id=entry.id), '', class='btn btn-sm btn-link text-danger p-0',
-                                   icon='times', title='Remove meal') }}
+                    <div class="slot-recipe">{{ entry.recipe_name }}</div>
+                    {{ post_button(url_for('meal_plan.meal_plan_remove', entry_id=entry.id), '', class='btn btn-sm btn-link text-muted p-0 ml-1 slot-remove',
+                                   icon='times', title='Remove ' ~ entry.recipe_name) }}
                 </div>
-                <details class="mt-1">
-                    <summary class="small text-primary">Change</summary>
+                <div class="slot-meta">
+                    Serves {{ entry.servings }}
+                    {% if entry.is_two_night %}<span class="badge badge-warning">{{ 'Leftovers' if entry.is_continuation else 'Two-night' }}</span>{% endif %}
+                    {% if not entry.is_auto_generated %}<span class="badge badge-info" title="Kept when you regenerate">Manual</span>{% endif %}
+                </div>
+                <details class="slot-edit">
+                    <summary>Change</summary>
                     <form method="post" action="{{ url_for('meal_plan.meal_plan_swap', entry_id=entry.id) }}" class="mt-1">
                         {{ csrf() }}
                         {{ recipe_select(selected=entry.recipe_id) }}
@@ -84,31 +123,33 @@
                         </div>
                     </form>
                 </details>
-                {% else %}
-                <form method="post" action="{{ url_for('meal_plan.meal_plan_add') }}" class="empty-slot">
-                    {{ csrf() }}
-                    <input type="hidden" name="date" value="{{ day.date }}">
-                    <input type="hidden" name="meal_type" value="{{ mt }}">
-                    <div class="input-group input-group-sm">
+                {% elif recipes %}
+                <details class="slot-edit">
+                    <summary><i class="fas fa-plus"></i> Add</summary>
+                    <form method="post" action="{{ url_for('meal_plan.meal_plan_add') }}" class="mt-1">
+                        {{ csrf() }}
+                        <input type="hidden" name="date" value="{{ day.date }}">
+                        <input type="hidden" name="meal_type" value="{{ mt }}">
                         {{ recipe_select() }}
-                        <div class="input-group-append"><button class="btn btn-outline-secondary" type="submit" title="Add meal"><i class="fas fa-plus"></i></button></div>
-                    </div>
-                </form>
+                        <button class="btn btn-sm btn-outline-primary btn-block mt-1" type="submit">Add to {{ day.weekday }}</button>
+                    </form>
+                </details>
+                {% else %}
+                <div class="slot-meta">—</div>
                 {% endif %}
-            </td>
+            </div>
             {% endfor %}
-        </tr>
+        </div>
+    </section>
     {% endfor %}
-    </tbody>
-</table>
 </div>
 {% if not recipes %}
-<div class="alert alert-secondary">You don't have any recipes yet. <a href="{{ url_for('recipes.recipe_form') }}">Add a recipe</a> to start planning.</div>
+<div class="alert alert-secondary mt-3">You don't have any recipes yet. <a href="{{ url_for('recipes.recipe_form') }}">Add a recipe</a> to start planning.</div>
 {% endif %}
 {% endif %}
 
-<hr class="my-4" id="rules-section">
-<h2 class="mb-3">Meal Rules</h2>
+{% else %}
+<div id="rules-section">
 
 <details class="mb-3" {% if not rules %}open{% endif %}>
     <summary class="text-muted" style="cursor:pointer">How rules work</summary>
@@ -170,7 +211,7 @@
                 </span>
             </td>
             <td>
-                <a href="{{ url_for('meal_plan.meal_plan_view', edit=rule.id) }}#rules-section" class="btn btn-sm btn-outline-secondary">Edit</a>
+                <a href="{{ url_for('meal_plan.meal_plan_view', tab='rules', edit=rule.id) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
                 {{ post_button(url_for('meal_plan.meal_rule_delete', rule_id=rule.id), 'Delete', confirm='Delete this rule?') }}
             </td>
         </tr>
@@ -258,7 +299,7 @@
             </div>
             <div class="text-right">
                 {% if editing_rule %}
-                <a href="{{ url_for('meal_plan.meal_plan_view') }}#rules-section" class="btn btn-secondary">Cancel</a>
+                <a href="{{ url_for('meal_plan.meal_plan_view', tab='rules') }}" class="btn btn-secondary">Cancel</a>
                 {% endif %}
                 <button type="submit" class="btn btn-primary">
                     {{ 'Update Rule' if editing_rule else 'Add Rule' }}
@@ -267,9 +308,12 @@
         </form>
     </div>
 </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
+{% if tab == 'rules' %}
 <script>
 const WEEKDAY = ['mon','tue','wed','thu','fri'];
 const WEEKEND = ['sat','sun'];
@@ -308,4 +352,5 @@ document.getElementById('rule-form').querySelector('form').addEventListener('sub
 
 syncDays();
 </script>
+{% endif %}
 {% endblock %}

@@ -403,3 +403,18 @@ class TestPlanGenerationEdgeCases:
         assert err is None
         assert len(entries) == 1  # only one entry per slot
         assert entries[0]["recipe_id"] == 1  # first matching rule wins
+
+
+def test_plan_summary_counts_slots_recipes_and_today():
+    from services.plan_generator import plan_summary
+    dinner = {"recipe_id": 1, "recipe_name": "Bolognese", "servings": 4, "is_auto_generated": 1}
+    manual = {"recipe_id": 2, "recipe_name": "Eggs", "servings": 2, "is_auto_generated": 0}
+    days = [
+        {"is_today": False, "meals": {"breakfast": None, "dinner": dinner}},
+        {"is_today": True, "meals": {"breakfast": manual, "dinner": dinner}},
+        {"is_today": False, "meals": {"breakfast": None, "dinner": None}},
+    ]
+    s = plan_summary(days, ["breakfast", "dinner"])
+    assert (s["slots"], s["planned"], s["open"], s["recipes"], s["manual"]) == (6, 3, 3, 2, 1)
+    assert s["today"] == [("breakfast", manual), ("dinner", dinner)]
+    assert plan_summary(days[:1], ["dinner"])["today"] is None

@@ -4,6 +4,8 @@ Routes load data from the DB and call generate_shopping_list(); keeping this
 module free of Flask/SQL makes the aggregation logic easy to test.
 """
 
+import math
+import re
 from typing import Dict, List, Optional, Tuple, Union
 
 from models import convert_unit, to_display_unit, units_compatible
@@ -131,6 +133,59 @@ def generate_shopping_list(
         cat: sorted(grouped[cat], key=lambda x: x["ingredient_name"])
         for cat in sorted(grouped)
     }
+
+
+SIZE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(kg|g|ml|l)\b", re.I)
+COUNT_RE = re.compile(r"\b(\d+)\s*(?:pack|pk)\b|\bx\s*(\d+)\b|\b(\d+)\s*x(?=\s*\d)", re.I)
+SIZE_UNITS = {"kg": "kg", "g": "g", "ml": "mL", "l": "L"}
+
+
+def parse_pack_size(product_name: Optional[str], unit: str) -> Optional[float]:
+    """Pack size in `unit` read from a product name ('Mince 500g' -> 0.5 for kg).
+
+    Handles multipacks ('Yoghurt 140g x 4 pack', 'Cans 30x375ml'); for 'each'
+    ingredients only a count ('6 pack') is used. None when nothing usable is found.
+    """
+    if not product_name:
+        return None
+    count_match = COUNT_RE.search(product_name)
+    count = int(next(g for g in count_match.groups() if g)) if count_match else None
+    if unit == "each":
+        return float(count) if count else None
+    sizes = SIZE_RE.findall(product_name)
+    if not sizes:
+        return None
+    amount, size_unit = sizes[-1]
+    size_unit = SIZE_UNITS[size_unit.lower()]
+    if not units_compatible(size_unit, unit):
+        return None
+    return convert_unit(float(amount), size_unit, unit) * (count or 1)
+
+
+def packs_to_buy(quantity: float, unit: str, pack_size: Optional[float], pack_unit: str) -> Optional[int]:
+    """Whole packs needed to cover `quantity`; None when the pack size is unknown or incompatible."""
+    if not pack_size or pack_size <= 0 or not quantity or not units_compatible(unit, pack_unit):
+        return None
+    needed = convert_unit(quantity, unit, pack_unit)
+    return max(1, math.ceil(round(needed / pack_size, 6)))
+
+
+def pack_plan(quantity: float, unit: str, ingredient: Optional[Dict]) -> Optional[Dict]:
+    """How many packs of an ingredient cover a list line: {'count', 'size', 'unit'} or None.
+
+    Uses the ingredient's pack_size when set, otherwise one parsed from its name.
+    """
+    if not ingredient:
+        return None
+    pack_unit = ingredient.get("unit") or unit
+    size = ingredient.get("pack_size") or parse_pack_size(ingredient.get("name"), pack_unit)
+    count = packs_to_buy(quantity, unit, size, pack_unit)
+    if not count:
+        return None
+    small = {"kg": "g", "L": "mL"}
+    if pack_unit in small and size < 1:
+        size, pack_unit = round(convert_unit(size, pack_unit, small[pack_unit]), 2), small[pack_unit]
+    return {"count": count, "size": size, "unit": pack_unit}
 
 
 def total_cost(grouped: Dict[str, List[Dict]]) -> float:

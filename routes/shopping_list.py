@@ -6,7 +6,7 @@ from auth import login_required
 from database import get_db, get_plan_dates
 from models import CATEGORY_LOOKUP, UNIT_LOOKUP, validate_date_format
 from services.repository import load_shopping_inputs, load_pantry_stock, shopping_preferences
-from services.shopping_list_generator import generate_shopping_list
+from services.shopping_list_generator import generate_shopping_list, pack_plan
 from services.spend_analysis import average_spend_per_shop
 
 shopping_bp = Blueprint("shopping_list", __name__)
@@ -34,14 +34,18 @@ def shopping_list_view():
     db = get_db()
     start_str, end_str = get_plan_dates()
     rows = db.execute(
-        """SELECT s.*, i.url AS product_url FROM shopping_list_items s
+        """SELECT s.*, i.url AS product_url, i.name AS ing_name, i.unit AS ing_unit, i.pack_size AS ing_pack_size
+           FROM shopping_list_items s
            LEFT JOIN ingredients i ON i.id = s.ingredient_id
            ORDER BY s.checked, s.category, s.ingredient_name"""
     ).fetchall()
 
     grouped = {}
     for row in rows:
-        grouped.setdefault(row["category"] or "other", []).append(row)
+        item = dict(row)
+        ingredient = {"name": item["ing_name"], "unit": item["ing_unit"], "pack_size": item["ing_pack_size"]}             if item["ing_name"] else None
+        item["packs"] = pack_plan(item["quantity"], item["unit"], ingredient)
+        grouped.setdefault(item["category"] or "other", []).append(item)
     ordered = {cat: grouped[cat] for cat in sorted(grouped, key=lambda c: CATEGORY_LOOKUP.get(c, c))}
 
     cost_estimate = round(sum(r["estimated_cost"] or 0 for r in rows if not r["is_manual"]), 2)

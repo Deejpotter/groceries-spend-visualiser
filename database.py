@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS ingredients (
     url TEXT,
     store TEXT,
     minimum_stock REAL DEFAULT 0,
+    pack_size REAL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -164,6 +165,7 @@ MIGRATIONS = [
     ("shopping_list_items", "estimated_cost", "REAL"),
     ("shopping_list_items", "ingredient_id", "INTEGER"),
     ("meal_plan_entries", "is_continuation", "INTEGER DEFAULT 0"),
+    ("ingredients", "pack_size", "REAL"),
 ]
 
 

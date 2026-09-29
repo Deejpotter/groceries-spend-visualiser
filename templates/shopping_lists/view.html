@@ -75,6 +75,8 @@
             </form>
             <div class="flex-grow-1">
                 <span class="item-name">{{ item.quantity|amount(item.unit) }} {{ item.ingredient_name }}</span>
+                {% if item.packs %}<span class="badge badge-light border pack-badge" title="Packs to buy">
+                    {{ item.packs.count }} × {{ item.packs.size|amount(item.packs.unit) }} pack{{ '' if item.packs.count == 1 else 's' }}</span>{% endif %}
                 {% if item.is_manual %}<span class="badge badge-secondary">manual</span>{% endif %}
                 {% if item.product_url|http_url %}<a href="{{ item.product_url }}" target="_blank" rel="noopener noreferrer"
                    class="small ml-1 d-print-none" title="Open product page" aria-label="Open product page for {{ item.ingredient_name }}"><i class="fas fa-external-link-alt"></i></a>{% endif %}

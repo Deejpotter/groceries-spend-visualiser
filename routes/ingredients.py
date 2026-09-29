@@ -35,6 +35,7 @@ def _read_form():
         "url": request.form.get("url", "").strip(),
         "store": request.form.get("store", "").strip(),
         "minimum_stock": request.form.get("minimum_stock", type=float, default=0) or 0,
+        "pack_size": request.form.get("pack_size", type=float) or None,
     }
     errors = []
     if not values["name"]:
@@ -45,6 +46,8 @@ def _read_form():
         errors.append("Choose a valid unit.")
     if values["url"] and not is_http_url(values["url"]):
         errors.append("Product link must start with http:// or https://.")
+    if values["pack_size"] is not None and values["pack_size"] < 0:
+        errors.append("Pack size can't be negative.")
     if values["price"] is not None and values["price"] < 0:
         errors.append("Price can't be negative.")
     return values, errors
@@ -80,10 +83,10 @@ def ingredient_add():
 
         db = get_db()
         db.execute(
-            """INSERT INTO ingredients (name, category, unit, price, url, store, minimum_stock)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO ingredients (name, category, unit, price, url, store, minimum_stock, pack_size)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (values["name"], values["category"], values["unit"], values["price"],
-             values["url"], values["store"], values["minimum_stock"])
+             values["url"], values["store"], values["minimum_stock"], values["pack_size"])
         )
         db.commit()
         flash("Ingredient added successfully.", "success")
@@ -112,10 +115,10 @@ def ingredient_edit(ingredient_id):
             return render_template("ingredients/form.html", ingredient={**dict(ingredient), **values})
 
         db.execute(
-            """UPDATE ingredients SET name=?, category=?, unit=?, price=?, url=?, store=?, minimum_stock=?
-               WHERE id=?""",
+            """UPDATE ingredients SET name=?, category=?, unit=?, price=?, url=?, store=?, minimum_stock=?,
+               pack_size=? WHERE id=?""",
             (values["name"], values["category"], values["unit"], values["price"],
-             values["url"], values["store"], values["minimum_stock"], ingredient_id)
+             values["url"], values["store"], values["minimum_stock"], values["pack_size"], ingredient_id)
         )
         db.commit()
         flash("Ingredient updated successfully.", "success")

@@ -158,6 +158,21 @@ def generate_plan_entries(
     return entries, None
 
 
+def plan_summary(days: List[Dict], meal_types: List[str]) -> Dict:
+    """Headline numbers for the plan dashboard from the day rows built for the view."""
+    entries = [d["meals"].get(mt) for d in days for mt in meal_types]
+    planned = [e for e in entries if e]
+    today = next((d for d in days if d.get("is_today")), None)
+    return {
+        "slots": len(entries),
+        "planned": len(planned),
+        "open": len(entries) - len(planned),
+        "recipes": len({e["recipe_id"] for e in planned}),
+        "manual": sum(1 for e in planned if not e.get("is_auto_generated", 1)),
+        "today": [(mt, today["meals"][mt]) for mt in meal_types if today["meals"].get(mt)] if today else None,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Helpers for building test data
 # ---------------------------------------------------------------------------

@@ -382,9 +382,10 @@ class TestMealRules:
     def test_meal_rule_list_page_loads(self, client):
         """Authenticated user can view meal rules on the meal plan page."""
         _login(client, "ruleuser", "test123")
-        resp = client.get("/meal-plan")
+        resp = client.get("/meal-plan?tab=rules")
         assert resp.status_code == 200
-        assert b"Meal Rules" in resp.data
+        assert b"How rules work" in resp.data
+        assert b"How rules work" not in client.get("/meal-plan").data
 
     def test_add_meal_rule(self, client, db):
         """POST /meal-rules/add creates a new meal rule."""
