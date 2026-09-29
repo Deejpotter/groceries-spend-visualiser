@@ -79,7 +79,7 @@ def spend_products():
     only_unlinked = request.args.get("unlinked") == "1"
     sql = """
         SELECT p.product_name,
-               COUNT(DISTINCT p.basket_id) AS orders,
+               COUNT(DISTINCT p.store || '|' || p.basket_id) AS orders,
                ROUND(SUM(p.line_total), 2) AS total_spend,
                MAX(p.order_date) AS last_bought,
                MAX(p.ingredient_id) AS ingredient_id,
@@ -110,7 +110,7 @@ def spend_products():
 
 def _latest_purchase(db, product_name):
     return db.execute(
-        "SELECT unit_price, cup_price FROM purchases WHERE product_name = ? ORDER BY order_date DESC LIMIT 1",
+        "SELECT unit_price, cup_price, store FROM purchases WHERE product_name = ? ORDER BY order_date DESC LIMIT 1",
         (product_name,),
     ).fetchone()
 
@@ -134,8 +134,8 @@ def spend_link_product():
         unit = {"g": "kg", "mL": "L"}.get(cup[2], cup[2]) if cup else "each"
         price = price_per_unit(latest["cup_price"], latest["unit_price"], unit) if latest else None
         cur = db.execute(
-            "INSERT INTO ingredients (name, category, unit, price, store) VALUES (?, 'other', ?, ?, 'Woolworths')",
-            (product_name, unit, price),
+            "INSERT INTO ingredients (name, category, unit, price, store) VALUES (?, 'other', ?, ?, ?)",
+            (product_name, unit, price, latest["store"] if latest else None),
         )
         ingredient_id = cur.lastrowid
         flash(f"Created ingredient “{product_name}”. Set its category on the Ingredients page.", "success")

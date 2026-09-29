@@ -13,8 +13,9 @@ services:
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
       - DATABASE_PATH=/app/data/groceries.db
     volumes:
-      # Persist SQLite database
-      - ./data:/app/data
+      # Named volume keeps the image's appuser ownership of /app/data (a host bind
+      # mount is often root-owned, which stops the non-root app creating the DB).
+      - grocery-data:/app/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${PORT:-5000}/health"]
@@ -22,3 +23,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+volumes:
+  grocery-data:

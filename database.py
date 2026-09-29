@@ -104,6 +104,7 @@ CREATE TABLE IF NOT EXISTS meal_plan_entries (
     recipe_id INTEGER NOT NULL,
     servings INTEGER NOT NULL,
     is_auto_generated INTEGER DEFAULT 1,
+    is_continuation INTEGER DEFAULT 0,
     source_rule_id INTEGER,
     FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE
 );
@@ -118,6 +119,8 @@ CREATE TABLE IF NOT EXISTS shopping_list_items (
     is_manual INTEGER DEFAULT 0,
     meal_date TEXT,
     recipe_ref TEXT,
+    ingredient_id INTEGER,
+    estimated_cost REAL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -146,7 +149,7 @@ CREATE TABLE IF NOT EXISTS purchases (
     stockcode TEXT,
     ingredient_id INTEGER,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (basket_id, product_name),
+    UNIQUE (store, basket_id, product_name),
     FOREIGN KEY (ingredient_id) REFERENCES ingredients(id) ON DELETE SET NULL
 );
 
@@ -157,7 +160,22 @@ CREATE INDEX IF NOT EXISTS idx_plan_date ON meal_plan_entries(date, meal_type);
 # Columns added after the first release: (table, column, definition).
 MIGRATIONS = [
     ("shopping_list_items", "estimated_cost", "REAL"),
+    ("shopping_list_items", "ingredient_id", "INTEGER"),
+    ("meal_plan_entries", "is_continuation", "INTEGER DEFAULT 0"),
 ]
+
+
+def _migrate_purchase_identity(db):
+    """Early databases made (basket_id, product_name) unique; the identity now includes store."""
+    row = db.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'purchases'").fetchone()
+    if not row or "UNIQUE (basket_id, product_name)" not in row[0]:
+        return
+    db.execute("ALTER TABLE purchases RENAME TO purchases_old")
+    db.execute("DROP INDEX IF EXISTS idx_purchases_date")
+    db.executescript(SCHEMA)  # recreates purchases with the new constraint
+    columns = ", ".join(r[1] for r in db.execute("PRAGMA table_info(purchases_old)"))
+    db.execute(f"INSERT INTO purchases ({columns}) SELECT {columns} FROM purchases_old")
+    db.execute("DROP TABLE purchases_old")
 
 
 def _apply_migrations(db):
@@ -165,6 +183,7 @@ def _apply_migrations(db):
         existing = {row[1] for row in db.execute(f"PRAGMA table_info({table})")}
         if column not in existing:
             db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+    _migrate_purchase_identity(db)
 
 
 def init_db():

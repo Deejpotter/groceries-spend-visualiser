@@ -126,6 +126,7 @@ def generate_plan_entries(
                     "recipe_id": recipe["id"],
                     "servings": servings,
                     "is_auto_generated": 1,
+                    "is_continuation": 0,
                     "source_rule_id": rule["id"],
                 })
                 used_ids.add(recipe["id"])
@@ -142,6 +143,7 @@ def generate_plan_entries(
                                 "recipe_id": recipe["id"],
                                 "servings": servings,
                                 "is_auto_generated": 1,
+                                "is_continuation": 1,  # leftovers: no extra ingredients
                                 "source_rule_id": rule["id"],
                             })
                             # Block the cascade target from being filled by a rule on its own day

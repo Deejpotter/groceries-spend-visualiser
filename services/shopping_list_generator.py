@@ -8,9 +8,9 @@ from typing import Dict, List, Optional, Tuple, Union
 
 from models import convert_unit, to_display_unit, units_compatible
 
-# Pantry stock by ingredient name: either a bare quantity (assumed to be in the
-# same unit as the list line) or a (quantity, unit) pair that gets converted.
-PantryStock = Dict[str, Union[float, Tuple[float, str]]]
+# Pantry stock keyed by ingredient id (preferred) or name: either a bare quantity
+# (assumed to be in the same unit as the list line) or a (quantity, unit) pair.
+PantryStock = Dict[Union[int, str], Union[float, Tuple[float, str]]]
 
 
 def convert_to_display_unit(quantity: float, unit: str, preference: str) -> Dict[str, float]:
@@ -69,6 +69,8 @@ def generate_shopping_list(
     aggregated: Dict[tuple, dict] = {}
 
     for entry in plan_entries:
+        if entry.get("is_continuation"):
+            continue  # second night of a two-night recipe: cooked once, bought once
         recipe = recipes.get(entry["recipe_id"])
         if not recipe:
             continue
@@ -80,8 +82,12 @@ def generate_shopping_list(
                 continue
 
             unit = ri.get("unit_override") or ingredient["unit"]
-            key = (ri["ingredient_id"], unit)
             qty = ri["quantity"] * scale_factor
+            # Merge compatible units (g + kg) into one line in the ingredient's own unit.
+            if units_compatible(unit, ingredient["unit"]):
+                qty = convert_unit(qty, unit, ingredient["unit"])
+                unit = ingredient["unit"]
+            key = (ri["ingredient_id"], unit)
 
             if key in aggregated:
                 item = aggregated[key]
@@ -104,7 +110,7 @@ def generate_shopping_list(
     if subtract_pantry and pantry_items:
         for key in list(aggregated):
             item = aggregated[key]
-            stock = pantry_items.get(item["ingredient_name"])
+            stock = pantry_items.get(item["ingredient_id"], pantry_items.get(item["ingredient_name"]))
             if stock is None:
                 continue
             item["quantity"] -= _pantry_amount(stock, item["unit"])

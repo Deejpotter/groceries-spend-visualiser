@@ -31,7 +31,9 @@ def login_required(f):
     @functools.wraps(f)
     def decorated_function(*args, **kwargs):
         if not is_logged_in():
-            return redirect(url_for("login", next=request.url))
+            # Relative path (+ query) so safe_next_url() accepts it after login.
+            next_path = request.full_path if request.query_string else request.path
+            return redirect(url_for("login", next=next_path))
         return f(*args, **kwargs)
     return decorated_function
 

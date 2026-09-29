@@ -135,6 +135,8 @@ def create_app(testing=False):
     @application.route("/setup", methods=["GET", "POST"])
     def setup():
         # Setup only creates the first account. Password changes happen in Settings.
+        # Create the env-configured admin first so /setup can't claim the app before it exists.
+        auto_create_admin()
         if admin_exists():
             flash("An admin account already exists. Log in, then change your password in Settings.", "info")
             return redirect(url_for("login"))

@@ -23,9 +23,13 @@ def parse_cup_price(text: Optional[str]) -> Optional[Tuple[float, float, str]]:
     if not m:
         return None
     unit = CUP_UNITS.get(m.group(3).upper())
-    if not unit:
+    try:
+        price, amount = float(m.group(1)), float(m.group(2) or 1)
+    except ValueError:  # e.g. "$1 / .G"
         return None
-    return float(m.group(1)), float(m.group(2) or 1), unit
+    if not unit or amount <= 0 or price < 0:
+        return None
+    return price, amount, unit
 
 
 def price_per_unit(cup_price: Optional[str], unit_price: Optional[float], target_unit: str) -> Optional[float]:
@@ -81,9 +85,12 @@ def parse_purchase_csv(text: str, store: str = "Woolworths") -> Tuple[List[Dict]
         r = {(k or "").strip().lower(): (v or "").strip() for k, v in raw.items()}
         order_date = _date(r.get("date"))
         name = r.get("product_name")
-        qty = _num(r.get("quantity"), 1.0)
+        qty = _num(r.get("quantity"))
         unit_price = _num(r.get("unit_price"))
         line_total = _num(r.get("line_total"))
+        if qty is None or qty <= 0:
+            errors.append(f"Line {line_no}: skipped (quantity must be a positive number).")
+            continue
         if line_total is None and unit_price is not None:
             line_total = round(qty * unit_price, 2)
         if not order_date or not name:

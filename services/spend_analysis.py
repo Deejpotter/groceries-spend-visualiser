@@ -27,7 +27,7 @@ def analyze_purchases(purchases: Iterable[Dict], top_n: int = 20) -> Optional[Di
     if not rows:
         return None
 
-    baskets: Dict[str, Dict] = {}
+    baskets: Dict[tuple, Dict] = {}
     monthly: Dict[str, float] = defaultdict(float)
     by_category: Dict[str, float] = defaultdict(float)
     products: Dict[str, Dict] = {}
@@ -35,8 +35,9 @@ def analyze_purchases(purchases: Iterable[Dict], top_n: int = 20) -> Optional[Di
     for r in rows:
         d = _as_date(r["order_date"])
         total = float(r["line_total"] or 0)
+        basket_key = (r.get("store") or "", r["basket_id"])  # basket ids are only unique per store
 
-        basket = baskets.setdefault(r["basket_id"], {"date": d, "total": 0.0})
+        basket = baskets.setdefault(basket_key, {"date": d, "total": 0.0})
         basket["total"] += total
         monthly[d.strftime("%Y-%m")] += total
         by_category[r.get("category") or "unlinked"] += total
@@ -46,7 +47,7 @@ def analyze_purchases(purchases: Iterable[Dict], top_n: int = 20) -> Optional[Di
             "total_spend": 0.0, "first_bought": d, "last_bought": d,
             "ingredient_id": r.get("ingredient_id"),
         })
-        p["baskets"].add(r["basket_id"])
+        p["baskets"].add(basket_key)
         p["total_qty"] += float(r["quantity"] or 0)
         p["total_spend"] += total
         p["first_bought"] = min(p["first_bought"], d)
@@ -105,7 +106,7 @@ def load_purchases(db, start: Optional[str] = None, end: Optional[str] = None) -
 
 def average_spend_per_shop(db) -> Optional[float]:
     row = db.execute(
-        "SELECT AVG(total) FROM (SELECT SUM(line_total) AS total FROM purchases GROUP BY basket_id)"
+        "SELECT AVG(total) FROM (SELECT SUM(line_total) AS total FROM purchases GROUP BY store, basket_id)"
     ).fetchone()
     return round(row[0], 2) if row and row[0] is not None else None
 

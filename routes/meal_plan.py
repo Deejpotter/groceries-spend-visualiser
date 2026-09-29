@@ -1,12 +1,13 @@
 """Routes for meal rules and meal plan generation."""
 
 import random
+from datetime import timedelta
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 
 from auth import login_required
-from database import get_db, get_plan_dates, set_setting
-from models import DAYS_OF_WEEK, DAY_LABELS, MEAL_TYPES, date_range, validate_date_format
+from database import get_db, get_plan_dates, get_setting, set_setting
+from models import DAYS_OF_WEEK, DAY_LABELS, MEAL_TYPES, date_range, parse_date, validate_date_format
 from services.plan_generator import generate_plan_entries
 from services.repository import load_rules, load_recipes, load_manual_entries
 
@@ -117,8 +118,9 @@ def generate_plan(start_date_str, end_date_str, chooser=random.choice):
         (start_date_str, end_date_str),
     )
     db.executemany(
-        """INSERT INTO meal_plan_entries (date, meal_type, recipe_id, servings, is_auto_generated, source_rule_id)
-           VALUES (:date, :meal_type, :recipe_id, :servings, 1, :source_rule_id)""",
+        """INSERT INTO meal_plan_entries
+           (date, meal_type, recipe_id, servings, is_auto_generated, is_continuation, source_rule_id)
+           VALUES (:date, :meal_type, :recipe_id, :servings, 1, :is_continuation, :source_rule_id)""",
         entries,
     )
     db.commit()
@@ -206,7 +208,12 @@ def meal_plan_add():
     if not validate_date_format(date) or meal_type not in MEAL_TYPES or not recipe:
         flash("Choose a recipe to add.", "error")
         return _back_to_plan()
-    servings = request.form.get("servings", type=int) or recipe["servings"] or 1
+    servings = request.form.get("servings", type=int)
+    if servings is None:
+        servings = recipe["servings"] or int(get_setting("default_servings", "2"))
+    if servings < 1:
+        flash("Servings must be at least 1.", "error")
+        return _back_to_plan()
     db.execute("DELETE FROM meal_plan_entries WHERE date = ? AND meal_type = ?", (date, meal_type))
     db.execute(
         "INSERT INTO meal_plan_entries (date, meal_type, recipe_id, servings, is_auto_generated) VALUES (?, ?, ?, ?, 0)",
@@ -232,9 +239,14 @@ def meal_plan_swap(entry_id):
         flash("No recipe selected.", "error")
         return _back_to_plan()
 
-    servings = request.form.get("servings", type=int) or entry["servings"]
+    servings = request.form.get("servings", type=int)
+    if servings is None:
+        servings = entry["servings"]
+    if servings < 1:
+        flash("Servings must be at least 1.", "error")
+        return _back_to_plan()
     db.execute(
-        "UPDATE meal_plan_entries SET recipe_id = ?, servings = ?, is_auto_generated = 0 WHERE id = ?",
+        "UPDATE meal_plan_entries SET recipe_id = ?, servings = ?, is_auto_generated = 0, is_continuation = 0 WHERE id = ?",
         (new_recipe_id, servings, entry_id),
     )
     db.commit()
@@ -246,6 +258,15 @@ def meal_plan_swap(entry_id):
 @login_required
 def meal_plan_remove(entry_id):
     db = get_db()
+    entry = db.execute("SELECT * FROM meal_plan_entries WHERE id = ?", (entry_id,)).fetchone()
+    if entry and not entry["is_continuation"]:
+        # Leftovers of a removed first night now need their own ingredients.
+        next_day = (parse_date(entry["date"]) + timedelta(days=1)).strftime("%Y-%m-%d")
+        db.execute(
+            "UPDATE meal_plan_entries SET is_continuation = 0 "
+            "WHERE date = ? AND meal_type = ? AND recipe_id = ? AND is_continuation = 1",
+            (next_day, entry["meal_type"], entry["recipe_id"]),
+        )
     db.execute("DELETE FROM meal_plan_entries WHERE id = ?", (entry_id,))
     db.commit()
     flash("Meal removed.", "success")

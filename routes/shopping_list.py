@@ -73,9 +73,10 @@ def shopping_list_generate():
 
     db = get_db()
     # Remember what was already ticked so a regenerate doesn't lose progress.
+    # Keyed by ingredient id so a unit-preference change doesn't drop ticks.
     previously_checked = {
-        (r["ingredient_name"], r["unit"])
-        for r in db.execute("SELECT ingredient_name, unit FROM shopping_list_items WHERE checked = 1 AND is_manual = 0")
+        r["ingredient_id"]
+        for r in db.execute("SELECT ingredient_id FROM shopping_list_items WHERE checked = 1 AND is_manual = 0")
     }
     db.execute("DELETE FROM shopping_list_items WHERE is_manual = 0")
 
@@ -84,10 +85,11 @@ def shopping_list_generate():
         for item in items:
             db.execute(
                 """INSERT INTO shopping_list_items
-                   (ingredient_name, quantity, unit, category, checked, is_manual, meal_date, recipe_ref, estimated_cost)
-                   VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)""",
-                (item["ingredient_name"], item["quantity"], item["unit"], cat,
-                 1 if (item["ingredient_name"], item["unit"]) in previously_checked else 0,
+                   (ingredient_id, ingredient_name, quantity, unit, category, checked, is_manual, meal_date,
+                    recipe_ref, estimated_cost)
+                   VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)""",
+                (item["ingredient_id"], item["ingredient_name"], item["quantity"], item["unit"], cat,
+                 1 if item["ingredient_id"] in previously_checked else 0,
                  item["meal_date"], ", ".join(item["recipe_refs"]), item["estimated_cost"]),
             )
     db.commit()

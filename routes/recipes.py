@@ -1,7 +1,7 @@
 """Routes for recipe management."""
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash
-from database import get_db
+from database import get_db, get_setting
 from auth import login_required
 from models import UNIT_LOOKUP
 from services.plan_generator import parse_tags
@@ -67,6 +67,25 @@ def _read_ingredient_rows():
             continue
         rows.append((ing_id, qty, unit or None))
     return rows, errors
+
+
+def _submitted_rows():
+    """Rebuild the ingredient rows the user just submitted, so a validation error doesn't wipe them."""
+    ids = request.form.getlist("ingredient_ids")
+    quantities = request.form.getlist("quantities")
+    units = request.form.getlist("unit_overrides")
+    names = {r["id"]: r for r in get_db().execute("SELECT id, name, unit FROM ingredients")}
+    rows = []
+    for i, raw_id in enumerate(ids):
+        ing = names.get(int(raw_id)) if raw_id.isdigit() else None
+        if not ing:
+            continue
+        rows.append({
+            "ingredient_id": ing["id"], "ingredient_name": ing["name"], "unit": ing["unit"],
+            "quantity": quantities[i] if i < len(quantities) else "",
+            "unit_override": units[i] if i < len(units) else "",
+        })
+    return rows
 
 
 @recipes_bp.route("/recipes")
@@ -136,7 +155,7 @@ def recipe_form(recipe_id=None):
             for err in errors:
                 flash(err, "error")
             return render_template("recipes/form.html", recipe={**(recipe or {}), **request.form.to_dict()},
-                                   recipe_ingredients=recipe_ingredients)
+                                   recipe_ingredients=_submitted_rows())
 
         if recipe_id:
             db.execute(
@@ -166,7 +185,8 @@ def recipe_form(recipe_id=None):
         db.commit()
         return redirect(url_for("recipes.recipe_detail", recipe_id=recipe_id))
 
-    return render_template("recipes/form.html", recipe=recipe, recipe_ingredients=recipe_ingredients)
+    return render_template("recipes/form.html", recipe=recipe, recipe_ingredients=recipe_ingredients,
+                           default_servings=get_setting("default_servings", "2"))
 
 
 @recipes_bp.route("/recipes/<int:recipe_id>")

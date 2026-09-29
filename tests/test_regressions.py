@@ -131,14 +131,14 @@ def test_shopping_list_uses_pantry_setting_and_costs(client, db):
     login(client)
     _setup_plan(client, db)
     client.post("/meal-plan/generate", data={})
-    # 2 dinners x 500 g mince; 0.4 kg in the pantry (different unit) -> buy 600 g
+    # 2 dinners x 500 g mince; 0.4 kg in the pantry -> buy 0.6 kg (listed in the ingredient's unit)
     db.execute("INSERT INTO pantry_items (ingredient_id, quantity, unit) VALUES (1, 0.4, 'kg')")
     db.commit()
     client.post("/settings/save", data={"action": "save_prefs", "unit_preference": "metric",
                                         "default_servings": "2", "subtract_pantry": "on"})
     client.post("/shopping-list/generate", data={})
     item = db.execute("SELECT quantity, unit, estimated_cost FROM shopping_list_items").fetchone()
-    assert (item["quantity"], item["unit"]) == (600, "g")
+    assert (item["quantity"], item["unit"]) == (0.6, "kg")
     assert item["estimated_cost"] == 7.2  # 0.6 kg x $12/kg
 
 
@@ -175,6 +175,6 @@ def test_service_cost_and_imperial_display():
         unit_preference="imperial",
     )
     item = next(iter(result.values()))[0]
-    assert item["unit"] == "oz"
+    assert item["unit"] == "lb"  # 500 g merged into the ingredient's kg, shown as lb
     assert item["estimated_cost"] == 5.0
     assert total_cost(result) == 5.0

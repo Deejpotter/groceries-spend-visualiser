@@ -29,7 +29,7 @@
                         <div class="form-group col-md-3">
                             <label for="servings">Servings <span class="text-danger">*</span></label>
                             <input type="number" class="form-control" id="servings" name="servings"
-                                   min="1" value="{{ recipe.servings if recipe else 1 }}" required>
+                                   min="1" value="{{ recipe.servings if recipe else default_servings }}" required>
                         </div>
                         <div class="form-group col-md-3">
                             <label for="prep_time">Prep Time (min)</label>
