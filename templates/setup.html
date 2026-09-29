@@ -16,7 +16,7 @@
                         <label for="username">Username</label>
                         <input type="text" class="form-control" id="username" name="username"
                                value="{{ current_user if current_user else '' }}" required
-                               {% if current_user %}disabled readonly{% endif %}>
+                               {% if current_user %}readonly{% endif %}>
                         {% if current_user %}
                         <small class="text-muted">Username cannot be changed.</small>
                         {% endif %}

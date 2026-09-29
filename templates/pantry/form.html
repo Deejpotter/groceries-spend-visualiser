@@ -33,9 +33,12 @@
                         </div>
                         <div class="form-group col-md-4">
                             <label for="unit">Unit</label>
-                            <input type="text" class="form-control" id="unit" name="unit"
-                                   value="{{ item.unit if item else '' }}"
-                                   placeholder="e.g. kg, L, each">
+                            <select class="form-control" id="unit" name="unit">
+                                <option value="">Same as ingredient</option>
+                                {% for code, label in units %}
+                                <option value="{{ code }}" {% if item and item.unit == code %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
                         </div>
                         <div class="form-group col-md-4">
                             <label for="expiry_date">Expiry Date</label>

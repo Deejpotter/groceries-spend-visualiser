@@ -73,35 +73,3 @@
 </div>
 {% endif %}
 {% endblock %}
-
-{% block scripts %}
-<script>
-// Helper functions exposed to templates
-function categoryLabel(code) {
-    const labels = {
-        'produce': 'Produce',
-        'meat': 'Meat & Seafood',
-        'dairy': 'Dairy & Eggs',
-        'bakery': 'Bakery',
-        'pantry': 'Pantry Staples',
-        'frozen': 'Frozen',
-        'household': 'Household',
-        'beverages': 'Beverages',
-        'snacks': 'Snacks',
-        'other': 'Other'
-    };
-    return labels[code] || code;
-}
-function unitLabel(code) {
-    const labels = {
-        'kg': 'Kilogram (kg)', 'g': 'Gram (g)', 'lb': 'Pound (lb)', 'oz': 'Ounce (oz)',
-        'L': 'Litre (L)', 'mL': 'Millilitre (mL)', 'gal': 'Gallon (gal)',
-        'fl_oz': 'Fluid Ounce (fl oz)', 'each': 'Each', 'pack': 'Pack',
-        'bunch': 'Bunch', 'roll': 'Roll', 'can': 'Can', 'jar': 'Jar',
-        'box': 'Box', 'bag': 'Bag', 'tube': 'Tube', 'carton': 'Carton',
-        'slice': 'Slice', 'cup': 'Cup', 'tbsp': 'Tablespoon', 'tsp': 'Teaspoon'
-    };
-    return labels[code] || code;
-}
-</script>
-{% endblock %}

@@ -214,6 +214,12 @@ def meal_plan_add():
     if servings < 1:
         flash("Servings must be at least 1.", "error")
         return _back_to_plan()
+    existing = db.execute(
+        "SELECT id, is_continuation FROM meal_plan_entries WHERE date = ? AND meal_type = ?",
+        (date, meal_type),
+    ).fetchone()
+    if existing and existing["is_continuation"]:
+        flash("This slot is the second night of a two-night recipe. Replacing it.", "info")
     db.execute("DELETE FROM meal_plan_entries WHERE date = ? AND meal_type = ?", (date, meal_type))
     db.execute(
         "INSERT INTO meal_plan_entries (date, meal_type, recipe_id, servings, is_auto_generated) VALUES (?, ?, ?, ?, 0)",

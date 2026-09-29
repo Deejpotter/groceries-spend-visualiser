@@ -57,7 +57,7 @@
                 {% endif %}
             </td>
             <td>
-                <span class="badge bg-{% if item.location == 'fridge' %}primary{% elif item.location == 'freezer' %}info{% else %}light{% endif %}">
+                <span class="badge badge-{% if item.location == 'fridge' %}primary{% elif item.location == 'freezer' %}info{% else %}light{% endif %}">
                     {{ item.location|title }}
                 </span>
             </td>
@@ -97,7 +97,7 @@
 
 <div class="alert alert-light border mt-4">
     <div class="d-flex justify-content-between">
-        <strong>Low Stock Alerts</strong>
+        <strong>Expiry Alerts</strong>
         <span class="badge badge-warning">{{ items|selectattr('expiry_status', 'equalto', 'soon')|list|length }} expiring soon</span>
         <span class="badge badge-danger">{{ items|selectattr('expiry_status', 'equalto', 'expired')|list|length }} expired</span>
     </div>

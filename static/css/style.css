@@ -102,14 +102,14 @@ footer {
     }
 }
 
-/* Print styles for shopping list */
+/* Print styles */
 @media print {
     .navbar, footer, .btn, .alert {
         display: none !important;
     }
 
     body {
-        background: white;
+        background: #fff;
     }
 
     .container {
@@ -159,13 +159,10 @@ main.container {
     position: relative;
     height: 300px;
 }
-.tag-suggestion {
-    cursor: pointer;
-}
-
-@media print {
-    body { background: #fff; }
-    .card { box-shadow: none; border: 1px solid #ddd; }
+/* Focus styles for keyboard accessibility */
+*:focus-visible {
+    outline: 2px solid #4f6df5;
+    outline-offset: 2px;
 }
 
 /* Non-production environment banner (APP_ENV=staging) */

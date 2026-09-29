@@ -1,6 +1,6 @@
 """Routes for pantry inventory."""
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from database import get_db
 from auth import login_required
