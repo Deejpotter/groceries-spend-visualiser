@@ -1,31 +1,80 @@
 """Flask application entry point for Grocery Visualiser."""
 
+import logging
 import os
-from flask import Flask, render_template, request, session, redirect, url_for, jsonify, flash
+import secrets
+from urllib.parse import urlparse
+
 from dotenv import load_dotenv
-from database import init_db, get_db, close_db, DATABASE_PATH
+from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
+from flask_wtf.csrf import CSRFProtect
+
+from database import init_db, get_db, close_db, get_plan_dates
 from auth import login_user, logout_user, get_current_user, is_logged_in, login_required, hash_password, verify_password
-from models import CATEGORIES, UNITS, MEAL_TYPES, DAYS_OF_WEEK
+from models import (
+    CATEGORIES, UNITS, MEAL_TYPES, DAYS_OF_WEEK,
+    CATEGORY_LOOKUP, DAY_LABELS, UNIT_LOOKUP, MEAL_TYPE_LABELS, category_label,
+)
 from routes import register_all_routes
+
+log = logging.getLogger(__name__)
+csrf = CSRFProtect()
 
 
 def create_app(testing=False):
-    """Application factory for Flask (supports testing with temp DB)."""
+    """Application factory (supports testing with a temp DB)."""
     load_dotenv()
 
     application = Flask(__name__)
-    application.secret_key = os.getenv("SECRET_KEY", "dev-secret-change-in-production")
+    secret_key = os.getenv("SECRET_KEY")
+    if not secret_key:
+        # A random key keeps sessions safe but logs everyone out on restart.
+        secret_key = secrets.token_hex(32)
+        if not testing:
+            log.warning("SECRET_KEY is not set; using a random key (sessions reset on restart).")
+    application.secret_key = secret_key
     application.config["TESTING"] = testing
+    application.config["WTF_CSRF_ENABLED"] = not testing
+    application.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 
+    csrf.init_app(application)
+    init_db()
     register_all_routes(application)
+    application.teardown_appcontext(close_db)
 
-    @application.teardown_appcontext
-    def teardown_db(exception):
-        close_db(exception)
+    @application.template_filter("qty")
+    def format_quantity(value):
+        """Show 500 not 500.0, and at most 2 decimal places."""
+        if value is None:
+            return ""
+        value = round(float(value), 2)
+        return str(int(value)) if value == int(value) else f"{value:g}"
+
+    @application.template_filter("amount")
+    def format_amount(quantity, unit):
+        """'1500', 'g' -> '1.5 kg'; hides the unit for plain counts ('each')."""
+        big = {"g": "kg", "mL": "L"}
+        if unit in big and quantity and quantity >= 1000:
+            quantity, unit = quantity / 1000, big[unit]
+        text = format_quantity(quantity)
+        return text if unit == "each" else f"{text} {unit.replace('_', ' ')}"
+
+    @application.template_filter("unit_price")
+    def format_unit_price(value):
+        """Prices per gram/mL are tiny: show up to 4 decimals, but always at least 2."""
+        if value is None:
+            return "—"
+        text = f"{value:,.4f}".rstrip("0")
+        if len(text.split(".")[1]) < 2:
+            text = f"{value:,.2f}"
+        return f"${text}"
+
+    @application.template_filter("money")
+    def format_money(value):
+        return f"${value:,.2f}" if value is not None else "—"
 
     @application.context_processor
     def inject_common():
-        from models import CATEGORY_LOOKUP, DAY_LABELS, UNIT_LOOKUP, MEAL_TYPE_LABELS
         return {
             "current_user": get_current_user(),
             "is_logged_in": is_logged_in(),
@@ -37,11 +86,8 @@ def create_app(testing=False):
             "day_labels": DAY_LABELS,
             "unit_lookup": UNIT_LOOKUP,
             "meal_type_labels": MEAL_TYPE_LABELS,
-            "category_label": lambda cat: CATEGORY_LOOKUP.get(cat, cat),
+            "category_label": category_label,
             "unit_label": lambda u: UNIT_LOOKUP.get(u, u),
-            "day_label": lambda d: DAY_LABELS.get(
-                d.strftime("%a").lower() if hasattr(d, "strftime") else str(d), str(d)
-            ),
             "meal_type_label": lambda mt: MEAL_TYPE_LABELS.get(mt, mt),
         }
 
@@ -50,18 +96,15 @@ def create_app(testing=False):
         return jsonify({"status": "ok"}), 200
 
     @application.before_request
-    def before_request():
-        """Skip DB init in testing mode."""
-        if application.config.get("TESTING"):
-            return None
-        if request.path.startswith("/static") or request.path == "/health":
+    def ensure_admin():
+        """Create the env-configured admin on first request, or send users to /setup."""
+        if request.endpoint in (None, "static", "health", "setup"):
             return None
         if admin_exists():
             return None
-        username = os.getenv("ADMIN_USERNAME")
-        password = os.getenv("ADMIN_PASSWORD")
-        if username and password:
-            auto_create_admin()
+        if auto_create_admin():
+            return None
+        return redirect(url_for("setup"))
 
     @application.route("/login", methods=["GET", "POST"])
     def login():
@@ -71,16 +114,13 @@ def create_app(testing=False):
             if not username or not password:
                 flash("Please enter both username and password.", "error")
                 return redirect(url_for("login"))
-            db = get_db()
-            row = db.execute(
-                "SELECT id, username, password_hash FROM users WHERE username = ?",
-                (username,),
+            row = get_db().execute(
+                "SELECT password_hash FROM users WHERE username = ?", (username,),
             ).fetchone()
             if row and verify_password(password, row["password_hash"]):
                 login_user(username)
                 flash("Logged in successfully.", "success")
-                next_url = request.args.get("next") or url_for("dashboard")
-                return redirect(next_url)
+                return redirect(safe_next_url(request.args.get("next")))
             flash("Invalid username or password.", "error")
             return redirect(url_for("login"))
         return render_template("login.html")
@@ -94,103 +134,96 @@ def create_app(testing=False):
 
     @application.route("/setup", methods=["GET", "POST"])
     def setup():
+        # Setup only creates the first account. Password changes happen in Settings.
+        # Create the env-configured admin first so /setup can't claim the app before it exists.
+        auto_create_admin()
+        if admin_exists():
+            flash("An admin account already exists. Log in, then change your password in Settings.", "info")
+            return redirect(url_for("login"))
         if request.method == "POST":
             username = request.form.get("username", "").strip()
             password = request.form.get("password", "")
             confirm = request.form.get("confirm_password", "")
+            error = None
             if not username or not password:
-                flash("Username and password are required.", "error")
-                return redirect(url_for("setup"))
-            if password != confirm:
-                flash("Passwords do not match.", "error")
-                return redirect(url_for("setup"))
-            if len(password) < 8:
-                flash("Password must be at least 8 characters.", "error")
+                error = "Username and password are required."
+            elif password != confirm:
+                error = "Passwords do not match."
+            elif len(password) < 8:
+                error = "Password must be at least 8 characters."
+            if error:
+                flash(error, "error")
                 return redirect(url_for("setup"))
             db = get_db()
-            existing = db.execute(
-                "SELECT id FROM users WHERE username = ?", (username,),
-            ).fetchone()
-            if existing:
-                db.execute(
-                    "UPDATE users SET password_hash = ? WHERE username = ?",
-                    (hash_password(password), username),
-                )
-                db.commit()
-                flash("Password updated. Please log in.", "success")
-                return redirect(url_for("login"))
-            else:
-                db.execute(
-                    "INSERT INTO users (username, password_hash) VALUES (?, ?)",
-                    (username, hash_password(password)),
-                )
-                db.commit()
-                flash("Admin account created. Please log in.", "success")
-                return redirect(url_for("login"))
+            db.execute(
+                "INSERT INTO users (username, password_hash) VALUES (?, ?)",
+                (username, hash_password(password)),
+            )
+            db.commit()
+            flash("Admin account created. Please log in.", "success")
+            return redirect(url_for("login"))
         return render_template("setup.html")
 
     @application.route("/")
     @login_required
     def dashboard():
+        from services.spend_analysis import summarise_recent_spend
         db = get_db()
-        ingredient_count = db.execute("SELECT COUNT(*) as count FROM ingredients").fetchone()["count"]
-        recipe_count = db.execute("SELECT COUNT(*) as count FROM recipes").fetchone()["count"]
-        rule_count = db.execute("SELECT COUNT(*) as count FROM meal_rules WHERE is_active = 1").fetchone()["count"]
-        entry_count = db.execute("SELECT COUNT(*) as count FROM meal_plan_entries").fetchone()["count"]
-        plan_start = db.execute("SELECT value FROM settings WHERE key = 'plan_start_date'").fetchone()
-        plan_end = db.execute("SELECT value FROM settings WHERE key = 'plan_end_date'").fetchone()
+
+        def count(sql):
+            return db.execute(sql).fetchone()[0]
+
+        plan_start, plan_end = get_plan_dates()
         return render_template(
             "dashboard.html",
-            ingredient_count=ingredient_count,
-            recipe_count=recipe_count,
-            rule_count=rule_count,
-            entry_count=entry_count,
-            plan_start=plan_start["value"] if plan_start else "",
-            plan_end=plan_end["value"] if plan_end else "",
+            ingredient_count=count("SELECT COUNT(*) FROM ingredients"),
+            recipe_count=count("SELECT COUNT(*) FROM recipes"),
+            rule_count=count("SELECT COUNT(*) FROM meal_rules WHERE is_active = 1"),
+            entry_count=count("SELECT COUNT(*) FROM meal_plan_entries"),
+            plan_start=plan_start,
+            plan_end=plan_end,
+            spend=summarise_recent_spend(db),
         )
+
+    @application.cli.command("init-db")
+    def init_db_command():
+        """Create or upgrade the database schema."""
+        init_db()
+        print("Database initialised.")
 
     return application
 
 
+def safe_next_url(target):
+    """Only allow redirects to relative paths on this site (no open redirect)."""
+    if target:
+        parts = urlparse(target)
+        if not parts.scheme and not parts.netloc and target.startswith("/") and not target.startswith("//"):
+            return target
+    return url_for("dashboard")
+
+
 def admin_exists():
-    try:
-        db = get_db()
-        row = db.execute("SELECT id FROM users LIMIT 1").fetchone()
-        return row is not None
-    except Exception:
-        return False
+    return get_db().execute("SELECT 1 FROM users LIMIT 1").fetchone() is not None
 
 
 def auto_create_admin():
+    """Create the admin from ADMIN_USERNAME/ADMIN_PASSWORD if no user exists yet."""
     username = os.getenv("ADMIN_USERNAME")
     password = os.getenv("ADMIN_PASSWORD")
-    if not username or not password:
+    if not username or not password or admin_exists():
         return False
-    if admin_exists():
-        return False
-    try:
-        db = get_db()
-        db.execute(
-            "INSERT INTO users (username, password_hash) VALUES (?, ?)",
-            (username, hash_password(password)),
-        )
-        db.commit()
-        return True
-    except Exception:
-        return False
+    db = get_db()
+    db.execute(
+        "INSERT INTO users (username, password_hash) VALUES (?, ?)",
+        (username, hash_password(password)),
+    )
+    db.commit()
+    return True
 
-
-# ---------------------------------------------------------------------------
-# Create the app instance for production (module-level)
-# ---------------------------------------------------------------------------
 
 app = create_app(testing=False)
 
 
-# ---------------------------------------------------------------------------
-# Main entry point
-# ---------------------------------------------------------------------------
-
 if __name__ == "__main__":
-    init_db()
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=True)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=os.getenv("FLASK_DEBUG") == "1")

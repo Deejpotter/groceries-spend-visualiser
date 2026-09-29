@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Grocery Visualiser{% endblock %}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+{% set nav_items = [
+    ('dashboard', 'Dashboard', ['dashboard']),
+    ('ingredients.ingredient_list', 'Ingredients', ['ingredients.']),
+    ('recipes.recipe_list', 'Recipes', ['recipes.']),
+    ('meal_plan.meal_rule_list', 'Meal Rules', ['meal_plan.meal_rule']),
+    ('meal_plan.meal_plan_view', 'Meal Plan', ['meal_plan.meal_plan']),
+    ('shopping_list.shopping_list_view', 'Shopping List', ['shopping_list.']),
+    ('pantry.pantry_list', 'Pantry', ['pantry.']),
+    ('spend.spend_dashboard', 'Spend', ['spend.']),
+] %}
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary d-print-none">
+    <div class="container">
+        <a class="navbar-brand" href="{{ url_for('dashboard') }}"><span class="icon">🛒</span> Grocery Visualiser</a>
+        {% if current_user %}
+        <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNav"
+                aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav mr-auto">
+                {% for endpoint, label, prefixes in nav_items %}
+                {% set ns = namespace(active=false) %}
+                {% for prefix in prefixes %}
+                    {% if request.endpoint and request.endpoint.startswith(prefix) %}{% set ns.active = true %}{% endif %}
+                {% endfor %}
+                {% set active = ns.active %}
+                <li class="nav-item">
+                    <a class="nav-link {{ 'active' if active }}" href="{{ url_for(endpoint) }}"
+                       {% if active %}aria-current="page"{% endif %}>{{ label }}</a>
+                </li>
+                {% endfor %}
+            </ul>
+            <ul class="navbar-nav">
+                <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint and request.endpoint.startswith('settings.') }}"
+                       href="{{ url_for('settings.settings') }}" title="Settings"><i class="fas fa-cog"></i> {{ current_user }}</a>
+                </li>
+                <li class="nav-item">
+                    <form method="post" action="{{ url_for('logout') }}" class="form-inline">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-link nav-link">Log out</button>
+                    </form>
+                </li>
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+</nav>
+
+<main class="container mt-4">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="mb-3">
+        {% for category, message in messages %}
+        <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="close" data-dismiss="alert" aria-label="Close">&times;</button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+</main>
+
+<footer class="mt-5 py-3 bg-light text-center text-muted border-top d-print-none">
+    <div class="container"><small>Grocery Visualiser — plan meals, build lists, track spend.</small></div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.slim.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

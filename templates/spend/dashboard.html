@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Spend — Grocery Visualiser{% endblock %}
+
+{% macro product_table(title, rows) -%}
+<div class="card mb-4">
+    <div class="card-header py-2"><strong>{{ title }}</strong></div>
+    <div class="table-responsive">
+    <table class="table table-sm mb-0">
+        <thead><tr><th>Product</th><th class="num">Orders</th><th class="num">Spend</th></tr></thead>
+        <tbody>
+        {% for p in rows %}
+            <tr>
+                <td>{{ p.product_name }}{% if p.ingredient_id %} <i class="fas fa-link text-muted small" title="Linked to an ingredient"></i>{% endif %}</td>
+                <td class="num">{{ p.orders }}</td>
+                <td class="num">{{ p.total_spend|money }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{%- endmacro %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+    <h1 class="mb-2">Grocery Spend</h1>
+    <div class="mb-2">
+        <a href="{{ url_for('spend.spend_products') }}" class="btn btn-outline-secondary"><i class="fas fa-link"></i> Link products</a>
+        <a href="{{ url_for('spend.spend_import') }}" class="btn btn-primary"><i class="fas fa-file-import"></i> Import purchases</a>
+    </div>
+</div>
+
+{% if not stats %}
+<div class="alert alert-secondary">
+    <p class="mb-2">No purchase history yet.</p>
+    <p class="mb-0">Import your Woolworths order history (CSV) to see what you spend each month and which products you buy most.
+        <a href="{{ url_for('spend.spend_import') }}">Import purchases</a></p>
+</div>
+{% else %}
+<ul class="nav nav-pills mb-3">
+    {% for key, label in ranges %}
+    <li class="nav-item"><a class="nav-link {{ 'active' if key == range_key }}" href="{{ url_for('spend.spend_dashboard', range=key) }}">{{ label }}</a></li>
+    {% endfor %}
+</ul>
+<p class="text-muted">
+    {{ stats.first_date.strftime('%d %b %Y') }} – {{ stats.last_date.strftime('%d %b %Y') }}
+    &middot; {{ stats.total_shops }} shops &middot; {{ stats.total_items }} line items
+</p>
+
+<div class="row mb-2">
+    {% for value, label in [
+        (stats.total_spend|money, 'Total spend'),
+        (stats.avg_spend_per_month|money, 'Average per month'),
+        (stats.avg_spend_per_shop|money, 'Average per shop'),
+        (stats.avg_days_between_shops ~ ' days', 'Between shops'),
+    ] %}
+    <div class="col-6 col-md-3 mb-3">
+        <div class="card h-100"><div class="card-body py-3">
+            <div class="stat-value">{{ value }}</div>
+            <div class="text-muted small">{{ label }}</div>
+        </div></div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="card mb-4">
+    <div class="card-header py-2"><strong>Monthly spend</strong></div>
+    <div class="card-body"><div class="chart-box"><canvas id="monthlyChart" aria-label="Monthly spend chart" role="img"></canvas></div></div>
+</div>
+
+{% if stats.category_spend|length > 1 or (stats.category_spend and stats.category_spend[0][0] != 'unlinked') %}
+<div class="card mb-4">
+    <div class="card-header py-2"><strong>Spend by category</strong>
+        <span class="small text-muted">— from products linked to ingredients</span></div>
+    <div class="card-body">
+        {% set max_value = stats.category_spend[0][1] or 1 %}
+        {% for cat, value in stats.category_spend %}
+        <div class="d-flex align-items-center mb-2">
+            <div style="width: 10rem" class="small">{{ 'Not linked yet' if cat == 'unlinked' else category_label(cat) }}</div>
+            <div class="flex-grow-1 mr-2"><div class="progress" style="height: .9rem">
+                <div class="progress-bar {{ 'bg-secondary' if cat == 'unlinked' }}" style="width: {{ (value / max_value * 100)|round(1) }}%"></div>
+            </div></div>
+            <div class="num small" style="width: 6rem">{{ value|money }}</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% elif unlinked_count %}
+<div class="alert alert-light border">
+    <a href="{{ url_for('spend.spend_products') }}">Link products to your ingredients</a> to see spend by category and keep ingredient prices up to date.
+</div>
+{% endif %}
+
+<div class="row">
+    <div class="col-lg-6">{{ product_table('Bought most often', stats.top_by_frequency) }}</div>
+    <div class="col-lg-6">{{ product_table('Highest total spend', stats.top_by_spend) }}</div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if stats %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    const data = {{ stats.monthly_spend|tojson }};
+    const labels = data.map(([month]) => {
+        const [y, m] = month.split('-');
+        return new Date(+y, +m - 1, 1).toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
+    });
+    new Chart(document.getElementById('monthlyChart'), {
+        type: 'bar',
+        data: { labels, datasets: [{ label: 'Spend', data: data.map(d => d[1]), backgroundColor: '#007bff' }] },
+        options: {
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: ctx => '$' + ctx.parsed.y.toFixed(2) } }
+            },
+            scales: { y: { beginAtZero: true, ticks: { callback: v => '$' + v } } }
+        }
+    });
+})();
+</script>
+{% endif %}
+{% endblock %}

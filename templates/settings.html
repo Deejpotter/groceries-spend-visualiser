@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}Settings — Grocery Visualiser{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <h1>Settings</h1>
+        <p class="text-muted">Configure your meal plan dates, unit preferences, and other options.</p>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>Meal Plan Dates</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{{ url_for('settings.save') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label for="plan_start">Plan Start Date</label>
+                            <input type="date" class="form-control" id="plan_start" name="plan_start"
+                                   value="{{ plan_start }}" required>
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label for="plan_end">Plan End Date</label>
+                            <input type="date" class="form-control" id="plan_end" name="plan_end"
+                                   value="{{ plan_end }}" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <small class="text-muted">
+                            The meal plan and shopping list are generated for this date range.
+                            Set dates that work for your shopping cycle (e.g., 2 weeks).
+                        </small>
+                    </div>
+                    <button type="submit" name="action" value="save_dates" class="btn btn-primary">Save Dates</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>Preferences</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{{ url_for('settings.save') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="form-group">
+                        <label for="unit_preference">Unit Preference</label>
+                        <select class="form-control" id="unit_preference" name="unit_preference">
+                            <option value="metric" {% if unit_preference == 'metric' %}selected{% endif %}>
+                                Metric (kg, g, L, mL) — Default
+                            </option>
+                            <option value="imperial" {% if unit_preference == 'imperial' %}selected{% endif %}>
+                                Imperial (lb, oz, gal, fl oz)
+                            </option>
+                        </select>
+                        <small class="text-muted">
+                            Shopping lists will display quantities in your preferred unit system.
+                            Unit conversion is applied at display time.
+                        </small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="default_servings">Default Servings</label>
+                        <input type="number" class="form-control" id="default_servings" name="default_servings"
+                               min="1" value="{{ default_servings }}">
+                        <small class="text-muted">
+                            Fallback when a recipe or rule doesn't specify servings.
+                        </small>
+                    </div>
+
+                    <div class="form-group">
+                        <div class="custom-control custom-checkbox">
+                            <input type="checkbox" class="custom-control-input" id="subtract_pantry"
+                                   name="subtract_pantry" {% if subtract_pantry %}checked{% endif %}>
+                            <label class="custom-control-label" for="subtract_pantry">
+                                Subtract pantry items from shopping list
+                            </label>
+                        </div>
+                        <small class="text-muted">
+                            When generating shopping lists, deduct what you already have in your pantry.
+                        </small>
+                    </div>
+
+                    <button type="submit" name="action" value="save_prefs" class="btn btn-primary">Save Preferences</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header bg-danger text-white">
+                <h5>Admin</h5>
+            </div>
+            <div class="card-body">
+                <p class="mb-3">Change your password or manage your account.</p>
+                <a href="{{ url_for('settings.change_password') }}" class="btn btn-secondary">
+                    Change Password
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card mt-3">
+            <div class="card-header">Tips</div>
+            <div class="card-body">
+                <ul>
+                    <li>Set plan dates before generating a meal plan</li>
+                    <li>Two-week cycles work well for most households</li>
+                    <li>Metric is default — imperial is available for US/UK users</li>
+                    <li>Shopping list cost estimates use ingredient prices</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

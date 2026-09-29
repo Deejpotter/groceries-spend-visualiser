@@ -1,0 +1,16 @@
+{# Shared template helpers. Import with: {% from "_macros.html" import csrf, post_button %} #}
+
+{% macro csrf() -%}
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+{%- endmacro %}
+
+{# A one-button POST form for destructive/state-changing actions (never a GET link). #}
+{% macro post_button(action, label, class="btn btn-sm btn-outline-danger", confirm=None, icon=None, title=None) -%}
+<form method="post" action="{{ action }}" class="d-inline"
+      {% if confirm %}onsubmit="return confirm({{ confirm|tojson|forceescape }})"{% endif %}>
+    {{ csrf() }}
+    <button type="submit" class="{{ class }}"{% if title %} title="{{ title }}"{% endif %}>
+        {%- if icon %}<i class="fas fa-{{ icon }}"></i>{% if label %} {% endif %}{% endif %}{{ label -}}
+    </button>
+</form>
+{%- endmacro %}

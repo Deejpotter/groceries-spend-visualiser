@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf %}
+
+{% block title %}Link Products — Grocery Visualiser{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+    <h1 class="mb-2">Link products to ingredients</h1>
+    <a href="{{ url_for('spend.spend_dashboard') }}" class="btn btn-outline-secondary mb-2">Back to spend</a>
+</div>
+<p class="text-muted">Linking a product you've bought to one of your ingredients groups its spend by category and lets you
+    pull the latest price into the ingredient, so shopping list estimates stay realistic.</p>
+
+<form method="get" class="form-row mb-3">
+    <div class="col-md-6 mb-2"><input type="search" name="q" value="{{ search }}" class="form-control" placeholder="Search products…" aria-label="Search products"></div>
+    <div class="col-auto mb-2 d-flex align-items-center">
+        <div class="custom-control custom-checkbox">
+            <input type="checkbox" class="custom-control-input" id="unlinked" name="unlinked" value="1" {% if only_unlinked %}checked{% endif %}>
+            <label class="custom-control-label" for="unlinked">Only unlinked</label>
+        </div>
+    </div>
+    <div class="col-auto mb-2"><button class="btn btn-secondary" type="submit">Filter</button></div>
+</form>
+
+{% if not products %}
+<div class="alert alert-secondary">No products found. <a href="{{ url_for('spend.spend_import') }}">Import purchases</a> first.</div>
+{% else %}
+<div class="table-responsive">
+<table class="table table-sm bg-white">
+    <thead class="thead-light">
+        <tr><th>Product</th><th class="num">Orders</th><th class="num">Spend</th><th class="num">Last price</th><th style="min-width: 22rem">Ingredient</th></tr>
+    </thead>
+    <tbody>
+    {% for p in products %}
+        <tr>
+            <td>{{ p.product_name }}<div class="small text-muted">last bought {{ p.last_bought }}</div></td>
+            <td class="num">{{ p.orders }}</td>
+            <td class="num">{{ p.total_spend|money }}</td>
+            <td class="num">{{ p.last_price|money }}{% if p.last_cup_price %}<div class="small text-muted">{{ p.last_cup_price }}</div>{% endif %}</td>
+            <td>
+                <form method="post" action="{{ url_for('spend.spend_link_product') }}" class="form-row align-items-center">
+                    {{ csrf() }}
+                    <input type="hidden" name="product_name" value="{{ p.product_name }}">
+                    <input type="hidden" name="q" value="{{ search }}">
+                    <input type="hidden" name="unlinked" value="{{ '1' if only_unlinked }}">
+                    <div class="col">
+                        <select name="ingredient_id" class="form-control form-control-sm" aria-label="Ingredient for {{ p.product_name }}">
+                            <option value="">— Not linked —</option>
+                            <option value="new">+ Create new ingredient</option>
+                            {% for i in ingredients %}
+                            <option value="{{ i.id }}" {% if i.id == p.ingredient_id %}selected{% endif %}>{{ i.name }} ({{ i.unit }})</option>
+                            {% endfor %}
+                        </select>
+                        <div class="custom-control custom-checkbox small mt-1">
+                            <input type="checkbox" class="custom-control-input" id="price-{{ loop.index }}" name="update_price" value="1" checked>
+                            <label class="custom-control-label" for="price-{{ loop.index }}">Update ingredient price</label>
+                        </div>
+                    </div>
+                    <div class="col-auto"><button type="submit" class="btn btn-sm btn-outline-primary">Save</button></div>
+                </form>
+            </td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}
