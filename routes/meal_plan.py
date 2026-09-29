@@ -9,6 +9,8 @@ from auth import login_required
 from database import get_db, get_plan_dates, get_setting, set_setting
 from models import today as local_today, DAYS_OF_WEEK, DAY_LABELS, MEAL_TYPES, date_range, parse_date, validate_date_format
 from services.plan_generator import generate_plan_entries, plan_summary
+from services.repository import load_linked_products, load_list_rows, load_shopping_inputs
+from services.shopping_list_generator import plan_list_lines, recipes_using_spares, spares
 from services.repository import load_rules, load_recipes, load_manual_entries
 
 meal_bp = Blueprint("meal_plan", __name__)
@@ -153,6 +155,15 @@ def _build_days(start, end, entries):
     return days
 
 
+def _spare_uses(start, end):
+    """{recipe_id: [spare ingredient names]} for recipes that would use up the shopping list's spares."""
+    spare_items = spares(plan_list_lines(load_list_rows(), load_linked_products()))
+    if not spare_items:
+        return {}
+    _, recipes, recipe_ingredients, ingredients = load_shopping_inputs(start, end)
+    return {r["recipe_id"]: r["uses"] for r in recipes_using_spares(spare_items, recipes, recipe_ingredients, ingredients)}
+
+
 @meal_bp.route("/meal-plan")
 @login_required
 def meal_plan_view():
@@ -189,6 +200,7 @@ def meal_plan_view():
         editing_rule=editing_rule,
         tab=tab,
         summary=plan_summary(days, shown_types),
+        spare_uses=_spare_uses(start_str, end_str),
     )
 
 

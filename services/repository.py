@@ -4,6 +4,7 @@ from typing import Dict, List, Tuple
 
 from database import get_db, get_setting
 from models import convert_unit, units_compatible
+from services.spend_import import product_url
 
 
 def load_rules() -> List[Dict]:
@@ -62,3 +63,32 @@ def load_pantry_stock() -> Dict[int, Tuple[float, str]]:
 
 def shopping_preferences() -> Tuple[str, bool]:
     return get_setting("unit_preference", "metric"), get_setting("subtract_pantry_from_list", "0") == "1"
+
+
+def load_list_rows() -> List[Dict]:
+    """Shopping-list rows with the fields of their ingredient (ing_*), ticked items last."""
+    return [dict(r) for r in get_db().execute(
+        """SELECT s.*, i.url AS product_url, i.name AS ing_name, i.unit AS ing_unit,
+                  i.pack_size AS ing_pack_size, i.price AS ing_price
+           FROM shopping_list_items s
+           LEFT JOIN ingredients i ON i.id = s.ingredient_id
+           ORDER BY s.checked, s.category, s.ingredient_name"""
+    )]
+
+
+def load_linked_products() -> Dict[int, List[Dict]]:
+    """Purchased products linked to each ingredient, with the shelf price last paid and product link."""
+    products: Dict[int, List[Dict]] = {}
+    for r in get_db().execute(
+        """SELECT p.ingredient_id, p.product_name, p.unit_price, p.store, p.stockcode
+           FROM purchases p
+           WHERE p.ingredient_id IS NOT NULL AND p.unit_price IS NOT NULL
+             AND p.order_date = (SELECT MAX(x.order_date) FROM purchases x
+                                 WHERE x.product_name = p.product_name AND x.unit_price IS NOT NULL)
+           GROUP BY p.ingredient_id, p.product_name"""
+    ):
+        products.setdefault(r["ingredient_id"], []).append({
+            "product_name": r["product_name"], "unit_price": r["unit_price"],
+            "url": product_url(r["store"], r["stockcode"]),
+        })
+    return products

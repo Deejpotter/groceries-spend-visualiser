@@ -170,25 +170,118 @@ def packs_to_buy(quantity: float, unit: str, pack_size: Optional[float], pack_un
     return max(1, math.ceil(round(needed / pack_size, 6)))
 
 
-def pack_plan(quantity: float, unit: str, ingredient: Optional[Dict]) -> Optional[Dict]:
-    """How many packs of an ingredient cover a list line: {'count', 'size', 'unit', 'cost'} or None.
-
-    Uses the ingredient's pack_size when set, otherwise one parsed from its name.
-    'cost' prices the whole packs (what you pay at the till) when the ingredient has a price.
-    """
-    if not ingredient:
-        return None
-    pack_unit = ingredient.get("unit") or unit
-    size = ingredient.get("pack_size") or parse_pack_size(ingredient.get("name"), pack_unit)
-    count = packs_to_buy(quantity, unit, size, pack_unit)
-    if not count:
-        return None
-    price = ingredient.get("price")
-    cost = round(count * size * price, 2) if price else None
+def _display_size(size: float, unit: str) -> Tuple[float, str]:
+    """Show packs under 1 kg / 1 L in g / mL ('500 g', not '0.5 kg')."""
     small = {"kg": "g", "L": "mL"}
-    if pack_unit in small and size < 1:
-        size, pack_unit = round(convert_unit(size, pack_unit, small[pack_unit]), 2), small[pack_unit]
-    return {"count": count, "size": size, "unit": pack_unit, "cost": cost}
+    if unit in small and size < 1:
+        return round(convert_unit(size, unit, small[unit]), 2), small[unit]
+    return size, unit
+
+
+def pack_candidates(ingredient: Dict, products: List[Dict]) -> List[Dict]:
+    """Pack sizes you can buy for an ingredient, in the ingredient's unit.
+
+    The ingredient's own pack (pack_size or parsed from its name, priced per unit) comes
+    first; each linked purchased product adds its size (parsed from its name) at the
+    shelf price last paid. Products with no readable size are skipped.
+    """
+    unit = ingredient.get("unit")
+    candidates, seen = [], set()
+    own = ingredient.get("pack_size") or parse_pack_size(ingredient.get("name"), unit)
+    if own:
+        price = ingredient.get("price")
+        candidates.append({"name": ingredient.get("name"), "size": own, "unit": unit,
+                           "price": round(own * price, 2) if price else None, "url": ingredient.get("url")})
+        seen.add(ingredient.get("name"))
+    for product in products:
+        name = product.get("product_name")
+        size = parse_pack_size(name, unit)
+        if not size or name in seen:
+            continue
+        seen.add(name)
+        candidates.append({"name": name, "size": size, "unit": unit,
+                           "price": product.get("unit_price"), "url": product.get("url")})
+    return candidates
+
+
+def pack_options(quantity: float, unit: str, candidates: List[Dict]) -> List[Dict]:
+    """Every way to cover a need with one pack size, least spare first (cheaper wins a tie).
+
+    Each option: name, url, count, size/unit (display), cost, spare (in the candidate's unit).
+    """
+    options = []
+    for c in candidates:
+        count = packs_to_buy(quantity, unit, c["size"], c["unit"])
+        if not count:
+            continue
+        needed = convert_unit(quantity, unit, c["unit"])
+        spare = max(0.0, round(count * c["size"] - needed, 4))
+        size, size_unit = _display_size(c["size"], c["unit"])
+        options.append({
+            "name": c["name"], "url": c.get("url"), "count": count, "size": size, "unit": size_unit,
+            "cost": round(count * c["price"], 2) if c.get("price") else None,
+            "spare": spare, "spare_unit": c["unit"],
+        })
+    return sorted(options, key=lambda o: (o["spare"], o["cost"] if o["cost"] is not None else math.inf))
+
+
+def spares(lines: List[Dict]) -> List[Dict]:
+    """What's left over after buying the chosen packs: [{ingredient_id, name, quantity, unit}]."""
+    result = []
+    for line in lines:
+        best = (line.get("pack_choice") or {}).get("best")
+        if best and best["spare"] > 0 and line.get("ingredient_id"):
+            result.append({"ingredient_id": line["ingredient_id"], "name": line["ingredient_name"],
+                           "quantity": best["spare"], "unit": best["spare_unit"]})
+    return result
+
+
+def recipes_using_spares(spare_items: List[Dict], recipes: Dict[int, Dict],
+                         recipe_ingredients: Dict[int, List[Dict]], ingredients: Dict[int, Dict]) -> List[Dict]:
+    """Recipes that would use up spare ingredients, most spares used first.
+
+    Each result: {recipe_id, name, uses: [ingredient names]}. A recipe 'uses' a spare when it
+    needs that ingredient in a compatible unit and the spare covers at least half of it.
+    """
+    by_id = {s["ingredient_id"]: s for s in spare_items}
+    found = []
+    for recipe_id, links in recipe_ingredients.items():
+        uses = []
+        for link in links:
+            spare = by_id.get(link["ingredient_id"])
+            ingredient = ingredients.get(link["ingredient_id"]) or {}
+            need_unit = link.get("unit_override") or ingredient.get("unit")
+            if not spare or not need_unit or not units_compatible(need_unit, spare["unit"]):
+                continue
+            need = convert_unit(link["quantity"], need_unit, spare["unit"])
+            if need and spare["quantity"] >= need / 2:
+                uses.append(spare["name"])
+        if uses and recipe_id in recipes:
+            found.append({"recipe_id": recipe_id, "name": recipes[recipe_id]["name"], "uses": uses})
+    return sorted(found, key=lambda r: (-len(r["uses"]), r["name"]))
+
+
+def plan_list_lines(rows: List[Dict], products: Dict[int, List[Dict]]) -> List[Dict]:
+    """Attach the best pack choice and its cost to each shopping-list row.
+
+    Rows carry ingredient fields as ing_name / ing_unit / ing_pack_size / ing_price / product_url.
+    Adds 'pack_choice' ({'best', 'others'} or None) and 'line_cost' (whole packs, else exact cost).
+    """
+    lines = []
+    for row in rows:
+        line = dict(row)
+        choice = None
+        if line.get("ing_name"):
+            ingredient = {"name": line["ing_name"], "unit": line["ing_unit"], "pack_size": line.get("ing_pack_size"),
+                          "price": line.get("ing_price"), "url": line.get("product_url")}
+            options = pack_options(line["quantity"], line["unit"],
+                                   pack_candidates(ingredient, products.get(line.get("ingredient_id"), [])))
+            if options:
+                choice = {"best": options[0], "others": options[1:]}
+        line["pack_choice"] = choice
+        line["line_cost"] = (choice["best"]["cost"] if choice else None) or line.get("estimated_cost")
+        lines.append(line)
+    return lines
 
 
 def list_totals(items: List[Dict]) -> Dict[str, float]:

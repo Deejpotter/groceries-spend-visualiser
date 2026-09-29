@@ -362,3 +362,11 @@ a {
 .rule-what {
     margin: 0.2rem 0;
 }
+.text-warning-dark {
+    color: #b8860b;
+}
+.pack-others summary {
+    font-size: 0.78rem;
+    color: var(--brand-dark);
+    cursor: pointer;
+}

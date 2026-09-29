@@ -3,6 +3,11 @@
 
 {% block title %}Shopping List — Grocery Visualiser{% endblock %}
 
+{% macro pack_label(o) -%}
+{%- if o.unit == 'each' %}{{ o.count }} × {{ o.size|qty }}-pack
+{%- else %}{{ o.count }} × {{ o.size|amount(o.unit) }} pack{{ '' if o.count == 1 else 's' }}{% endif -%}
+{%- endmacro %}
+
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
     <h1 class="mb-2">Shopping List</h1>
@@ -52,6 +57,30 @@
 </div>
 {% endif %}
 
+{% if spare_items %}
+<div class="card mb-3 border-left-brand d-print-none">
+    <div class="card-header py-2"><strong><i class="fas fa-box-open"></i> Spare after this shop</strong>
+        <span class="text-muted small">— plan a meal to use it before the plan ends</span></div>
+    <div class="card-body py-2">
+        <ul class="list-inline mb-2">
+            {% for s in spare_items %}<li class="list-inline-item"><span class="badge badge-light border pack-badge">{{ s.quantity|amount(s.unit) }} {{ s.name }}</span></li>{% endfor %}
+        </ul>
+        {% if spare_recipes %}
+        <div class="small text-muted mb-1">Recipes that use them up:</div>
+        <ul class="mb-1">
+            {% for r in spare_recipes[:5] %}
+            <li><a href="{{ url_for('recipes.recipe_detail', recipe_id=r.recipe_id) }}">{{ r.name }}</a>
+                <span class="text-muted small">uses {{ r.uses|join(', ') }}</span></li>
+            {% endfor %}
+        </ul>
+        <a href="{{ url_for('meal_plan.meal_plan_view') }}" class="small">Add one to an open slot on the meal plan →</a>
+        {% else %}
+        <div class="small text-muted">None of your recipes use these yet.</div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
 {% if grouped %}
 <div class="shop-progress mb-3" data-total="{{ item_count }}">
     <div class="d-flex justify-content-between small text-muted mb-1">
@@ -78,13 +107,29 @@
             </form>
             <div class="flex-grow-1">
                 <span class="item-name">{{ item.quantity|amount(item.unit) }} {{ item.ingredient_name }}</span>
-                {% if item.packs %}<span class="badge badge-light border pack-badge" title="Packs to buy">
-                    {% if item.packs.unit == 'each' %}{{ item.packs.count }} × {{ item.packs.size|qty }}-pack
-                    {%- else %}{{ item.packs.count }} × {{ item.packs.size|amount(item.packs.unit) }} pack{{ '' if item.packs.count == 1 else 's' }}{% endif %}</span>{% endif %}
+                {% set choice = item.pack_choice %}
+                {% if choice %}<span class="badge badge-light border pack-badge" title="Packs to buy">{{ pack_label(choice.best) }}</span>{% endif %}
                 {% if item.is_manual %}<span class="badge badge-secondary">manual</span>{% endif %}
                 {% if item.product_url|http_url %}<a href="{{ item.product_url }}" target="_blank" rel="noopener noreferrer"
                    class="small ml-1 d-print-none" title="Open product page" aria-label="Open product page for {{ item.ingredient_name }}"><i class="fas fa-external-link-alt"></i></a>{% endif %}
                 {% if item.recipe_ref %}<div class="small text-muted">{{ item.recipe_ref }}</div>{% endif %}
+                {% if choice %}
+                <div class="small text-muted">
+                    {% if choice.best.spare > 0 %}<span class="text-warning-dark"><i class="fas fa-box-open"></i> {{ choice.best.spare|amount(choice.best.spare_unit) }} spare</span>{% else %}<span class="text-success"><i class="fas fa-check"></i> right size</span>{% endif %}
+                    {% if choice.best.name != item.ingredient_name %}· buy <em>{{ choice.best.name }}</em>{% endif %}
+                </div>
+                {% if choice.others %}
+                <details class="pack-others d-print-none">
+                    <summary>{{ choice.others|length }} other size{{ '' if choice.others|length == 1 else 's' }}</summary>
+                    <ul class="list-unstyled small mb-0">
+                        {% for o in choice.others %}
+                        <li>{{ pack_label(o) }} {{ o.name }} — {{ o.cost|money if o.cost else 'no price' }},
+                            {{ o.spare|amount(o.spare_unit) ~ ' spare' if o.spare > 0 else 'nothing spare' }}</li>
+                        {% endfor %}
+                    </ul>
+                </details>
+                {% endif %}
+                {% endif %}
             </div>
             {% if item.line_cost %}<span class="text-muted small mr-3 num">{{ item.line_cost|money }}</span>{% endif %}
             <div class="d-print-none">

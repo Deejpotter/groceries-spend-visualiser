@@ -254,3 +254,27 @@ def test_shopping_list_prices_whole_packs(client, db):
     page = client.get("/shopping-list").data
     assert b"1 \xc3\x97 1.5 kg pack" in page
     assert b"$3.00" in page and b"$0.60 for just what the recipes use" in page
+
+
+def test_spares_panel_and_better_linked_size(client, db):
+    """Spare stock is listed with recipes that use it; a linked product in a closer size is picked."""
+    from conftest import login
+    login(client)
+    carrots = db.execute("INSERT INTO ingredients (name, category, unit, price) VALUES ('Carrots 1.5kg', 'produce', 'kg', 2.0)").lastrowid
+    soup = db.execute("INSERT INTO recipes (name, servings) VALUES ('Carrot soup', 4)").lastrowid
+    db.execute("INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity) VALUES (?, ?, 1)", (soup, carrots))
+    db.execute("INSERT INTO shopping_list_items (ingredient_name, quantity, unit, category, ingredient_id, estimated_cost)"
+               " VALUES ('Carrots', 0.3, 'kg', 'produce', ?, 0.6)", (carrots,))
+    db.commit()
+    page = client.get("/shopping-list").data.decode()
+    assert "1.2 kg spare" in page and "Spare after this shop" in page and "Carrot soup" in page
+    db.execute("INSERT INTO settings (key, value) VALUES ('plan_start_date', '2026-10-05'), ('plan_end_date', '2026-10-06')")
+    db.commit()
+    assert "Carrot soup ♻ uses spare Carrots" in client.get("/meal-plan").data.decode()
+
+    db.execute("INSERT INTO purchases (order_date, basket_id, store, product_name, quantity, unit_price, line_total, ingredient_id)"
+               " VALUES ('2026-09-01', 'b1', 'Woolworths', 'Carrots Prepacked 500g', 1, 1.5, 1.5, ?)", (carrots,))
+    db.commit()
+    page = client.get("/shopping-list").data.decode()
+    assert "buy <em>Carrots Prepacked 500g</em>" in page and "0.2 kg spare" in page
+    assert "1 other size" in page

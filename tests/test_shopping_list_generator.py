@@ -10,7 +10,11 @@ from services.shopping_list_generator import (
     make_recipe_ingredient,
     list_totals,
     make_ingredient,
-    pack_plan,
+    pack_candidates,
+    pack_options,
+    plan_list_lines,
+    recipes_using_spares,
+    spares,
     packs_to_buy,
     parse_pack_size,
 )
@@ -388,22 +392,69 @@ def test_packs_to_buy():
     assert packs_to_buy(1, "kg", 0.5, "L") is None
 
 
-def test_pack_plan_prefers_explicit_pack_size_and_shows_small_packs_in_grams():
-    mince = {"name": "Pork & Beef Mince 500g", "unit": "kg", "pack_size": None}
-    assert pack_plan(3, "kg", mince) == {"count": 6, "size": 500, "unit": "g", "cost": None}
-    eggs = {"name": "6 Extra Large Eggs 350g", "unit": "each", "pack_size": 6}
-    assert pack_plan(12, "each", eggs) == {"count": 2, "size": 6, "unit": "each", "cost": None}
-    assert pack_plan(2, "each", {"name": "Onion Brown each", "unit": "each", "pack_size": None}) is None
-    assert pack_plan(1, "kg", None) is None
+def _best(quantity, unit, ingredient, products=()):
+    options = pack_options(quantity, unit, pack_candidates(ingredient, list(products)))
+    return options[0] if options else None
 
 
-def test_pack_plan_prices_whole_packs():
+def test_best_pack_prefers_explicit_pack_size_and_shows_small_packs_in_grams():
+    mince = {"name": "Pork & Beef Mince 500g", "unit": "kg", "pack_size": None, "price": None}
+    best = _best(3, "kg", mince)
+    assert (best["count"], best["size"], best["unit"], best["cost"], best["spare"]) == (6, 500, "g", None, 0)
+    eggs = {"name": "6 Extra Large Eggs 350g", "unit": "each", "pack_size": 6, "price": None}
+    assert (_best(12, "each", eggs)["count"], _best(12, "each", eggs)["size"]) == (2, 6)
+    assert _best(2, "each", {"name": "Onion Brown each", "unit": "each", "pack_size": None}) is None
+
+
+def test_best_pack_prices_whole_packs():
     carrots = {"name": "The Odd Bunch Carrots 1.5kg", "unit": "kg", "pack_size": None, "price": 1.87}
-    assert pack_plan(0.3, "kg", carrots)["cost"] == pytest.approx(2.81)  # one 1.5 kg bag, not 0.3 kg
-    mince = {"name": "Pork & Beef Mince 500g", "unit": "kg", "pack_size": None, "price": 12.5}
-    assert pack_plan(2, "kg", mince)["cost"] == pytest.approx(25.0)
+    best = _best(0.3, "kg", carrots)
+    assert best["cost"] == pytest.approx(2.81)  # one 1.5 kg bag, not 0.3 kg
+    assert best["spare"] == pytest.approx(1.2)
     eggs = {"name": "Eggs", "unit": "each", "pack_size": 6, "price": 0.82}
-    assert pack_plan(12, "each", eggs)["cost"] == pytest.approx(9.84)
+    assert _best(12, "each", eggs)["cost"] == pytest.approx(9.84)
+
+
+def test_pack_options_pick_the_size_with_least_spare_then_cheapest():
+    cheese = {"name": "Cheese Pizza Blend 225g", "unit": "kg", "pack_size": None, "price": 30.0, "url": "a"}
+    products = [
+        {"product_name": "Shredded Cheese 250g", "unit_price": 6.75, "url": "b"},
+        {"product_name": "Cheese Block 1kg", "unit_price": 20.0},
+        {"product_name": "Cheese Slices", "unit_price": 5.0},  # no size: skipped
+    ]
+    names = [o["name"] for o in pack_options(0.2, "kg", pack_candidates(cheese, products))]
+    assert names == ["Cheese Pizza Blend 225g", "Shredded Cheese 250g", "Cheese Block 1kg"]
+    # 0.45 kg: two 225 g packs leave nothing spare
+    best = pack_options(0.45, "kg", pack_candidates(cheese, products))[0]
+    assert (best["name"], best["count"], best["spare"]) == ("Cheese Pizza Blend 225g", 2, 0)
+    # equal spare -> cheaper wins
+    same = [{"name": "A 500g", "size": 0.5, "unit": "kg", "price": 5.0}, {"name": "B 500g", "size": 0.5, "unit": "kg", "price": 4.0}]
+    assert pack_options(0.5, "kg", same)[0]["name"] == "B 500g"
+
+
+def test_plan_list_lines_and_spares():
+    rows = [
+        {"ingredient_id": 9, "ingredient_name": "Carrots", "quantity": 0.3, "unit": "kg", "estimated_cost": 0.56,
+         "ing_name": "Carrots 1.5kg", "ing_unit": "kg", "ing_pack_size": None, "ing_price": 1.87, "product_url": None},
+        {"ingredient_id": None, "ingredient_name": "Foil", "quantity": 1, "unit": "each", "estimated_cost": None,
+         "ing_name": None, "is_manual": 1},
+    ]
+    lines = plan_list_lines(rows, {})
+    assert lines[0]["line_cost"] == pytest.approx(2.81) and lines[1]["pack_choice"] is None
+    assert spares(lines) == [{"ingredient_id": 9, "name": "Carrots", "quantity": pytest.approx(1.2), "unit": "kg"}]
+
+
+def test_recipes_using_spares():
+    spare = [{"ingredient_id": 9, "name": "Carrots", "quantity": 1.2, "unit": "kg"}]
+    recipes = {1: {"name": "Carrot soup"}, 2: {"name": "Stir fry"}, 3: {"name": "Toast"}}
+    links = {
+        1: [{"ingredient_id": 9, "quantity": 800, "unit_override": "g"}],  # needs 0.8 kg: covered
+        2: [{"ingredient_id": 9, "quantity": 5, "unit_override": None}],   # needs 5 kg: spare too small
+        3: [{"ingredient_id": 4, "quantity": 2, "unit_override": None}],
+    }
+    ingredients = {9: {"unit": "kg"}, 4: {"unit": "each"}}
+    assert recipes_using_spares(spare, recipes, links, ingredients) == [
+        {"recipe_id": 1, "name": "Carrot soup", "uses": ["Carrots"]}]
 
 
 def test_list_totals_uses_pack_cost_and_skips_manual_lines():

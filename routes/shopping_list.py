@@ -5,8 +5,12 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from auth import login_required
 from database import get_db, get_plan_dates
 from models import CATEGORY_LOOKUP, UNIT_LOOKUP, validate_date_format
-from services.repository import load_shopping_inputs, load_pantry_stock, shopping_preferences
-from services.shopping_list_generator import generate_shopping_list, list_totals, pack_plan
+from services.repository import (
+    load_linked_products, load_list_rows, load_pantry_stock, load_shopping_inputs, shopping_preferences,
+)
+from services.shopping_list_generator import (
+    generate_shopping_list, list_totals, plan_list_lines, recipes_using_spares, spares,
+)
 from services.spend_analysis import average_spend_per_shop
 
 shopping_bp = Blueprint("shopping_list", __name__)
@@ -33,28 +37,15 @@ def build_list(start, end):
 def shopping_list_view():
     db = get_db()
     start_str, end_str = get_plan_dates()
-    rows = db.execute(
-        """SELECT s.*, i.url AS product_url, i.name AS ing_name, i.unit AS ing_unit, i.pack_size AS ing_pack_size,
-                  i.price AS ing_price
-           FROM shopping_list_items s
-           LEFT JOIN ingredients i ON i.id = s.ingredient_id
-           ORDER BY s.checked, s.category, s.ingredient_name"""
-    ).fetchall()
-
-    grouped, items = {}, []
+    rows = plan_list_lines(load_list_rows(), load_linked_products())
+    grouped = {}
     for row in rows:
-        item = dict(row)
-        ingredient = None
-        if item["ing_name"]:
-            ingredient = {"name": item["ing_name"], "unit": item["ing_unit"],
-                          "pack_size": item["ing_pack_size"], "price": item["ing_price"]}
-        item["packs"] = pack_plan(item["quantity"], item["unit"], ingredient)
-        item["line_cost"] = (item["packs"] or {}).get("cost") or item["estimated_cost"]
-        items.append(item)
-        grouped.setdefault(item["category"] or "other", []).append(item)
+        grouped.setdefault(row["category"] or "other", []).append(row)
     ordered = {cat: grouped[cat] for cat in sorted(grouped, key=lambda c: CATEGORY_LOOKUP.get(c, c))}
 
-    totals = list_totals(items)
+    totals = list_totals(rows)
+    spare_items = spares(rows)
+    _, recipes, recipe_ingredients, ingredients = load_shopping_inputs(start_str, end_str)
     has_plan = bool(start_str and end_str and db.execute(
         "SELECT 1 FROM meal_plan_entries WHERE date BETWEEN ? AND ? LIMIT 1", (start_str, end_str)
     ).fetchone())
@@ -69,6 +60,8 @@ def shopping_list_view():
         plan_start=start_str,
         plan_end=end_str,
         totals=totals,
+        spare_items=spare_items,
+        spare_recipes=recipes_using_spares(spare_items, recipes, recipe_ingredients, ingredients),
         avg_shop_spend=average_spend_per_shop(db),
     )
 

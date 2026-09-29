@@ -7,7 +7,7 @@
 <select name="{{ name }}" class="form-control form-control-sm" required aria-label="Recipe">
     <option value="">Choose recipe…</option>
     {% for r in recipes %}
-    <option value="{{ r.id }}" {% if r.id == selected %}selected{% endif %}>{{ r.name }}</option>
+    <option value="{{ r.id }}" {% if r.id == selected %}selected{% endif %}>{{ r.name }}{% if spare_uses.get(r.id) %} ♻ uses spare {{ spare_uses[r.id]|join(', ') }}{% endif %}</option>
     {% endfor %}
 </select>
 {%- endmacro %}
