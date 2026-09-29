@@ -3,7 +3,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from database import get_db
 from auth import login_required
-from models import CATEGORY_LOOKUP, UNIT_LOOKUP, category_label
+from models import CATEGORY_LOOKUP, UNIT_LOOKUP, category_label, is_http_url
 
 ingredients_bp = Blueprint("ingredients", __name__)
 
@@ -43,6 +43,8 @@ def _read_form():
         errors.append("Category is required.")
     if values["unit"] not in UNIT_LOOKUP:
         errors.append("Choose a valid unit.")
+    if values["url"] and not is_http_url(values["url"]):
+        errors.append("Product link must start with http:// or https://.")
     if values["price"] is not None and values["price"] < 0:
         errors.append("Price can't be negative.")
     return values, errors

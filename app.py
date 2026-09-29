@@ -13,7 +13,7 @@ from database import init_db, get_db, close_db, get_plan_dates, get_database_pat
 from auth import login_user, logout_user, get_current_user, is_logged_in, login_required, hash_password, verify_password
 from models import (
     CATEGORIES, UNITS, MEAL_TYPES, DAYS_OF_WEEK,
-    CATEGORY_LOOKUP, DAY_LABELS, UNIT_LOOKUP, MEAL_TYPE_LABELS, category_label, parse_date,
+    CATEGORY_LOOKUP, DAY_LABELS, UNIT_LOOKUP, MEAL_TYPE_LABELS, category_label, is_http_url, parse_date,
 )
 from routes import register_all_routes
 
@@ -85,6 +85,11 @@ def create_app(testing=False):
     @application.template_filter("money")
     def format_money(value):
         return f"${value:,.2f}" if value is not None else "—"
+
+    @application.template_filter("http_url")
+    def filter_http_url(value):
+        """Only http(s) URLs are rendered as links."""
+        return value if is_http_url(value) else None
 
     @application.template_filter("nice_date")
     def format_nice_date(value):

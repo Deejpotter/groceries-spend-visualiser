@@ -77,7 +77,7 @@
     </div>
 
     <div class="col-md-4">
-        {% if recipe.source_url %}
+        {% if recipe.source_url|http_url %}
         <div class="card mb-3">
             <div class="card-header">Source</div>
             <div class="card-body">

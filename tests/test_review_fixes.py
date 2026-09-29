@@ -211,3 +211,21 @@ def test_today_uses_app_timezone(monkeypatch):
     assert models.today() == datetime.now(ZoneInfo("Pacific/Kiritimati")).date()
     monkeypatch.delenv("APP_TIMEZONE")
     assert models.today() == datetime.now(ZoneInfo("Australia/Sydney")).date()
+
+
+def test_ingredient_rejects_non_http_link(client, db):
+    """A javascript: product link is refused, so it can never render as a clickable href."""
+    from conftest import login
+    login(client)
+    resp = client.post("/ingredients/add", data={
+        "name": "Bad link", "category": "other", "unit": "each", "url": "javascript:alert(1)",
+    }, follow_redirects=True)
+    assert b"must start with http" in resp.data
+    assert db.execute("SELECT COUNT(*) FROM ingredients WHERE name = 'Bad link'").fetchone()[0] == 0
+
+
+def test_http_url_filter(app):
+    f = app.jinja_env.filters["http_url"]
+    assert f("https://www.woolworths.com.au/shop/productdetails/1") == "https://www.woolworths.com.au/shop/productdetails/1"
+    assert f("javascript:alert(1)") is None
+    assert f(None) is None

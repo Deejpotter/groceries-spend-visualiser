@@ -8,6 +8,11 @@ from zoneinfo import ZoneInfo
 DEFAULT_TIMEZONE = "Australia/Sydney"
 
 
+def is_http_url(value) -> bool:
+    """True for absolute http(s) URLs; blocks javascript: and other schemes in links."""
+    return isinstance(value, str) and value.lower().startswith(("http://", "https://"))
+
+
 def today() -> date:
     """Today's date in the household's timezone (APP_TIMEZONE), not the server's UTC clock."""
     return datetime.now(ZoneInfo(os.getenv("APP_TIMEZONE") or DEFAULT_TIMEZONE)).date()

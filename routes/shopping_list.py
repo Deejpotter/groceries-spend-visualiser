@@ -34,7 +34,9 @@ def shopping_list_view():
     db = get_db()
     start_str, end_str = get_plan_dates()
     rows = db.execute(
-        "SELECT * FROM shopping_list_items ORDER BY checked, category, ingredient_name"
+        """SELECT s.*, i.url AS product_url FROM shopping_list_items s
+           LEFT JOIN ingredients i ON i.id = s.ingredient_id
+           ORDER BY s.checked, s.category, s.ingredient_name"""
     ).fetchall()
 
     grouped = {}
