@@ -193,3 +193,10 @@ def test_nice_date_filter(app):
     assert f("2026-09-30") == "Wed 30 Sep 2026"
     assert f("not-a-date") == "not-a-date"
     assert f("") == ""
+
+
+def test_static_urls_are_cache_busted(app):
+    """Static URLs carry a version so a deploy's new CSS/JS isn't hidden by browser caches."""
+    with app.test_request_context():
+        from flask import url_for
+        assert "?v=" in url_for("static", filename="css/style.css")

@@ -47,6 +47,14 @@ def create_app(testing=False):
     register_all_routes(application)
     application.teardown_appcontext(close_db)
 
+    @application.url_defaults
+    def static_cache_bust(endpoint, values):
+        """Append ?v=<mtime> to static URLs so deploys aren't masked by cached CSS/JS."""
+        if endpoint == "static" and "filename" in values:
+            path = os.path.join(application.static_folder, values["filename"])
+            if os.path.isfile(path):
+                values["v"] = int(os.stat(path).st_mtime)
+
     @application.template_filter("qty")
     def format_quantity(value):
         """Show 500 not 500.0, and at most 2 decimal places."""
