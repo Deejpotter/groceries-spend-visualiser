@@ -380,9 +380,9 @@ class TestMealRules:
     """Test meal rule management routes."""
 
     def test_meal_rule_list_page_loads(self, client):
-        """Authenticated user can view meal rules."""
+        """Authenticated user can view meal rules on the meal plan page."""
         _login(client, "ruleuser", "test123")
-        resp = client.get("/meal-rules")
+        resp = client.get("/meal-plan")
         assert resp.status_code == 200
         assert b"Meal Rules" in resp.data
 

@@ -14,15 +14,20 @@ from models import MEAL_TYPES, parse_date, date_range, get_day_key, is_weekday
 # ---------------------------------------------------------------------------
 
 def rule_matches_day(rule_day_of_week: str, date: datetime) -> bool:
-    """Check if a rule's day_of_week matches the given date."""
+    """Check if a rule's day_of_week matches the given date.
+
+    Supports comma-separated days (e.g. 'mon,wed,fri') and the special
+    values 'all', 'weekday', 'weekend', and single day codes.
+    """
     day_key = get_day_key(date)
-    if rule_day_of_week == "all":
+    days = {d.strip() for d in rule_day_of_week.split(",") if d.strip()}
+    if "all" in days:
         return True
-    if rule_day_of_week == "weekday":
-        return is_weekday(date)
-    if rule_day_of_week == "weekend":
-        return not is_weekday(date)
-    return rule_day_of_week == day_key
+    if "weekday" in days and is_weekday(date):
+        return True
+    if "weekend" in days and not is_weekday(date):
+        return True
+    return day_key in days
 
 
 def parse_tags(tags: Optional[str]) -> List[str]:

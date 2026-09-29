@@ -31,7 +31,7 @@ def test_inactive_rules_are_listed(client, db):
     login(client)
     db.execute("INSERT INTO meal_rules (day_of_week, meal_type, tag_filter, is_active) VALUES ('mon', 'lunch', 'paused-tag', 0)")
     db.commit()
-    assert b"paused-tag" in client.get("/meal-rules").data
+    assert b"paused-tag" in client.get("/meal-plan").data
 
 
 def test_pantry_item_is_saved(client, db):

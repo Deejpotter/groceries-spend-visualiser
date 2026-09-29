@@ -33,7 +33,7 @@
 <div class="alert alert-info">
     <strong>Plan period:</strong> {{ plan_start }} to {{ plan_end }}
     &middot; <a href="{{ url_for('settings.settings') }}">Change dates</a>
-    &middot; <a href="{{ url_for('meal_plan.meal_rule_list') }}">Edit rules</a>
+    &middot; <a href="#rules-section">Edit rules</a>
 </div>
 {% else %}
 <div class="alert alert-warning">
@@ -106,4 +106,206 @@
 <div class="alert alert-secondary">You don't have any recipes yet. <a href="{{ url_for('recipes.recipe_form') }}">Add a recipe</a> to start planning.</div>
 {% endif %}
 {% endif %}
+
+<hr class="my-4" id="rules-section">
+<h2 class="mb-3">Meal Rules</h2>
+
+<details class="mb-3" {% if not rules %}open{% endif %}>
+    <summary class="text-muted" style="cursor:pointer">How rules work</summary>
+    <div class="card mt-2">
+        <div class="card-body">
+            <p class="text-muted mb-2">
+                Rules tell the app which recipes to pick for each meal slot.
+                Rules are evaluated in order — higher priority rules (lower sort order) are tried first.
+                A rule matches a day and meal type, then picks a recipe with matching tags (or any recipe if no tags specified).
+                Manual overrides are respected — generated entries are not overwritten.
+            </p>
+            <h6>Examples</h6>
+            <ul class="text-muted mb-0">
+                <li><strong>Weekday dinner → tag "standard"</strong> — Two-night recipes like roast chicken, stir fry</li>
+                <li><strong>Friday dinner → tag "friday-special"</strong> — Treat meals, single night</li>
+                <li><strong>Saturday & Sunday breakfast → tag "breakfast"</strong> — Weekend breakfast options</li>
+            </ul>
+        </div>
+    </div>
+</details>
+
+{% if rules %}
+<div class="table-responsive">
+<table class="table table-striped table-hover">
+    <thead class="thead-dark">
+        <tr>
+            <th>Priority</th>
+            <th>Day</th>
+            <th>Meal</th>
+            <th>Tag Filter</th>
+            <th>Servings</th>
+            <th>Active</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for rule in rules %}
+        <tr class="{{ '' if rule.is_active else 'text-muted' }}">
+            <td>{{ rule.sort_order }}</td>
+            <td>{% for d in rule.day_of_week.split(',') %}<span class="badge badge-primary mr-1">{{ day_labels.get(d.strip(), d.strip()) }}</span>{% endfor %}</td>
+            <td>{{ meal_type_labels.get(rule.meal_type, rule.meal_type) }}</td>
+            <td>
+                {% if rule.tag_filter %}
+                    <span class="badge badge-secondary">{{ rule.tag_filter }}</span>
+                {% else %}
+                    <span class="text-muted">Any recipe</span>
+                {% endif %}
+            </td>
+            <td>
+                {% if rule.servings_override %}
+                    {{ rule.servings_override }}
+                {% else %}
+                    <span class="text-muted">Recipe default</span>
+                {% endif %}
+            </td>
+            <td>
+                <span class="badge {% if rule.is_active %}badge-success{% else %}badge-secondary{% endif %}">
+                    {% if rule.is_active %}Active{% else %}Inactive{% endif %}
+                </span>
+            </td>
+            <td>
+                <a href="{{ url_for('meal_plan.meal_plan_view', edit=rule.id) }}#rules-section" class="btn btn-sm btn-outline-secondary">Edit</a>
+                {{ post_button(url_for('meal_plan.meal_rule_delete', rule_id=rule.id), 'Delete', confirm='Delete this rule?') }}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% else %}
+<div class="alert alert-info">No rules configured yet. Add rules below to enable automatic meal plan generation.</div>
+{% endif %}
+
+<div class="card mt-3" id="rule-form">
+    <div class="card-header">
+        <h5 class="mb-0">{{ 'Edit Rule' if editing_rule else 'Add Rule' }}</h5>
+    </div>
+    <div class="card-body">
+        <form method="post" action="{{ url_for('meal_plan.meal_rule_form', rule_id=editing_rule.id) if editing_rule else url_for('meal_plan.meal_rule_form') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label>When?</label>
+                        <div class="mb-2">
+                            <div class="btn-group btn-group-sm mr-2" role="group" aria-label="Quick select">
+                                <button type="button" class="btn btn-outline-info" onclick="setDays('weekday')">Weekday</button>
+                                <button type="button" class="btn btn-outline-info" onclick="setDays('weekend')">Weekend</button>
+                                <button type="button" class="btn btn-outline-info" onclick="setDays('all')">All</button>
+                            </div>
+                        </div>
+                        <div class="btn-group-toggle" data-toggle="buttons">
+                            {% set editing_days = editing_rule.day_of_week.split(',') if editing_rule else [] %}
+                            {% for code in ['mon','tue','wed','thu','fri','sat','sun'] %}
+                            <label class="btn btn-outline-primary day-toggle {% if code in editing_days or (editing_rule and editing_rule.day_of_week in ['weekday','weekend','all']) %}active{% endif %}" style="min-width:3.2rem">
+                                <input type="checkbox" name="day_toggle" value="{{ code }}" autocomplete="off"
+                                       {% if code in editing_days %}checked{% endif %}
+                                       {% if editing_rule and editing_rule.day_of_week == 'weekday' and code in ['mon','tue','wed','thu','fri'] %}checked{% endif %}
+                                       {% if editing_rule and editing_rule.day_of_week == 'weekend' and code in ['sat','sun'] %}checked{% endif %}
+                                       {% if editing_rule and editing_rule.day_of_week == 'all' %}checked{% endif %}> {{ code|upper }}
+                            </label>
+                            {% endfor %}
+                        </div>
+                        <input type="hidden" name="day_of_week" id="day_of_week" value="{{ editing_rule.day_of_week if editing_rule else '' }}" required>
+                        <small class="text-muted d-block mt-1">Pick individual days, or use quick select above.</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="meal_type">Meal Type</label>
+                        <select class="form-control" id="meal_type" name="meal_type" required>
+                            <option value="">Select meal type...</option>
+                            {% for mt in meal_types %}
+                            <option value="{{ mt }}" {% if editing_rule and editing_rule.meal_type == mt %}selected{% endif %}>{{ meal_type_labels.get(mt, mt) }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="tag_filter">Recipe Tags (optional)</label>
+                        <input type="text" class="form-control" id="tag_filter" name="tag_filter"
+                               value="{{ editing_rule.tag_filter if editing_rule else '' }}"
+                               placeholder="e.g. standard, dinner, breakfast">
+                        <small class="text-muted">Leave empty to pick any recipe. Separate multiple tags with commas.</small>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label for="servings_override">Servings Override (optional)</label>
+                        <input type="number" class="form-control" id="servings_override" name="servings_override"
+                               min="1" value="{{ editing_rule.servings_override if editing_rule and editing_rule.servings_override else '' }}"
+                               placeholder="Leave blank for recipe default">
+                        <small class="text-muted">Override the recipe's default servings for this rule.</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="sort_order">Priority</label>
+                        <input type="number" class="form-control" id="sort_order" name="sort_order"
+                               value="{{ editing_rule.sort_order if editing_rule and editing_rule.sort_order is not none else '' }}"
+                               placeholder="Leave blank to add at the end">
+                        <small class="text-muted">Lower numbers are tried first when several rules match the same meal.</small>
+                    </div>
+                    <div class="form-group">
+                        <div class="custom-control custom-checkbox">
+                            <input type="checkbox" class="custom-control-input" id="is_active"
+                                   name="is_active" {% if not editing_rule or editing_rule.is_active %}checked{% endif %}>
+                            <label class="custom-control-label" for="is_active">Rule is active</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="text-right">
+                {% if editing_rule %}
+                <a href="{{ url_for('meal_plan.meal_plan_view') }}#rules-section" class="btn btn-secondary">Cancel</a>
+                {% endif %}
+                <button type="submit" class="btn btn-primary">
+                    {{ 'Update Rule' if editing_rule else 'Add Rule' }}
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const WEEKDAY = ['mon','tue','wed','thu','fri'];
+const WEEKEND = ['sat','sun'];
+const ALL_DAYS = WEEKDAY.concat(WEEKEND);
+
+function setDays(preset) {
+    const days = preset === 'weekday' ? WEEKDAY : preset === 'weekend' ? WEEKEND : ALL_DAYS;
+    document.querySelectorAll('.day-toggle').forEach(function(label) {
+        const input = label.querySelector('input');
+        const shouldCheck = days.indexOf(input.value) !== -1;
+        input.checked = shouldCheck;
+        label.classList.toggle('active', shouldCheck);
+    });
+    syncDays();
+}
+
+function syncDays() {
+    var checked = [];
+    document.querySelectorAll('.day-toggle input:checked').forEach(function(inp) {
+        checked.push(inp.value);
+    });
+    document.getElementById('day_of_week').value = checked.join(',');
+}
+
+document.querySelectorAll('.day-toggle input').forEach(function(inp) {
+    inp.addEventListener('change', syncDays);
+});
+
+document.getElementById('rule-form').querySelector('form').addEventListener('submit', function() {
+    syncDays();
+    if (!document.getElementById('day_of_week').value) {
+        alert('Please select at least one day.');
+        event.preventDefault();
+    }
+});
+
+syncDays();
+</script>
 {% endblock %}
