@@ -73,3 +73,10 @@ def test_state_changes_reject_get(client, db):
     for path in ("/recipes/delete/1", "/ingredients/delete/1", "/meal-plan/generate",
                  "/shopping-list/toggle/1", "/pantry/delete/1", "/meal-rules/delete/1"):
         assert client.get(path).status_code == 405, path
+
+
+def test_staging_banner_only_when_app_env_set(client, monkeypatch):
+    login(client)
+    assert b"env-banner" not in client.get("/").data
+    monkeypatch.setenv("APP_ENV", "staging")
+    assert b"STAGING" in client.get("/").data

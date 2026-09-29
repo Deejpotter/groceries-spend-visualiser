@@ -97,12 +97,26 @@ are already there.
 | `DATABASE_PATH` | `./data/groceries.db` (`/app/data/groceries.db` in Docker) | SQLite file location. |
 | `PORT` | `5000` | Listen port. |
 | `GUNICORN_WORKERS` | `2` | Worker processes (keep low: SQLite allows one writer at a time). |
+| `APP_ENV` | — | Set to `staging` to show the staging banner. Leave unset in production. |
 
 **Deploying** (Coolify, Render, any Docker host): build the `Dockerfile`, set the env vars,
 and mount a persistent volume at `/app/data`. `GET /health` returns `{"status": "ok"}` for
 health checks.
 
 ---
+
+## Branches and environments
+
+| Branch | Deploys to | Purpose |
+|--------|-----------|---------|
+| `dev`  | Staging (Coolify, `APP_ENV=staging`) | Day-to-day work. Push or merge here; staging auto-deploys. |
+| `main` | Production (Coolify) | Only updated by a PR from `dev` once staging looks good. |
+
+CI (`.github/workflows/ci.yml`) runs the tests and a Docker build + `/health` check on every push
+and PR to `dev` and `main`. Staging shows a yellow banner so it can't be mistaken for the live site,
+and uses its own database volume and `SECRET_KEY`.
+
+Release: open a PR `dev → main` (`gh pr create --base main --head dev`), wait for CI, merge.
 
 ## Development
 

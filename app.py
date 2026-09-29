@@ -89,6 +89,7 @@ def create_app(testing=False):
             "category_label": category_label,
             "unit_label": lambda u: UNIT_LOOKUP.get(u, u),
             "meal_type_label": lambda mt: MEAL_TYPE_LABELS.get(mt, mt),
+            "app_env": os.getenv("APP_ENV", "").strip().lower(),
         }
 
     @application.route("/health")

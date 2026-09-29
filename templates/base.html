@@ -9,6 +9,9 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
+{% if app_env and app_env != 'production' %}
+<div class="env-banner text-center small py-1 d-print-none">{{ app_env|upper }} — test data only, changes here don't affect the live site</div>
+{% endif %}
 {% set nav_items = [
     ('dashboard', 'Dashboard', ['dashboard']),
     ('ingredients.ingredient_list', 'Ingredients', ['ingredients.']),
