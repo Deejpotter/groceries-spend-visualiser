@@ -161,5 +161,7 @@ cython_debug/
 
 # Local
 myenv/
-data/*.db
-static/uploads/
+
+
+invoices/
+data/

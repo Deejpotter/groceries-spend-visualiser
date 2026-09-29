@@ -38,11 +38,11 @@ def price_per_unit(cup_price: Optional[str], unit_price: Optional[float], target
         price, amount, cup_unit = parsed
         if units_compatible(cup_unit, target_unit):
             one_target_in_cup_units = convert_unit(1, target_unit, cup_unit)
-            return round(price / amount * one_target_in_cup_units, 4)
+            return round(price / amount * one_target_in_cup_units, 6)
         if cup_unit == "each" and target_unit == "each":
-            return round(price / amount, 4)
+            return round(price / amount, 6)
     if unit_price is not None and not units_compatible(target_unit, "kg") and not units_compatible(target_unit, "L"):
-        return round(unit_price, 4)
+        return round(unit_price, 6)
     return None
 
 

@@ -4,85 +4,7 @@ These tests exercise the actual routes: login, add ingredient, add recipe,
 create rules, set dates, generate plan, view shopping list.
 """
 
-import pytest
-import os
-import tempfile
-from werkzeug.security import generate_password_hash
-
-
-def _create_user(client, username, password):
-    from database import get_db
-    with client.application.app_context():
-        db = get_db()
-        db.execute(
-            "INSERT OR IGNORE INTO users (username, password_hash) VALUES (?, ?)",
-            (username, generate_password_hash(password)),
-        )
-        db.commit()
-
-
-def _login(client, username, password):
-    """Helper to create a user and log them in."""
-    from database import get_db
-    with client.application.app_context():
-        db = get_db()
-        existing = db.execute(
-            "SELECT id FROM users WHERE username = ?", (username,),
-        ).fetchone()
-        if not existing:
-            db.execute(
-                "INSERT INTO users (username, password_hash) VALUES (?, ?)",
-                (username, generate_password_hash(password)),
-            )
-            db.commit()
-    client.post("/login", data={
-        "username": username,
-        "password": password,
-    }, follow_redirects=True)
-
-
-# Ensure app module can be imported
-os.environ.setdefault("FLASK_ENV", "testing")
-
-
-@pytest.fixture
-def app():
-    """Create a Flask app with a temporary SQLite database."""
-    db_fd, db_path = tempfile.mkstemp(suffix=".db")
-    os.close(db_fd)
-
-    # Set DATABASE_PATH BEFORE importing database module
-    os.environ["DATABASE_PATH"] = db_path
-    os.environ["SECRET_KEY"] = "test-secret-key-for-pytest"
-
-    # Re-import to pick up the env var
-    import importlib
-    import database
-    importlib.reload(database)
-
-    from app import create_app
-    application = create_app(testing=True)
-
-    with application.app_context():
-        database.init_db()
-
-    yield application
-
-    os.unlink(db_path)
-
-
-@pytest.fixture
-def client(app):
-    """Flask test client."""
-    return app.test_client()
-
-
-@pytest.fixture
-def db(app):
-    """Database connection for direct SQL assertions."""
-    from database import get_db
-    with app.app_context():
-        yield get_db()
+from conftest import create_user as _create_user, login as _login
 
 
 # ============================================================================
@@ -960,7 +882,7 @@ class TestShoppingList:
         resp = client.get("/shopping-list")
         assert resp.status_code == 200
         assert b"Minced Beef" in resp.data
-        assert b"2500" in resp.data  # 5 days * 500g
+        assert b"2.5 kg Minced Beef" in resp.data  # 5 days * 500 g, shown in kg
 
     def test_shopping_list_toggle_check(self, client, db):
         """POST /shopping-list/toggle/<id> toggles the checked flag."""

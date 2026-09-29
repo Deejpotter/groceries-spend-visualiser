@@ -65,7 +65,7 @@
                        aria-label="Mark {{ item.ingredient_name }} as bought">
             </form>
             <div class="flex-grow-1">
-                <span class="item-name">{{ item.quantity|qty }}{{ ' ' ~ (item.unit|replace('_', ' ')) if item.unit != 'each' }} {{ item.ingredient_name }}</span>
+                <span class="item-name">{{ item.quantity|amount(item.unit) }} {{ item.ingredient_name }}</span>
                 {% if item.is_manual %}<span class="badge badge-secondary">manual</span>{% endif %}
                 {% if item.recipe_ref %}<div class="small text-muted">{{ item.recipe_ref }}</div>{% endif %}
             </div>

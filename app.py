@@ -50,6 +50,15 @@ def create_app(testing=False):
         value = round(float(value), 2)
         return str(int(value)) if value == int(value) else f"{value:g}"
 
+    @application.template_filter("amount")
+    def format_amount(quantity, unit):
+        """'1500', 'g' -> '1.5 kg'; hides the unit for plain counts ('each')."""
+        big = {"g": "kg", "mL": "L"}
+        if unit in big and quantity and quantity >= 1000:
+            quantity, unit = quantity / 1000, big[unit]
+        text = format_quantity(quantity)
+        return text if unit == "each" else f"{text} {unit.replace('_', ' ')}"
+
     @application.template_filter("money")
     def format_money(value):
         return f"${value:,.2f}" if value is not None else "—"

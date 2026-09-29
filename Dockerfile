@@ -2,8 +2,6 @@
 
 FROM python:3.11-slim
 
-ARG TARGETPLATFORM
-
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         curl \
@@ -22,7 +20,7 @@ RUN mkdir -p /app/data /app/static/uploads && \
     chown -R appuser:appuser /app/data /app/static/uploads
 
 ENV FLASK_APP=app.py
-ENV FLASK_ENV=production
+ENV DATABASE_PATH=/app/data/groceries.db
 ENV PYTHONUNBUFFERED=1
 ENV PORT=5000
 
