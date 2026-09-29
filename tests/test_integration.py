@@ -957,6 +957,11 @@ class TestShoppingList:
         ).fetchone()
         assert toggled["checked"] == 0
 
+        # JSON toggle (used by the in-page checkbox) returns the new state instead of redirecting
+        resp = client.post(f"/shopping-list/toggle/{item_id}", headers={"Accept": "application/json"})
+        assert resp.status_code == 200
+        assert resp.get_json() == {"checked": True}
+
     def test_shopping_list_delete_item(self, client, db):
         """POST /shopping-list/delete/<id> removes a persistent item."""
         _login(client, "sluser", "test123")

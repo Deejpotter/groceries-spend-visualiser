@@ -31,7 +31,7 @@
 
 {% if plan_start and plan_end %}
 <div class="alert alert-info">
-    <strong>Plan period:</strong> {{ plan_start }} to {{ plan_end }}
+    <strong>Plan period:</strong> {{ plan_start|nice_date }} to {{ plan_end|nice_date }}
     &middot; <a href="{{ url_for('settings.settings') }}">Change dates</a>
     &middot; <a href="#rules-section">Edit rules</a>
 </div>
@@ -55,8 +55,8 @@
     </thead>
     <tbody>
     {% for day in days %}
-        <tr>
-            <th scope="row" class="text-nowrap">{{ day.label }}</th>
+        <tr class="{{ 'today-row' if day.is_today }}"{% if day.is_today %} aria-current="date"{% endif %}>
+            <th scope="row" class="text-nowrap">{{ day.label }}{% if day.is_today %} <span class="badge badge-primary">Today</span>{% endif %}</th>
             {% for mt in shown_types %}
             {% set entry = day.meals[mt] %}
             <td class="meal-slot">

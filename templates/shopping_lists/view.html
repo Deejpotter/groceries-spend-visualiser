@@ -20,7 +20,7 @@
 </div>
 
 {% if plan_start and plan_end %}
-<p class="text-muted">Plan period {{ plan_start }} to {{ plan_end }}.
+<p class="text-muted">Plan period {{ plan_start|nice_date }} to {{ plan_end|nice_date }}.
     {% if has_plan and not has_generated %}Click <strong>Generate from Plan</strong> to build the list from your meal plan.{% endif %}
     {% if not has_plan %}<a href="{{ url_for('meal_plan.meal_plan_view') }}">Generate a meal plan</a> first.{% endif %}
 </p>
@@ -34,7 +34,7 @@
     <div class="col-sm-6 mb-2">
         <div class="card"><div class="card-body py-2">
             <div class="text-muted small">Estimated cost (priced ingredients)</div>
-            <div class="h4 mb-0">${{ "%.2f"|format(cost_estimate) }}</div>
+            <div class="h4 mb-0">{{ cost_estimate|money }}</div>
         </div></div>
     </div>
     {% endif %}
@@ -42,7 +42,7 @@
     <div class="col-sm-6 mb-2">
         <div class="card"><div class="card-body py-2">
             <div class="text-muted small">Your average shop (from <a href="{{ url_for('spend.spend_dashboard') }}">spend history</a>)</div>
-            <div class="h4 mb-0">${{ "%.2f"|format(avg_shop_spend) }}</div>
+            <div class="h4 mb-0">{{ avg_shop_spend|money }}</div>
         </div></div>
     </div>
     {% endif %}
@@ -50,7 +50,16 @@
 {% endif %}
 
 {% if grouped %}
-<p class="small text-muted">{{ checked_count }} of {{ item_count }} items ticked.</p>
+<div class="shop-progress mb-3" data-total="{{ item_count }}">
+    <div class="d-flex justify-content-between small text-muted mb-1">
+        <span><span class="js-checked-count">{{ checked_count }}</span> of {{ item_count }} items ticked</span>
+        <span class="js-checked-pct">{{ (100 * checked_count / item_count)|round|int if item_count else 0 }}%</span>
+    </div>
+    <div class="progress" style="height: 6px">
+        <div class="progress-bar bg-success" role="progressbar" style="width: {{ (100 * checked_count / item_count) if item_count else 0 }}%"
+             aria-valuenow="{{ checked_count }}" aria-valuemin="0" aria-valuemax="{{ item_count }}" aria-label="Items ticked"></div>
+    </div>
+</div>
 {% for category, items in grouped.items() %}
 <div class="card mb-3">
     <div class="card-header py-2"><strong>{{ category_label(category) }}</strong>
@@ -59,9 +68,9 @@
     <ul class="list-group list-group-flush">
         {% for item in items %}
         <li class="list-group-item d-flex align-items-center py-2 {{ 'list-group-item-light checked-item' if item.checked }}">
-            <form method="post" action="{{ url_for('shopping_list.shopping_list_toggle', item_id=item.id) }}" class="mr-3">
+            <form method="post" action="{{ url_for('shopping_list.shopping_list_toggle', item_id=item.id) }}" class="mr-3 js-toggle-form">
                 {{ csrf() }}
-                <input type="checkbox" class="big-check" onchange="this.form.submit()" {% if item.checked %}checked{% endif %}
+                <input type="checkbox" class="big-check" {% if item.checked %}checked{% endif %}
                        aria-label="Mark {{ item.ingredient_name }} as bought">
             </form>
             <div class="flex-grow-1">
@@ -69,7 +78,7 @@
                 {% if item.is_manual %}<span class="badge badge-secondary">manual</span>{% endif %}
                 {% if item.recipe_ref %}<div class="small text-muted">{{ item.recipe_ref }}</div>{% endif %}
             </div>
-            {% if item.estimated_cost %}<span class="text-muted small mr-3">${{ "%.2f"|format(item.estimated_cost) }}</span>{% endif %}
+            {% if item.estimated_cost %}<span class="text-muted small mr-3 num">{{ item.estimated_cost|money }}</span>{% endif %}
             <div class="d-print-none">
             {{ post_button(url_for('shopping_list.shopping_list_delete', item_id=item.id), '', class='btn btn-sm btn-link text-danger',
                            icon='times', title='Remove item') }}

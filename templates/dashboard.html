@@ -6,6 +6,23 @@
 <h1>Dashboard</h1>
 <p class="text-muted">Welcome, {{ current_user }}.</p>
 
+{% if not (ingredient_count and recipe_count and rule_count) %}
+<div class="card mb-4 border-left-brand">
+    <div class="card-header"><strong>Getting started</strong></div>
+    <div class="card-body">
+        <ol class="mb-0">
+            <li class="{{ 'text-muted' if ingredient_count }}"><a href="{{ url_for('ingredients.ingredient_add') }}">Add ingredients</a> with prices and units
+                (or <a href="{{ url_for('spend.spend_products') }}">create them from your purchase history</a>)</li>
+            <li class="{{ 'text-muted' if recipe_count }}"><a href="{{ url_for('recipes.recipe_form') }}">Add recipes</a> and link their ingredients</li>
+            <li class="{{ 'text-muted' if plan_start }}"><a href="{{ url_for('settings.settings') }}">Set your plan dates</a></li>
+            <li class="{{ 'text-muted' if rule_count }}"><a href="{{ url_for('meal_plan.meal_rule_form') }}">Add meal rules</a> so the plan can fill itself</li>
+            <li>Generate the <a href="{{ url_for('meal_plan.meal_plan_view') }}">meal plan</a>, then the <a href="{{ url_for('shopping_list.shopping_list_view') }}">shopping list</a></li>
+        </ol>
+    </div>
+</div>
+{% endif %}
+
+
 <div class="row mb-2">
     {% for count, label, endpoint, action in [
         (ingredient_count, 'Ingredients', 'ingredients.ingredient_list', 'Manage'),
@@ -31,7 +48,7 @@
             <div class="card-header"><strong>Current plan</strong></div>
             <div class="card-body">
                 {% if plan_start and plan_end %}
-                <p>{{ plan_start }} to {{ plan_end }}</p>
+                <p>{{ plan_start|nice_date }} to {{ plan_end|nice_date }}</p>
                 <a href="{{ url_for('meal_plan.meal_plan_view') }}" class="btn btn-primary btn-sm">Meal plan</a>
                 <a href="{{ url_for('shopping_list.shopping_list_view') }}" class="btn btn-success btn-sm">Shopping list</a>
                 {% else %}
@@ -59,19 +76,4 @@
     </div>
 </div>
 
-{% if not (ingredient_count and recipe_count and rule_count) %}
-<div class="card">
-    <div class="card-header"><strong>Getting started</strong></div>
-    <div class="card-body">
-        <ol class="mb-0">
-            <li class="{{ 'text-muted' if ingredient_count }}"><a href="{{ url_for('ingredients.ingredient_add') }}">Add ingredients</a> with prices and units
-                (or <a href="{{ url_for('spend.spend_products') }}">create them from your purchase history</a>)</li>
-            <li class="{{ 'text-muted' if recipe_count }}"><a href="{{ url_for('recipes.recipe_form') }}">Add recipes</a> and link their ingredients</li>
-            <li class="{{ 'text-muted' if plan_start }}"><a href="{{ url_for('settings.settings') }}">Set your plan dates</a></li>
-            <li class="{{ 'text-muted' if rule_count }}"><a href="{{ url_for('meal_plan.meal_rule_form') }}">Add meal rules</a> so the plan can fill itself</li>
-            <li>Generate the <a href="{{ url_for('meal_plan.meal_plan_view') }}">meal plan</a>, then the <a href="{{ url_for('shopping_list.shopping_list_view') }}">shopping list</a></li>
-        </ol>
-    </div>
-</div>
-{% endif %}
 {% endblock %}

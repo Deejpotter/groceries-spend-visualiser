@@ -1,6 +1,6 @@
 """Routes for shopping list generation and management."""
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 
 from auth import login_required
 from database import get_db, get_plan_dates
@@ -105,6 +105,9 @@ def shopping_list_toggle(item_id):
     db = get_db()
     db.execute("UPDATE shopping_list_items SET checked = 1 - checked WHERE id = ?", (item_id,))
     db.commit()
+    if request.accept_mimetypes.best == "application/json":
+        row = db.execute("SELECT checked FROM shopping_list_items WHERE id = ?", (item_id,)).fetchone()
+        return jsonify({"checked": bool(row and row["checked"])})
     return _back()
 
 

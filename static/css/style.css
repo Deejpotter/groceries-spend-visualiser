@@ -1,5 +1,14 @@
 /* Custom styles for Grocery Visualiser */
 
+:root {
+    --brand: #4f6df5;
+    --brand-dark: #3a57d8;
+}
+
+.bg-brand {
+    background-color: var(--brand) !important;
+}
+
 body {
     background-color: #f8f9fa;
     min-height: 100vh;
@@ -23,9 +32,6 @@ footer {
     border-radius: 8px;
 }
 
-.card:hover {
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-}
 
 /* Recipe cards */
 .card-img-top {
@@ -48,19 +54,19 @@ footer {
 
 /* Buttons */
 .btn-primary {
-    background-color: #4f6df5;
-    border-color: #4f6df5;
+    background-color: var(--brand);
+    border-color: var(--brand);
 }
 
 .btn-primary:hover {
-    background-color: #3a57d8;
-    border-color: #3a57d8;
+    background-color: var(--brand-dark);
+    border-color: var(--brand-dark);
 }
 
 /* Custom checkbox for two-night toggle */
 .custom-checkbox .custom-control-input:checked ~ .custom-control-label::before {
-    background-color: #4f6df5;
-    border-color: #4f6df5;
+    background-color: var(--brand);
+    border-color: var(--brand);
 }
 
 /* Recipe form - ingredient rows */
@@ -80,7 +86,7 @@ footer {
 }
 
 .tag-suggestion:hover {
-    background-color: #4f6df5;
+    background-color: var(--brand);
     color: #fff;
 }
 
@@ -137,9 +143,15 @@ main.container {
 
 /* Shopping list */
 .big-check {
-    width: 1.3rem;
-    height: 1.3rem;
+    width: 1.5rem;
+    height: 1.5rem;
     cursor: pointer;
+}
+.meal-grid tr.today-row > * {
+    background-color: #eef1ff;
+}
+.progress-bar {
+    transition: width 0.2s ease;
 }
 .checked-item .item-name {
     text-decoration: line-through;
@@ -161,7 +173,7 @@ main.container {
 }
 /* Focus styles for keyboard accessibility */
 *:focus-visible {
-    outline: 2px solid #4f6df5;
+    outline: 2px solid var(--brand);
     outline-offset: 2px;
 }
 
@@ -170,4 +182,19 @@ main.container {
     background: #ffc107;
     color: #212529;
     font-weight: 600;
+}
+
+.btn-outline-primary {
+    color: var(--brand);
+    border-color: var(--brand);
+}
+.btn-outline-primary:hover {
+    background-color: var(--brand);
+    border-color: var(--brand);
+}
+a {
+    color: var(--brand-dark);
+}
+.border-left-brand {
+    border-left: 4px solid var(--brand) !important;
 }

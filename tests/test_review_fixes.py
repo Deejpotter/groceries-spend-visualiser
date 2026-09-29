@@ -185,3 +185,11 @@ def test_bad_quantity_rows_rejected(qty):
     rows, errors = parse_purchase_csv(f"date,product_name,quantity,unit_price\n2026-09-01,Eggs,{qty},6\n")
     assert rows == []
     assert "quantity must be a positive number" in errors[0]
+
+
+def test_nice_date_filter(app):
+    """Plan dates render as 'Wed 30 Sep 2026'; bad input passes through."""
+    f = app.jinja_env.filters["nice_date"]
+    assert f("2026-09-30") == "Wed 30 Sep 2026"
+    assert f("not-a-date") == "not-a-date"
+    assert f("") == ""

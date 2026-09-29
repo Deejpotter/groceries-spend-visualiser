@@ -13,7 +13,7 @@ from database import init_db, get_db, close_db, get_plan_dates, get_database_pat
 from auth import login_user, logout_user, get_current_user, is_logged_in, login_required, hash_password, verify_password
 from models import (
     CATEGORIES, UNITS, MEAL_TYPES, DAYS_OF_WEEK,
-    CATEGORY_LOOKUP, DAY_LABELS, UNIT_LOOKUP, MEAL_TYPE_LABELS, category_label,
+    CATEGORY_LOOKUP, DAY_LABELS, UNIT_LOOKUP, MEAL_TYPE_LABELS, category_label, parse_date,
 )
 from routes import register_all_routes
 
@@ -77,6 +77,12 @@ def create_app(testing=False):
     @application.template_filter("money")
     def format_money(value):
         return f"${value:,.2f}" if value is not None else "—"
+
+    @application.template_filter("nice_date")
+    def format_nice_date(value):
+        """'2026-09-30' -> 'Wed 30 Sep 2026'; unparseable values pass through."""
+        parsed = parse_date(value) if value else None
+        return parsed.strftime("%a %d %b %Y") if parsed else (value or "")
 
     @application.context_processor
     def inject_common():

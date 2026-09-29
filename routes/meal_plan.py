@@ -1,7 +1,7 @@
 """Routes for meal rules and meal plan generation."""
 
 import random
-from datetime import timedelta
+from datetime import date, timedelta
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 
@@ -137,11 +137,13 @@ def _build_days(start, end, entries):
     """One row per date in the plan with a slot for each meal type."""
     by_slot = {(e["date"], e["meal_type"]): e for e in entries}
     days = []
+    today = date.today()
     for day in date_range(start, end):
         key = day.strftime("%Y-%m-%d")
         days.append({
             "date": key,
             "label": f"{DAY_LABELS[day.strftime('%a').lower()]} {day.strftime('%d %b')}",
+            "is_today": day.date() == today,
             "meals": {mt: by_slot.get((key, mt)) for mt in MEAL_TYPES},
         })
     return days

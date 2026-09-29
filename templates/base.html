@@ -23,7 +23,7 @@
     ('pantry.pantry_list', 'Pantry', ['pantry.']),
     ('spend.spend_dashboard', 'Spend', ['spend.']),
 ] %}
-<nav class="navbar navbar-expand-lg navbar-dark bg-primary d-print-none">
+<nav class="navbar navbar-expand-lg navbar-dark bg-brand d-print-none">
     <div class="container">
         <a class="navbar-brand" href="{{ url_for('dashboard') }}"><span class="icon">🛒</span> Grocery Visualiser</a>
         {% if current_user %}
