@@ -276,5 +276,5 @@ def test_spares_panel_and_better_linked_size(client, db):
                " VALUES ('2026-09-01', 'b1', 'Woolworths', 'Carrots Prepacked 500g', 1, 1.5, 1.5, ?)", (carrots,))
     db.commit()
     page = client.get("/shopping-list").data.decode()
-    assert "buy <em>Carrots Prepacked 500g</em>" in page and "0.2 kg spare" in page
+    assert "buy <em>Carrots Prepacked 500g</em>" in page and "200 g spare" in page
     assert "1 other size" in page

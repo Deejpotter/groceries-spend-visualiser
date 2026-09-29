@@ -441,7 +441,13 @@ def test_plan_list_lines_and_spares():
     ]
     lines = plan_list_lines(rows, {})
     assert lines[0]["line_cost"] == pytest.approx(2.81) and lines[1]["pack_choice"] is None
-    assert spares(lines) == [{"ingredient_id": 9, "name": "Carrots", "quantity": pytest.approx(1.2), "unit": "kg"}]
+    assert spares(lines) == [{"ingredient_id": 9, "name": "Carrots", "quantity": pytest.approx(1.2), "unit": "kg",
+                              "shown": pytest.approx(1.2), "shown_unit": "kg"}]
+    # 25 g left of a 225 g pack is under 20% of a pack: not worth planning a meal around
+    cheese = [{"ingredient_id": 5, "ingredient_name": "Cheese", "quantity": 0.2, "unit": "kg", "estimated_cost": None,
+               "ing_name": "Cheese 225g", "ing_unit": "kg", "ing_pack_size": None, "ing_price": None}]
+    lined = plan_list_lines(cheese, {})
+    assert lined[0]["pack_choice"]["best"]["spare_shown"] == pytest.approx(25) and spares(lined) == []
 
 
 def test_recipes_using_spares():

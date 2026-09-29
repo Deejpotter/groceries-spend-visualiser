@@ -217,22 +217,28 @@ def pack_options(quantity: float, unit: str, candidates: List[Dict]) -> List[Dic
         needed = convert_unit(quantity, unit, c["unit"])
         spare = max(0.0, round(count * c["size"] - needed, 4))
         size, size_unit = _display_size(c["size"], c["unit"])
+        spare_shown, spare_shown_unit = _display_size(spare, c["unit"])
         options.append({
             "name": c["name"], "url": c.get("url"), "count": count, "size": size, "unit": size_unit,
             "cost": round(count * c["price"], 2) if c.get("price") else None,
-            "spare": spare, "spare_unit": c["unit"],
+            "spare": spare, "spare_unit": c["unit"], "pack_size": c["size"],
+            "spare_shown": spare_shown, "spare_shown_unit": spare_shown_unit,
         })
     return sorted(options, key=lambda o: (o["spare"], o["cost"] if o["cost"] is not None else math.inf))
 
 
-def spares(lines: List[Dict]) -> List[Dict]:
-    """What's left over after buying the chosen packs: [{ingredient_id, name, quantity, unit}]."""
+def spares(lines: List[Dict], min_share: float = 0.2) -> List[Dict]:
+    """Leftovers worth planning a meal around: [{ingredient_id, name, quantity, unit, shown, shown_unit}].
+
+    Spares smaller than `min_share` of a pack (a few grams of cheese) are left out.
+    """
     result = []
     for line in lines:
         best = (line.get("pack_choice") or {}).get("best")
-        if best and best["spare"] > 0 and line.get("ingredient_id"):
+        if best and best["spare"] >= best["pack_size"] * min_share and line.get("ingredient_id"):
             result.append({"ingredient_id": line["ingredient_id"], "name": line["ingredient_name"],
-                           "quantity": best["spare"], "unit": best["spare_unit"]})
+                           "quantity": best["spare"], "unit": best["spare_unit"],
+                           "shown": best["spare_shown"], "shown_unit": best["spare_shown_unit"]})
     return result
 
 

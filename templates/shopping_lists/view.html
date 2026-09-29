@@ -63,7 +63,7 @@
         <span class="text-muted small">— plan a meal to use it before the plan ends</span></div>
     <div class="card-body py-2">
         <ul class="list-inline mb-2">
-            {% for s in spare_items %}<li class="list-inline-item"><span class="badge badge-light border pack-badge">{{ s.quantity|amount(s.unit) }} {{ s.name }}</span></li>{% endfor %}
+            {% for s in spare_items %}<li class="list-inline-item"><span class="badge badge-light border pack-badge">{{ s.shown|amount(s.shown_unit) }} {{ s.name }}</span></li>{% endfor %}
         </ul>
         {% if spare_recipes %}
         <div class="small text-muted mb-1">Recipes that use them up:</div>
@@ -115,7 +115,7 @@
                 {% if item.recipe_ref %}<div class="small text-muted">{{ item.recipe_ref }}</div>{% endif %}
                 {% if choice %}
                 <div class="small text-muted">
-                    {% if choice.best.spare > 0 %}<span class="text-warning-dark"><i class="fas fa-box-open"></i> {{ choice.best.spare|amount(choice.best.spare_unit) }} spare</span>{% else %}<span class="text-success"><i class="fas fa-check"></i> right size</span>{% endif %}
+                    {% if choice.best.spare > 0 %}<span class="text-warning-dark"><i class="fas fa-box-open"></i> {{ choice.best.spare_shown|amount(choice.best.spare_shown_unit) }} spare</span>{% else %}<span class="text-success"><i class="fas fa-check"></i> right size</span>{% endif %}
                     {% if choice.best.name != item.ingredient_name %}· buy <em>{{ choice.best.name }}</em>{% endif %}
                 </div>
                 {% if choice.others %}
@@ -124,7 +124,7 @@
                     <ul class="list-unstyled small mb-0">
                         {% for o in choice.others %}
                         <li>{{ pack_label(o) }} {{ o.name }} — {{ o.cost|money if o.cost else 'no price' }},
-                            {{ o.spare|amount(o.spare_unit) ~ ' spare' if o.spare > 0 else 'nothing spare' }}</li>
+                            {{ o.spare_shown|amount(o.spare_shown_unit) ~ ' spare' if o.spare > 0 else 'nothing spare' }}</li>
                         {% endfor %}
                     </ul>
                 </details>
