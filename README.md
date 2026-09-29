@@ -99,9 +99,63 @@ are already there.
 | `GUNICORN_WORKERS` | `2` | Worker processes (keep low: SQLite allows one writer at a time). |
 | `APP_ENV` | — | Set to `staging` to show the staging banner. Leave unset in production. |
 
-**Deploying** (Coolify, Render, any Docker host): build the `Dockerfile`, set the env vars,
-and mount a persistent volume at `/app/data`. `GET /health` returns `{"status": "ok"}` for
-health checks.
+---
+
+## Data persistence (important)
+
+Everything — your admin account, recipes, meal plans, imported purchases — lives in one
+SQLite file at **`/app/data/groceries.db`** (inside the container). If that directory is
+not a **persistent volume**, every deploy creates a brand-new empty database and your data
+is silently gone. The app can't prevent this from inside the container, so make sure the
+volume is mounted.
+
+`docker-compose.yml` already mounts a named volume (`grocery-data:/app/data`), so
+`docker compose up` is safe out of the box. **Coolify does not read `docker-compose.yml`
+unless you tell it to** — check which mode your service uses:
+
+| Coolify buildpack | How to persist |
+|---|---|
+| **Docker Compose** | Nothing to do — the volume is in `docker-compose.yml`. |
+| **Dockerfile** | Services → your app → **Storage**, then add a persistent mount: host path (or Coolify volume) → **`/app/data`**. Deploy again. |
+
+Do the same on **both** the `dev` (staging) and `main` (production) services — they need
+their own separate volumes and their own `SECRET_KEY`.
+
+### Check that it worked
+
+After any deploy, look at the container logs:
+
+- `Created a NEW empty database at ...` → **the volume isn't mounted.** Fix it before entering any data.
+- No such line → the existing database was picked up.
+
+Or ask the app directly (inside the container, or locally with the venv active):
+
+```bash
+flask --app app db-status      # path, file size, row counts per table
+flask --app app backup-db      # timestamped copy, safe to run while the app is live
+```
+
+`db-status` is the quickest way to confirm your admin account and data survived a deploy.
+
+### Also set `SECRET_KEY`
+
+A missing `SECRET_KEY` means a fresh random key on every restart, so everyone is logged out
+on each deploy. That is not data loss — your rows are still there — but it feels like it.
+Set `SECRET_KEY` in the environment to keep sessions stable.
+
+### Backups
+
+`flask --app app backup-db` writes `groceries-backup-<timestamp>.db` next to the live
+database using SQLite's online backup API, so it is safe to run while the app is serving.
+Take one before a risky migration or a major upgrade.
+
+---
+
+## Deploying
+
+Build the `Dockerfile`, set the env vars above, mount a persistent volume at `/app/data`
+(see [Data persistence](#data-persistence-important)), and use `GET /health` — it returns
+`{"status": "ok"}` — as the health check. `docker-compose.yml` is a working reference.
 
 ---
 

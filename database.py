@@ -2,6 +2,8 @@
 
 import os
 import sqlite3
+from datetime import datetime
+
 from flask import g
 
 DEFAULT_DATABASE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "groceries.db")
@@ -186,16 +188,67 @@ def _apply_migrations(db):
     _migrate_purchase_identity(db)
 
 
-def init_db():
-    """Create the schema (idempotent) and apply column migrations."""
-    parent = os.path.dirname(get_database_path())
+def init_db() -> bool:
+    """Create the schema (idempotent) and apply column migrations.
+
+    Returns True if the database file already existed, False when a brand-new
+    file was created (usually a missing volume mount in Docker).
+    """
+    path = get_database_path()
+    parent = os.path.dirname(path)
     if parent:
         os.makedirs(parent, exist_ok=True)
+    existed = os.path.exists(path)
     db = _connect()
     db.executescript(SCHEMA)
     _apply_migrations(db)
     db.commit()
     db.close()
+    return existed
+
+
+# Tables reported by database_stats(), in a stable order.
+COUNTED_TABLES = (
+    "users", "ingredients", "recipes", "recipe_ingredients", "meal_rules",
+    "meal_plan_entries", "shopping_list_items", "pantry_items", "purchases",
+)
+
+
+def database_stats() -> dict:
+    """Where the database lives and how much is in it, for status checks."""
+    path = get_database_path()
+    stats = {"path": path, "exists": os.path.exists(path), "size_bytes": 0, "counts": {}}
+    if not stats["exists"]:
+        return stats
+    stats["size_bytes"] = os.path.getsize(path)
+    db = _connect()
+    try:
+        for table in COUNTED_TABLES:
+            stats["counts"][table] = db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+    finally:
+        db.close()
+    return stats
+
+
+def backup_database(dest_dir: str = None) -> str:
+    """Copy the database to a timestamped file next to it (safe while in use).
+
+    Uses SQLite's online backup API so a running app can be backed up safely.
+    Returns the path of the new backup file.
+    """
+    path = get_database_path()
+    dest_dir = dest_dir or os.path.dirname(path) or "."
+    os.makedirs(dest_dir, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    dest = os.path.join(dest_dir, f"groceries-backup-{stamp}.db")
+    src = sqlite3.connect(path)
+    dst = sqlite3.connect(dest)
+    try:
+        src.backup(dst)
+    finally:
+        src.close()
+        dst.close()
+    return dest
 
 
 # ---------------------------------------------------------------------------

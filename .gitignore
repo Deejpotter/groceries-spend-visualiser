@@ -119,8 +119,10 @@ celerybeat.pid
 # SageMath parsed files
 *.sage.py
 
-# Environments
+# Environments (never commit real keys — .env.staging / .env.production hold secrets)
 .env
+.env.*
+!.env.example
 .venv
 env/
 venv/

@@ -120,6 +120,20 @@ Import a Woolworths order-history CSV → `purchases` table (de-duplicated by `U
 
 Dockerfile uses `python:3.11-slim`, installs deps with `--no-cache-dir`, creates a non-root `appuser`, sets up data directories, and runs Gunicorn. `docker-compose.yml` uses a named volume (`grocery-data`) for persistent data so the non-root user can write the DB.
 
+### Data persistence
+
+The entire application state is one SQLite file at `/app/data/groceries.db`. It only survives a deploy if that directory is a **persistent volume** — otherwise each deployment ships a fresh container, `init_db()` creates an empty schema, and all data is silently lost.
+
+`docker-compose.yml` mounts `grocery-data:/app/data`. Coolify reads that file only when the service uses the *Docker Compose* buildpack; the *Dockerfile* buildpack requires a Storage mount on `/app/data` configured per service in the Coolify UI. Staging and production must use separate volumes and separate `SECRET_KEY` values.
+
+Because silent loss is the failure mode, `init_db()` reports whether the database file pre-existed and `app.py` logs a warning when it creates a new one. Two CLI commands support operations:
+
+| Command | Purpose |
+|---|---|
+| `flask --app app db-status` | Path, file size, row counts per table — verify data survived a deploy. |
+| `flask --app app backup-db` | Timestamped copy via SQLite's online backup API; safe to run while serving. |
+| `flask --app app init-db` | Idempotent schema create/upgrade (also runs on app start). |
+
 ### Environment Variables
 
 | Variable | Default | Description |
@@ -138,7 +152,7 @@ pip install -r requirements.txt -r requirements-dev.txt
 python -m pytest
 ```
 
-176 tests across 7 files. Each test gets an isolated temp database. Service modules are unit-tested with dict factories; routes are tested through Flask's test client.
+181 tests across 8 files. Each test gets an isolated temp database. Service modules are unit-tested with dict factories; routes are tested through Flask's test client.
 
 | Test File | Coverage |
 |---|---|
@@ -149,3 +163,4 @@ python -m pytest
 | `test_security.py` | Setup lockout, open redirect, CSRF, POST-only enforcement |
 | `test_review_fixes.py` | Regression tests for PR #1 review findings |
 | `test_regressions.py` | Specific bugs from the refactor |
+| `test_persistence.py` | Fresh-database detection, online backups, database stats |

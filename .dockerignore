@@ -26,15 +26,18 @@ myenv/
 *.swo
 *~
 
-# Environment files
+# Environment files (never bake secrets into the image)
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
 # Database (persisted in volume, not in image)
 *.db
 *.sqlite
 *.sqlite3
+
+# Personal data (local only — never ship in the image)
+invoices/
 
 # Uploads (persisted in volume, not in image)
 static/uploads/

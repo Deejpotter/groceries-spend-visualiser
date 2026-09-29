@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
 from flask_wtf.csrf import CSRFProtect
 
-from database import init_db, get_db, close_db, get_plan_dates
+from database import init_db, get_db, close_db, get_plan_dates, get_database_path, backup_database, database_stats
 from auth import login_user, logout_user, get_current_user, is_logged_in, login_required, hash_password, verify_password
 from models import (
     CATEGORIES, UNITS, MEAL_TYPES, DAYS_OF_WEEK,
@@ -38,7 +38,12 @@ def create_app(testing=False):
     application.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 
     csrf.init_app(application)
-    init_db()
+    if not init_db():
+        log.warning(
+            "Created a NEW empty database at %s. If you expected existing data, "
+            "/app/data is probably not a persistent volume mount — see the README.",
+            get_database_path(),
+        )
     register_all_routes(application)
     application.teardown_appcontext(close_db)
 
@@ -191,6 +196,25 @@ def create_app(testing=False):
         """Create or upgrade the database schema."""
         init_db()
         print("Database initialised.")
+
+    @application.cli.command("backup-db")
+    def backup_db_command():
+        """Copy the database to a timestamped backup file (safe while the app runs)."""
+        dest = backup_database()
+        print(f"Backup written to {dest}")
+
+    @application.cli.command("db-status")
+    def db_status_command():
+        """Show where the database lives and how much is in it."""
+        stats = database_stats()
+        print(f"Path: {stats['path']}")
+        if not stats["exists"]:
+            print("Status: MISSING (no database file)")
+            return
+        print(f"Size: {stats['size_bytes']:,} bytes")
+        print(f"{'table':24} rows")
+        for table, count in stats["counts"].items():
+            print(f"{table:24} {count}")
 
     return application
 
