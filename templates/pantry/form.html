@@ -29,7 +29,7 @@
                         <div class="form-group col-md-4">
                             <label for="quantity">Quantity <span class="text-danger">*</span></label>
                             <input type="number" class="form-control" id="quantity" name="quantity"
-                                   step="0.01" min="0" value="{{ item.quantity if item else '' }}" required>
+                                   step="any" min="0" value="{{ item.quantity if item else '' }}" required>
                         </div>
                         <div class="form-group col-md-4">
                             <label for="unit">Unit</label>

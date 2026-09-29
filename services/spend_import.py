@@ -76,7 +76,7 @@ def parse_purchase_csv(text: str, store: str = "Woolworths") -> Tuple[List[Dict]
         need = sorted(missing | ({"unit_price or line_total"} if not ({"unit_price", "line_total"} & columns) else set()))
         return [], [f"CSV is missing required column(s): {', '.join(need)}"]
 
-    rows, errors = [], []
+    rows, errors, unpriced = [], [], 0
     for line_no, raw in enumerate(reader, start=2):
         r = {(k or "").strip().lower(): (v or "").strip() for k, v in raw.items()}
         order_date = _date(r.get("date"))
@@ -86,8 +86,12 @@ def parse_purchase_csv(text: str, store: str = "Woolworths") -> Tuple[List[Dict]
         line_total = _num(r.get("line_total"))
         if line_total is None and unit_price is not None:
             line_total = round(qty * unit_price, 2)
-        if not order_date or not name or line_total is None:
-            errors.append(f"Line {line_no}: skipped (needs a valid date, product name and price).")
+        if not order_date or not name:
+            errors.append(f"Line {line_no}: skipped (needs a valid date and product name).")
+            continue
+        if line_total is None:
+            # Woolworths exports unavailable/unsupplied items with a "null" price.
+            unpriced += 1
             continue
         rows.append({
             "order_date": order_date,
@@ -101,6 +105,8 @@ def parse_purchase_csv(text: str, store: str = "Woolworths") -> Tuple[List[Dict]
             "cup_price": r.get("cup_price") or None,
             "stockcode": r.get("stockcode") or None,
         })
+    if unpriced:
+        errors.append(f"{unpriced} line(s) had no price (usually items that weren't supplied) and were skipped.")
     return rows, errors
 
 

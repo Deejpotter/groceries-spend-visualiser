@@ -52,7 +52,7 @@
             <td><strong>{{ ing.name }}</strong></td>
             <td>{{ category_lookup.get(ing.category, ing.category) }}</td>
             <td>{{ unit_label(ing.unit) }}</td>
-            <td>{% if ing.price %}${{ "%.2f"|format(ing.price) }}{% else %}—{% endif %}</td>
+            <td>{% if ing.price %}{{ ing.price|unit_price }}/{{ ing.unit|replace('_', ' ') }}{% else %}—{% endif %}</td>
             <td>{{ ing.store or '—' }}</td>
             <td>{{ ing.minimum_stock or 0 }}</td>
             <td>

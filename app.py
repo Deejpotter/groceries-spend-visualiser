@@ -59,6 +59,16 @@ def create_app(testing=False):
         text = format_quantity(quantity)
         return text if unit == "each" else f"{text} {unit.replace('_', ' ')}"
 
+    @application.template_filter("unit_price")
+    def format_unit_price(value):
+        """Prices per gram/mL are tiny: show up to 4 decimals, but always at least 2."""
+        if value is None:
+            return "—"
+        text = f"{value:,.4f}".rstrip("0")
+        if len(text.split(".")[1]) < 2:
+            text = f"{value:,.2f}"
+        return f"${text}"
+
     @application.template_filter("money")
     def format_money(value):
         return f"${value:,.2f}" if value is not None else "—"

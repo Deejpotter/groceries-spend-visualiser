@@ -26,10 +26,10 @@
 
                 <div class="row text-muted mb-3">
                     <div class="col-md-3">
-                        <strong>Prep:</strong> {{ recipe.prep_time or '—' }} min
+                        <strong>Prep:</strong> {{ recipe.prep_time ~ ' min' if recipe.prep_time else '—' }}
                     </div>
                     <div class="col-md-3">
-                        <strong>Cook:</strong> {{ recipe.cook_time or '—' }} min
+                        <strong>Cook:</strong> {{ recipe.cook_time ~ ' min' if recipe.cook_time else '—' }}
                     </div>
                     <div class="col-md-3">
                         <strong>Serves:</strong> {{ recipe.servings }}
@@ -59,10 +59,7 @@
                 <ul class="list-group list-group-flush">
                     {% for ri in recipe.recipe_ingredients %}
                     <li class="list-group-item d-flex justify-content-between align-items-center">
-                        <span>{{ ri.quantity }} {{ ri.unit_display }} {{ ri.ingredient_name }}</span>
-                        {% if ri.unit_override %}
-                        <small class="text-muted">({{ ri.unit_override }})</small>
-                        {% endif %}
+                        <span>{{ ri.quantity|amount(ri.unit_display) }} {{ ri.ingredient_name }}</span>
                     </li>
                     {% endfor %}
                 </ul>

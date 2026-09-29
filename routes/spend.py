@@ -65,8 +65,8 @@ def spend_import():
             return redirect(url_for("spend.spend_import"))
         added, skipped = import_purchases(get_db(), rows)
         flash(f"Imported {added} purchase lines ({skipped} already imported).", "success")
-        if errors:
-            flash(f"{len(errors)} line(s) were skipped. First problem: {errors[0]}", "warning")
+        for err in errors[:3]:
+            flash(err, "warning")
         return redirect(url_for("spend.spend_dashboard", range="all"))
     return render_template("spend/import.html")
 
@@ -172,6 +172,6 @@ def register_spend_routes(app):
     def import_purchases_command(path, store):
         """Import a purchase-history CSV (e.g. data/woolworths_order_history.csv)."""
         added, skipped, errors = import_csv_file(get_db(), path, store)
-        click.echo(f"Imported {added} lines, {skipped} already present, {len(errors)} skipped.")
+        click.echo(f"Imported {added} lines ({skipped} already present).")
         for err in errors[:10]:
             click.echo(f"  {err}")

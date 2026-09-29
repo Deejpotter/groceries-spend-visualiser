@@ -55,12 +55,14 @@ def test_parse_purchase_csv():
 
 
 def test_parse_purchase_csv_minimal_columns_and_bad_rows():
-    text = "date,product_name,quantity,line_total\n01/09/2026,Eggs,1,6.5\nnot-a-date,Bread,1,3\n"
+    text = "date,product_name,quantity,line_total\n01/09/2026,Eggs,1,6.5\nnot-a-date,Bread,1,3\n2026-09-01,Gone,1,null\n"
     rows, errors = parse_purchase_csv(text, store="Aldi")
     assert len(rows) == 1
     assert rows[0]["order_date"] == "2026-09-01"
     assert rows[0]["basket_id"] == "Aldi-2026-09-01"
-    assert len(errors) == 1 and "Line 3" in errors[0]
+    assert len(errors) == 2
+    assert "Line 3" in errors[0]
+    assert errors[1].startswith("1 line(s) had no price")
 
 
 def test_parse_purchase_csv_missing_columns():

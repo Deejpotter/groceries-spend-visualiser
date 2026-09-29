@@ -38,7 +38,7 @@
                         <div class="form-group col-md-4">
                             <label for="price">Price per Unit ($)</label>
                             <input type="number" class="form-control" id="price" name="price"
-                                   step="0.01" min="0"
+                                   step="any" min="0"
                                    value="{{ ingredient.price if ingredient else '' }}">
                         </div>
                     </div>
@@ -47,7 +47,7 @@
                         <div class="form-group col-md-6">
                             <label for="minimum_stock">Minimum Stock Level</label>
                             <input type="number" class="form-control" id="minimum_stock" name="minimum_stock"
-                                   step="0.01" min="0"
+                                   step="any" min="0"
                                    value="{{ ingredient.minimum_stock if ingredient else '' }}">
                         </div>
                         <div class="form-group col-md-6">
