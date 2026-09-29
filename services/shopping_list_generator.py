@@ -171,9 +171,10 @@ def packs_to_buy(quantity: float, unit: str, pack_size: Optional[float], pack_un
 
 
 def pack_plan(quantity: float, unit: str, ingredient: Optional[Dict]) -> Optional[Dict]:
-    """How many packs of an ingredient cover a list line: {'count', 'size', 'unit'} or None.
+    """How many packs of an ingredient cover a list line: {'count', 'size', 'unit', 'cost'} or None.
 
     Uses the ingredient's pack_size when set, otherwise one parsed from its name.
+    'cost' prices the whole packs (what you pay at the till) when the ingredient has a price.
     """
     if not ingredient:
         return None
@@ -182,10 +183,24 @@ def pack_plan(quantity: float, unit: str, ingredient: Optional[Dict]) -> Optiona
     count = packs_to_buy(quantity, unit, size, pack_unit)
     if not count:
         return None
+    price = ingredient.get("price")
+    cost = round(count * size * price, 2) if price else None
     small = {"kg": "g", "L": "mL"}
     if pack_unit in small and size < 1:
         size, pack_unit = round(convert_unit(size, pack_unit, small[pack_unit]), 2), small[pack_unit]
-    return {"count": count, "size": size, "unit": pack_unit}
+    return {"count": count, "size": size, "unit": pack_unit, "cost": cost}
+
+
+def list_totals(items: List[Dict]) -> Dict[str, float]:
+    """Totals for list lines carrying 'line_cost' (whole packs) and 'estimated_cost' (exact amount).
+
+    Manual lines are left out, as they have no price.
+    """
+    priced = [i for i in items if not i.get("is_manual")]
+    return {
+        "packs_total": round(sum(i.get("line_cost") or 0 for i in priced), 2),
+        "exact_total": round(sum(i.get("estimated_cost") or 0 for i in priced), 2),
+    }
 
 
 def total_cost(grouped: Dict[str, List[Dict]]) -> float:

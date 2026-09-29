@@ -241,3 +241,16 @@ def test_meal_plan_week_and_rules_tabs(client, db):
     assert week.count(b'class="day-card') == 7 and b"Meals planned" in week
     resp = client.post("/meal-rules/add", data={"day_of_week": "mon", "meal_type": "dinner", "is_active": "on"})
     assert "tab=rules" in resp.headers["Location"]
+
+
+def test_shopping_list_prices_whole_packs(client, db):
+    """A 0.3 kg need of a 1.5 kg bag is priced as the whole bag, with the exact-amount figure alongside."""
+    from conftest import login
+    login(client)
+    cur = db.execute("INSERT INTO ingredients (name, category, unit, price) VALUES ('Carrots 1.5kg', 'produce', 'kg', 2.0)")
+    db.execute("INSERT INTO shopping_list_items (ingredient_name, quantity, unit, category, ingredient_id, estimated_cost)"
+               " VALUES ('Carrots 1.5kg', 0.3, 'kg', 'produce', ?, 0.6)", (cur.lastrowid,))
+    db.commit()
+    page = client.get("/shopping-list").data
+    assert b"1 \xc3\x97 1.5 kg pack" in page
+    assert b"$3.00" in page and b"$0.60 for just what the recipes use" in page

@@ -8,6 +8,7 @@ from services.shopping_list_generator import (
     make_plan_entry,
     make_recipe_dict,
     make_recipe_ingredient,
+    list_totals,
     make_ingredient,
     pack_plan,
     packs_to_buy,
@@ -389,8 +390,27 @@ def test_packs_to_buy():
 
 def test_pack_plan_prefers_explicit_pack_size_and_shows_small_packs_in_grams():
     mince = {"name": "Pork & Beef Mince 500g", "unit": "kg", "pack_size": None}
-    assert pack_plan(3, "kg", mince) == {"count": 6, "size": 500, "unit": "g"}
+    assert pack_plan(3, "kg", mince) == {"count": 6, "size": 500, "unit": "g", "cost": None}
     eggs = {"name": "6 Extra Large Eggs 350g", "unit": "each", "pack_size": 6}
-    assert pack_plan(12, "each", eggs) == {"count": 2, "size": 6, "unit": "each"}
+    assert pack_plan(12, "each", eggs) == {"count": 2, "size": 6, "unit": "each", "cost": None}
     assert pack_plan(2, "each", {"name": "Onion Brown each", "unit": "each", "pack_size": None}) is None
     assert pack_plan(1, "kg", None) is None
+
+
+def test_pack_plan_prices_whole_packs():
+    carrots = {"name": "The Odd Bunch Carrots 1.5kg", "unit": "kg", "pack_size": None, "price": 1.87}
+    assert pack_plan(0.3, "kg", carrots)["cost"] == pytest.approx(2.81)  # one 1.5 kg bag, not 0.3 kg
+    mince = {"name": "Pork & Beef Mince 500g", "unit": "kg", "pack_size": None, "price": 12.5}
+    assert pack_plan(2, "kg", mince)["cost"] == pytest.approx(25.0)
+    eggs = {"name": "Eggs", "unit": "each", "pack_size": 6, "price": 0.82}
+    assert pack_plan(12, "each", eggs)["cost"] == pytest.approx(9.84)
+
+
+def test_list_totals_uses_pack_cost_and_skips_manual_lines():
+    items = [
+        {"line_cost": 2.81, "estimated_cost": 0.56, "is_manual": 0},
+        {"line_cost": 1.26, "estimated_cost": 1.26, "is_manual": 0},
+        {"line_cost": None, "estimated_cost": None, "is_manual": 1},
+    ]
+    assert list_totals(items) == {"packs_total": 4.07, "exact_total": 1.82}
+    assert list_totals([]) == {"packs_total": 0, "exact_total": 0}

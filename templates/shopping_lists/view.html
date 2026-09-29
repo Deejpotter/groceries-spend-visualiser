@@ -28,13 +28,16 @@
 <div class="alert alert-warning">Set your plan dates in <a href="{{ url_for('settings.settings') }}">Settings</a>, then generate a meal plan.</div>
 {% endif %}
 
-{% if cost_estimate or avg_shop_spend %}
+{% if totals.packs_total or avg_shop_spend %}
 <div class="row mb-3">
-    {% if cost_estimate %}
+    {% if totals.packs_total %}
     <div class="col-sm-6 mb-2">
         <div class="card"><div class="card-body py-2">
-            <div class="text-muted small">Estimated cost (priced ingredients)</div>
-            <div class="h4 mb-0">{{ cost_estimate|money }}</div>
+            <div class="text-muted small">Estimated till total (whole packs)</div>
+            <div class="h4 mb-0">{{ totals.packs_total|money }}</div>
+            {% if totals.exact_total and totals.exact_total < totals.packs_total %}
+            <div class="small text-muted">{{ totals.exact_total|money }} for just what the recipes use</div>
+            {% endif %}
         </div></div>
     </div>
     {% endif %}
@@ -83,7 +86,7 @@
                    class="small ml-1 d-print-none" title="Open product page" aria-label="Open product page for {{ item.ingredient_name }}"><i class="fas fa-external-link-alt"></i></a>{% endif %}
                 {% if item.recipe_ref %}<div class="small text-muted">{{ item.recipe_ref }}</div>{% endif %}
             </div>
-            {% if item.estimated_cost %}<span class="text-muted small mr-3 num">{{ item.estimated_cost|money }}</span>{% endif %}
+            {% if item.line_cost %}<span class="text-muted small mr-3 num">{{ item.line_cost|money }}</span>{% endif %}
             <div class="d-print-none">
             {{ post_button(url_for('shopping_list.shopping_list_delete', item_id=item.id), '', class='btn btn-sm btn-link text-danger',
                            icon='times', title='Remove item') }}

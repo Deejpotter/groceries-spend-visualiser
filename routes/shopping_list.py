@@ -6,7 +6,7 @@ from auth import login_required
 from database import get_db, get_plan_dates
 from models import CATEGORY_LOOKUP, UNIT_LOOKUP, validate_date_format
 from services.repository import load_shopping_inputs, load_pantry_stock, shopping_preferences
-from services.shopping_list_generator import generate_shopping_list, pack_plan
+from services.shopping_list_generator import generate_shopping_list, list_totals, pack_plan
 from services.spend_analysis import average_spend_per_shop
 
 shopping_bp = Blueprint("shopping_list", __name__)
@@ -34,21 +34,27 @@ def shopping_list_view():
     db = get_db()
     start_str, end_str = get_plan_dates()
     rows = db.execute(
-        """SELECT s.*, i.url AS product_url, i.name AS ing_name, i.unit AS ing_unit, i.pack_size AS ing_pack_size
+        """SELECT s.*, i.url AS product_url, i.name AS ing_name, i.unit AS ing_unit, i.pack_size AS ing_pack_size,
+                  i.price AS ing_price
            FROM shopping_list_items s
            LEFT JOIN ingredients i ON i.id = s.ingredient_id
            ORDER BY s.checked, s.category, s.ingredient_name"""
     ).fetchall()
 
-    grouped = {}
+    grouped, items = {}, []
     for row in rows:
         item = dict(row)
-        ingredient = {"name": item["ing_name"], "unit": item["ing_unit"], "pack_size": item["ing_pack_size"]}             if item["ing_name"] else None
+        ingredient = None
+        if item["ing_name"]:
+            ingredient = {"name": item["ing_name"], "unit": item["ing_unit"],
+                          "pack_size": item["ing_pack_size"], "price": item["ing_price"]}
         item["packs"] = pack_plan(item["quantity"], item["unit"], ingredient)
+        item["line_cost"] = (item["packs"] or {}).get("cost") or item["estimated_cost"]
+        items.append(item)
         grouped.setdefault(item["category"] or "other", []).append(item)
     ordered = {cat: grouped[cat] for cat in sorted(grouped, key=lambda c: CATEGORY_LOOKUP.get(c, c))}
 
-    cost_estimate = round(sum(r["estimated_cost"] or 0 for r in rows if not r["is_manual"]), 2)
+    totals = list_totals(items)
     has_plan = bool(start_str and end_str and db.execute(
         "SELECT 1 FROM meal_plan_entries WHERE date BETWEEN ? AND ? LIMIT 1", (start_str, end_str)
     ).fetchone())
@@ -62,7 +68,7 @@ def shopping_list_view():
         has_plan=has_plan,
         plan_start=start_str,
         plan_end=end_str,
-        cost_estimate=cost_estimate,
+        totals=totals,
         avg_shop_spend=average_spend_per_shop(db),
     )
 

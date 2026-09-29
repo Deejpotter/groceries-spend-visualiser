@@ -109,7 +109,7 @@
                 </div>
                 <div class="slot-meta">
                     Serves {{ entry.servings }}
-                    {% if entry.is_two_night %}<span class="badge badge-warning">{{ 'Leftovers' if entry.is_continuation else 'Two-night' }}</span>{% endif %}
+                    {% if entry.is_two_night %}<span class="badge badge-warning">Two-night</span>{% endif %}
                     {% if not entry.is_auto_generated %}<span class="badge badge-info" title="Kept when you regenerate">Manual</span>{% endif %}
                 </div>
                 <details class="slot-edit">
