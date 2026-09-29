@@ -172,52 +172,31 @@
 </details>
 
 {% if rules %}
-<div class="table-responsive">
-<table class="table table-striped table-hover">
-    <thead class="thead-dark">
-        <tr>
-            <th>Priority</th>
-            <th>Day</th>
-            <th>Meal</th>
-            <th>Tag Filter</th>
-            <th>Servings</th>
-            <th>Active</th>
-            <th>Actions</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for rule in rules %}
-        <tr class="{{ '' if rule.is_active else 'text-muted' }}">
-            <td>{{ rule.sort_order }}</td>
-            <td>{% for d in rule.day_of_week.split(',') %}<span class="badge badge-primary mr-1">{{ day_labels.get(d.strip(), d.strip()) }}</span>{% endfor %}</td>
-            <td>{{ meal_type_labels.get(rule.meal_type, rule.meal_type) }}</td>
-            <td>
-                {% if rule.tag_filter %}
-                    <span class="badge badge-secondary">{{ rule.tag_filter }}</span>
-                {% else %}
-                    <span class="text-muted">Any recipe</span>
-                {% endif %}
-            </td>
-            <td>
-                {% if rule.servings_override %}
-                    {{ rule.servings_override }}
-                {% else %}
-                    <span class="text-muted">Recipe default</span>
-                {% endif %}
-            </td>
-            <td>
-                <span class="badge {% if rule.is_active %}badge-success{% else %}badge-secondary{% endif %}">
-                    {% if rule.is_active %}Active{% else %}Inactive{% endif %}
-                </span>
-            </td>
-            <td>
-                <a href="{{ url_for('meal_plan.meal_plan_view', tab='rules', edit=rule.id) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
-                {{ post_button(url_for('meal_plan.meal_rule_delete', rule_id=rule.id), 'Delete', confirm='Delete this rule?') }}
-            </td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+<div class="rule-grid mb-2">
+    {% for rule in rules %}
+    <div class="rule-card {{ 'is-inactive' if not rule.is_active }} {{ 'is-editing' if editing_rule and editing_rule.id == rule.id }}">
+        <div class="d-flex justify-content-between align-items-start">
+            <div class="rule-when">
+                {% for d in rule.day_of_week.split(',') %}{{ day_labels.get(d.strip(), d.strip()) }}{{ ', ' if not loop.last }}{% endfor %}
+                <strong>{{ meal_type_labels.get(rule.meal_type, rule.meal_type) }}</strong>
+            </div>
+            <span class="rule-priority" title="Priority: lower numbers are tried first">#{{ rule.sort_order }}</span>
+        </div>
+        <div class="rule-what">
+            <i class="fas fa-arrow-right text-muted small"></i>
+            {% if rule.tag_filter %}{% for t in rule.tag_filter.split(',') %}<span class="badge badge-secondary mr-1">{{ t.strip() }}</span>{% endfor %}
+            {% else %}<span class="text-muted">any recipe</span>{% endif %}
+        </div>
+        <div class="slot-meta">
+            {{ 'Serves ' ~ rule.servings_override if rule.servings_override else 'Recipe servings' }}
+            {% if not rule.is_active %}· <span class="badge badge-light border">Paused</span>{% endif %}
+        </div>
+        <div class="rule-actions">
+            <a href="{{ url_for('meal_plan.meal_plan_view', tab='rules', edit=rule.id) }}#rule-form" class="btn btn-sm btn-link px-0 mr-2">Edit</a>
+            {{ post_button(url_for('meal_plan.meal_rule_delete', rule_id=rule.id), 'Delete', class='btn btn-sm btn-link text-danger px-0', confirm='Delete this rule?') }}
+        </div>
+    </div>
+    {% endfor %}
 </div>
 {% else %}
 <div class="alert alert-info">No rules configured yet. Add rules below to enable automatic meal plan generation.</div>

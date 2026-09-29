@@ -334,3 +334,31 @@ a {
     font-weight: 500;
     color: #495057;
 }
+
+/* Meal rules as cards */
+.rule-grid {
+    display: grid;
+    gap: 0.6rem;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+}
+.rule-card {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    border-left: 3px solid var(--brand);
+    padding: 0.6rem 0.8rem 0.3rem;
+}
+.rule-card.is-inactive {
+    border-left-color: #ced4da;
+    opacity: 0.75;
+}
+.rule-card.is-editing {
+    box-shadow: 0 0 0 2px var(--brand);
+}
+.rule-priority {
+    font-size: 0.75rem;
+    color: #adb5bd;
+}
+.rule-what {
+    margin: 0.2rem 0;
+}
