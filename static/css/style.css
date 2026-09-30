@@ -170,6 +170,7 @@ main.container {
     background-color: var(--brand-tint);
 }
 .progress-bar {
+    background-color: var(--brand);
     transition: width 0.2s ease;
 }
 .checked-item .item-name {
