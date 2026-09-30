@@ -45,7 +45,7 @@ def shopping_summary(rows) -> Dict:
     checked = sum(1 for r in rows if r.get("checked"))
     cost = round(sum(float(r.get("estimated_cost") or 0) for r in rows if not r.get("is_manual")), 2)
     return {
-        "items": items,
+        "item_count": items,
         "checked": checked,
         "cost": cost,
         "pct": round(100 * checked / items) if items else 0,

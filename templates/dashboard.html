@@ -48,11 +48,11 @@
         </div>
     </div>
 
-    <div class="kpi-tile" data-tone="{{ 'ok' if shopping.items == 0 else 'neutral' }}">
+    <div class="kpi-tile" data-tone="{{ 'ok' if shopping.item_count == 0 else 'neutral' }}">
         <div class="kpi-label"><i class="fas fa-shopping-basket"></i> Shopping list</div>
-        <div class="kpi-value">{{ shopping.items }}<span class="kpi-unit">to buy</span></div>
+        <div class="kpi-value">{{ shopping.item_count }}<span class="kpi-unit">to buy</span></div>
         <div class="kpi-context">
-            {% if shopping.items %}{{ shopping.cost|money }} est &middot; {{ shopping.checked }} ticked{% else %}Nothing to buy yet{% endif %}
+            {% if shopping.item_count %}{{ shopping.cost|money }} est &middot; {{ shopping.checked }} ticked{% else %}Nothing to buy yet{% endif %}
         </div>
     </div>
 

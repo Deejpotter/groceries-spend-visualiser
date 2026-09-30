@@ -38,14 +38,14 @@ def test_shopping_summary_counts_items_cost_and_ticks():
         {"estimated_cost": None, "checked": 0, "is_manual": 1},  # no cost
     ]
     result = shopping_summary(rows)
-    assert result["items"] == 3
+    assert result["item_count"] == 3
     assert result["checked"] == 1
     assert result["cost"] == 6.75
     assert result["pct"] == 33
 
 
 def test_shopping_summary_empty():
-    assert shopping_summary([]) == {"items": 0, "checked": 0, "cost": 0, "pct": 0}
+    assert shopping_summary([]) == {"item_count": 0, "checked": 0, "cost": 0, "pct": 0}
 
 
 def test_pantry_alerts_split_expired_soon_and_low():
