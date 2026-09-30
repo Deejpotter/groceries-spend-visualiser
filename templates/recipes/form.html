@@ -98,7 +98,7 @@
                                 <div class="col-md-6">
                                     <select class="form-control ingredient-select" name="ingredient_ids"
                                             data-selected="{{ ri.ingredient_id }}">
-                                        <option value="{{ ri.ingredient_id }}" selected>{{ ri.ingredient_name }} ({{ ri.unit }})</option>
+                                        <option value="{{ ri.ingredient_id }}" selected>{{ ri|label }} ({{ ri.unit }})</option>
                                     </select>
                                 </div>
                                 <div class="col-md-2">
@@ -211,7 +211,7 @@
         select.innerHTML = '';
         select.add(new Option('Select ingredient...', ''));
         ingredients.forEach(ing => {
-            const opt = new Option(`${ing.name} (${ing.unit})`, ing.id);
+            const opt = new Option(`${ing.label || ing.name} (${ing.unit})`, ing.id);
             if (String(ing.id) === String(selected)) opt.selected = true;
             select.add(opt);
         });

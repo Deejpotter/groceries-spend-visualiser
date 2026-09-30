@@ -39,7 +39,7 @@
         {% for item in items %}
         <tr class="{{ 'table-danger' if item.expiry_status == 'expired' else 'table-warning' if item.expiry_status == 'soon' else '' }}">
             <td>
-                <strong>{{ item.ingredient_name }}</strong>
+                <strong>{{ item|label }}</strong>
                 <div class="text-muted small">{{ item.category or '' }}</div>
             </td>
             <td style="text-align: right;">{{ item.quantity }}</td>

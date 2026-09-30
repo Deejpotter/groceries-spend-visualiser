@@ -13,7 +13,8 @@ from database import init_db, get_db, close_db, get_plan_dates, get_database_pat
 from auth import login_user, logout_user, get_current_user, is_logged_in, login_required, hash_password, verify_password
 from models import (
     CATEGORIES, UNITS, MEAL_TYPES, DAYS_OF_WEEK,
-    CATEGORY_LOOKUP, DAY_LABELS, UNIT_LOOKUP, MEAL_TYPE_LABELS, category_label, is_http_url, parse_date,
+    CATEGORY_LOOKUP, DAY_LABELS, UNIT_LOOKUP, MEAL_TYPE_LABELS,
+    category_label, is_http_url, parse_date, label_of,
 )
 from routes import register_all_routes
 
@@ -90,6 +91,11 @@ def create_app(testing=False):
     def filter_http_url(value):
         """Only http(s) URLs are rendered as links."""
         return value if is_http_url(value) else None
+
+    @application.template_filter("label")
+    def filter_label(value):
+        """Short display name for an ingredient-like dict."""
+        return label_of(value)
 
     @application.template_filter("nice_date")
     def format_nice_date(value):

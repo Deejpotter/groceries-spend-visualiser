@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS settings (
 CREATE TABLE IF NOT EXISTS ingredients (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
+    display_name TEXT,
     category TEXT NOT NULL DEFAULT 'other',
     unit TEXT NOT NULL DEFAULT 'each',
     price REAL,
@@ -166,6 +167,7 @@ MIGRATIONS = [
     ("shopping_list_items", "ingredient_id", "INTEGER"),
     ("meal_plan_entries", "is_continuation", "INTEGER DEFAULT 0"),
     ("ingredients", "pack_size", "REAL"),
+    ("ingredients", "display_name", "TEXT"),
 ]
 
 

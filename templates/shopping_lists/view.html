@@ -103,20 +103,20 @@
             <form method="post" action="{{ url_for('shopping_list.shopping_list_toggle', item_id=item.id) }}" class="mr-3 js-toggle-form">
                 {{ csrf() }}
                 <input type="checkbox" class="big-check" {% if item.checked %}checked{% endif %}
-                       aria-label="Mark {{ item.ingredient_name }} as bought">
+                       aria-label="Mark {{ item|label }} as bought">
             </form>
             <div class="flex-grow-1">
-                <span class="item-name">{{ item.quantity|amount(item.unit) }} {{ item.ingredient_name }}</span>
+                <span class="item-name">{{ item.quantity|amount(item.unit) }} {{ item|label }}</span>
                 {% set choice = item.pack_choice %}
                 {% if choice %}<span class="badge badge-light border pack-badge" title="Packs to buy">{{ pack_label(choice.best) }}</span>{% endif %}
                 {% if item.is_manual %}<span class="badge badge-secondary">manual</span>{% endif %}
                 {% if item.product_url|http_url %}<a href="{{ item.product_url }}" target="_blank" rel="noopener noreferrer"
-                   class="small ml-1 d-print-none" title="Open product page" aria-label="Open product page for {{ item.ingredient_name }}"><i class="fas fa-external-link-alt"></i></a>{% endif %}
+                   class="small ml-1 d-print-none" title="Open product page" aria-label="Open product page for {{ item|label }}"><i class="fas fa-external-link-alt"></i></a>{% endif %}
                 {% if item.recipe_ref %}<div class="small text-muted">{{ item.recipe_ref }}</div>{% endif %}
                 {% if choice %}
                 <div class="small text-muted">
                     {% if choice.best.spare > 0 %}<span class="text-warning-dark"><i class="fas fa-box-open"></i> {{ choice.best.spare_shown|amount(choice.best.spare_shown_unit) }} spare</span>{% else %}<span class="text-success"><i class="fas fa-check"></i> right size</span>{% endif %}
-                    {% if choice.best.name != item.ingredient_name %}· buy <em>{{ choice.best.name }}</em>{% endif %}
+                    {% if choice.best.name != item.ing_name %}· buy <em>{{ choice.best.name }}</em>{% endif %}
                 </div>
                 {% if choice.others %}
                 <details class="pack-others d-print-none">

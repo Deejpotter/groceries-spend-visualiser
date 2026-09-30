@@ -18,6 +18,14 @@
                                value="{{ ingredient.name if ingredient else '' }}" required>
                     </div>
 
+                    <div class="form-group">
+                        <label for="display_name">Short name <span class="text-muted font-weight-normal">(optional)</span></label>
+                        <input type="text" class="form-control" id="display_name" name="display_name"
+                               value="{{ ingredient.display_name if ingredient else '' }}"
+                               placeholder="Shown on lists, e.g. Carrots">
+                        <small class="text-muted">Leave blank to shorten the name automatically (drops a trailing size like 1.5kg).</small>
+                    </div>
+
                     <div class="form-row">
                         <div class="form-group col-md-4">
                             <label for="category">Category</label>

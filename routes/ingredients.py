@@ -3,7 +3,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from database import get_db
 from auth import login_required
-from models import CATEGORY_LOOKUP, UNIT_LOOKUP, category_label, is_http_url
+from models import CATEGORY_LOOKUP, UNIT_LOOKUP, category_label, is_http_url, label_of
 
 ingredients_bp = Blueprint("ingredients", __name__)
 
@@ -29,6 +29,7 @@ def _read_form():
     """Parse and validate the ingredient form. Returns (values, errors)."""
     values = {
         "name": request.form.get("name", "").strip(),
+        "display_name": request.form.get("display_name", "").strip() or None,
         "category": request.form.get("category", "").strip(),
         "unit": request.form.get("unit", "each").strip(),
         "price": request.form.get("price", type=float),
@@ -83,9 +84,9 @@ def ingredient_add():
 
         db = get_db()
         db.execute(
-            """INSERT INTO ingredients (name, category, unit, price, url, store, minimum_stock, pack_size)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (values["name"], values["category"], values["unit"], values["price"],
+            """INSERT INTO ingredients (name, display_name, category, unit, price, url, store, minimum_stock, pack_size)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (values["name"], values["display_name"], values["category"], values["unit"], values["price"],
              values["url"], values["store"], values["minimum_stock"], values["pack_size"])
         )
         db.commit()
@@ -115,9 +116,9 @@ def ingredient_edit(ingredient_id):
             return render_template("ingredients/form.html", ingredient={**dict(ingredient), **values})
 
         db.execute(
-            """UPDATE ingredients SET name=?, category=?, unit=?, price=?, url=?, store=?, minimum_stock=?,
-               pack_size=? WHERE id=?""",
-            (values["name"], values["category"], values["unit"], values["price"],
+            """UPDATE ingredients SET name=?, display_name=?, category=?, unit=?, price=?, url=?, store=?,
+               minimum_stock=?, pack_size=? WHERE id=?""",
+            (values["name"], values["display_name"], values["category"], values["unit"], values["price"],
              values["url"], values["store"], values["minimum_stock"], values["pack_size"], ingredient_id)
         )
         db.commit()
@@ -144,8 +145,8 @@ def ingredient_delete(ingredient_id):
 @login_required
 def ingredient_options():
     """Ingredient choices for client-side pickers (JSON, so names are never injected as HTML)."""
-    rows = get_db().execute("SELECT id, name, unit FROM ingredients ORDER BY name").fetchall()
-    return jsonify([dict(r) for r in rows])
+    rows = get_db().execute("SELECT id, name, display_name, unit FROM ingredients ORDER BY name").fetchall()
+    return jsonify([{**dict(r), "label": label_of(r)} for r in rows])
 
 
 def register_ingredient_routes(app):

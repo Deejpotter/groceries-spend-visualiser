@@ -18,7 +18,7 @@ def get_recipe_with_ingredients(recipe_id):
 
     ingredients = db.execute(
         """SELECT ri.id as ri_id, ri.quantity, ri.unit_override,
-                  i.id as ingredient_id, i.name, i.unit, i.category
+                  i.id as ingredient_id, i.name, i.display_name, i.unit, i.category
            FROM recipe_ingredients ri
            JOIN ingredients i ON ri.ingredient_id = i.id
            WHERE ri.recipe_id = ?""",

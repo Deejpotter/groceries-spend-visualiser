@@ -48,7 +48,7 @@
                             <option value="">— Not linked —</option>
                             <option value="new">+ Create new ingredient</option>
                             {% for i in ingredients %}
-                            <option value="{{ i.id }}" {% if i.id == p.ingredient_id %}selected{% endif %}>{{ i.name }} ({{ i.unit }})</option>
+                            <option value="{{ i.id }}" {% if i.id == p.ingredient_id %}selected{% endif %}>{{ i|label }} ({{ i.unit }})</option>
                             {% endfor %}
                         </select>
                         <div class="custom-control custom-checkbox small mt-1">

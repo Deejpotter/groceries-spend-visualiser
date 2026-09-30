@@ -49,7 +49,7 @@
     <tbody>
         {% for ing in ingredients %}
         <tr>
-            <td><strong>{{ ing.name }}</strong></td>
+            <td>{% set lbl = ing|label %}<strong>{{ lbl }}</strong>{% if ing.name != lbl %}<div class="text-muted small">{{ ing.name }}</div>{% endif %}</td>
             <td>{{ category_lookup.get(ing.category, ing.category) }}</td>
             <td>{{ unit_label(ing.unit) }}</td>
             <td>{% if ing.price %}{{ ing.price|unit_price }}/{{ ing.unit|replace('_', ' ') }}{% else %}—{% endif %}</td>

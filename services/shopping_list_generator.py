@@ -8,7 +8,7 @@ import math
 import re
 from typing import Dict, List, Optional, Tuple, Union
 
-from models import convert_unit, to_display_unit, units_compatible
+from models import convert_unit, label_of, to_display_unit, units_compatible
 
 # Pantry stock keyed by ingredient id (preferred) or name: either a bare quantity
 # (assumed to be in the same unit as the list line) or a (quantity, unit) pair.
@@ -236,7 +236,7 @@ def spares(lines: List[Dict], min_share: float = 0.2) -> List[Dict]:
     for line in lines:
         best = (line.get("pack_choice") or {}).get("best")
         if best and best["spare"] >= best["pack_size"] * min_share and line.get("ingredient_id"):
-            result.append({"ingredient_id": line["ingredient_id"], "name": line["ingredient_name"],
+            result.append({"ingredient_id": line["ingredient_id"], "name": label_of(line),
                            "quantity": best["spare"], "unit": best["spare_unit"],
                            "shown": best["spare_shown"], "shown_unit": best["spare_shown_unit"]})
     return result

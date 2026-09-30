@@ -6,6 +6,7 @@ import sqlite3
 import pytest
 
 from conftest import create_user, login
+from models import label_of, short_name
 from services.plan_generator import generate_plan_entries, make_recipe, make_rule
 from services.shopping_list_generator import (
     generate_shopping_list, make_ingredient, make_plan_entry, make_recipe_dict, make_recipe_ingredient,
@@ -278,3 +279,59 @@ def test_spares_panel_and_better_linked_size(client, db):
     page = client.get("/shopping-list").data.decode()
     assert "buy <em>Carrots Prepacked 500g</em>" in page and "200 g spare" in page
     assert "1 other size" in page
+
+
+# --- short display names -----------------------------------------------------
+
+def test_short_name_strips_only_a_trailing_size_or_pack_token():
+    assert short_name("Carrots 1.5kg") == "Carrots"
+    assert short_name("Cheese Pizza Blend 225g") == "Cheese Pizza Blend"
+    assert short_name("Woolworths Frozen Australian Broccoli Florets 500g") == "Woolworths Frozen Australian Broccoli Florets"
+    assert short_name("Milk 2L") == "Milk"
+    assert short_name("Cans 30x375ml") == "Cans"
+    assert short_name("Plain Olives") == "Plain Olives"
+    assert short_name("") == ""
+
+
+def test_label_of_prefers_display_name_then_shortens_the_raw_name():
+    assert label_of({"name": "The Odd Bunch Carrots 1.5kg", "display_name": "Carrots"}) == "Carrots"
+    assert label_of({"name": "The Odd Bunch Carrots 1.5kg"}) == "The Odd Bunch Carrots"
+    assert label_of({"ingredient_name": "Cheese 225g"}) == "Cheese"
+    assert label_of("Milk 2L") == "Milk"
+    assert label_of(None) == ""
+
+
+def test_label_of_accepts_db_rows():
+    con = sqlite3.connect(":memory:")
+    con.row_factory = sqlite3.Row
+    row = con.execute("SELECT 'Milk 2L' AS name, NULL AS display_name").fetchone()
+    assert label_of(row) == "Milk"
+
+
+def test_buy_hint_absent_when_the_own_pack_is_best(client, db):
+    """The '· buy X' hint must not fire when you'd just buy the ingredient's own product."""
+    from conftest import login
+    login(client)
+    carrots = db.execute("INSERT INTO ingredients (name, category, unit, price) VALUES ('Carrots 1.5kg', 'produce', 'kg', 2.0)").lastrowid
+    db.execute("INSERT INTO shopping_list_items (ingredient_name, quantity, unit, category, ingredient_id, estimated_cost)"
+               " VALUES ('Carrots', 0.3, 'kg', 'produce', ?, 0.6)", (carrots,))
+    db.commit()
+    assert "buy <em>" not in client.get("/shopping-list").data.decode()
+
+
+def test_display_name_shortens_the_list_and_spares(client, db):
+    """An ingredient's short display name is what the shopping list and spares panel show."""
+    from conftest import login
+    login(client)
+    carrots = db.execute(
+        "INSERT INTO ingredients (name, display_name, category, unit, price)"
+        " VALUES ('The Odd Bunch Carrots 1.5kg', 'Carrots', 'produce', 'kg', 2.0)").lastrowid
+    soup = db.execute("INSERT INTO recipes (name, servings) VALUES ('Carrot soup', 4)").lastrowid
+    db.execute("INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity) VALUES (?, ?, 1)", (soup, carrots))
+    db.execute("INSERT INTO shopping_list_items (ingredient_name, quantity, unit, category, ingredient_id, estimated_cost)"
+               " VALUES ('The Odd Bunch Carrots 1.5kg', 0.3, 'kg', 'produce', ?, 0.6)", (carrots,))
+    db.execute("INSERT INTO settings (key, value) VALUES ('plan_start_date', '2026-10-05'), ('plan_end_date', '2026-10-06')")
+    db.commit()
+    page = client.get("/shopping-list").data.decode()
+    assert "Carrots" in page and "The Odd Bunch Carrots 1.5kg" not in page
+    assert "Carrot soup ♻ uses spare Carrots" in client.get("/meal-plan").data.decode()

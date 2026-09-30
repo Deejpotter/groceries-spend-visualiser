@@ -68,8 +68,8 @@ def shopping_preferences() -> Tuple[str, bool]:
 def load_list_rows() -> List[Dict]:
     """Shopping-list rows with the fields of their ingredient (ing_*), ticked items last."""
     return [dict(r) for r in get_db().execute(
-        """SELECT s.*, i.url AS product_url, i.name AS ing_name, i.unit AS ing_unit,
-                  i.pack_size AS ing_pack_size, i.price AS ing_price
+        """SELECT s.*, i.url AS product_url, i.name AS ing_name, i.display_name,
+                  i.unit AS ing_unit, i.pack_size AS ing_pack_size, i.price AS ing_price
            FROM shopping_list_items s
            LEFT JOIN ingredients i ON i.id = s.ingredient_id
            ORDER BY s.checked, s.category, s.ingredient_name"""
