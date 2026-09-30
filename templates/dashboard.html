@@ -1,14 +1,24 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard — Grocery Visualiser{% endblock %}
+{% block title %}Dashboard - Grocery Visualiser{% endblock %}
 
 {% block content %}
-<h1>Dashboard</h1>
-<p class="text-muted">Welcome, {{ current_user }}.</p>
+<div class="page-head">
+    <div>
+        <h1 class="mb-0">Dashboard</h1>
+        <p class="page-sub">{{ today|nice_date }}{% if current_user %} &middot; {{ current_user }}{% endif %}</p>
+    </div>
+    <div class="d-flex flex-wrap">
+        <a href="{{ url_for('meal_plan.meal_plan_view') }}" class="btn btn-primary mr-2 mb-2"><i class="fas fa-calendar-alt"></i> Meal plan</a>
+        <a href="{{ url_for('shopping_list.shopping_list_view') }}" class="btn btn-outline-primary mr-2 mb-2"><i class="fas fa-shopping-basket"></i> Shopping list</a>
+        <a href="{{ url_for('spend.spend_import') }}" class="btn btn-outline-secondary mr-2 mb-2"><i class="fas fa-file-import"></i> Import spend</a>
+        <a href="{{ url_for('recipes.recipe_form') }}" class="btn btn-outline-secondary mb-2"><i class="fas fa-plus"></i> Add recipe</a>
+    </div>
+</div>
 
 {% if not (ingredient_count and recipe_count and rule_count) %}
-<div class="card mb-4 border-left-brand">
-    <div class="card-header"><strong>Getting started</strong></div>
+<div class="card mb-4 section-card border-left-brand">
+    <div class="card-header"><span class="section-title"><i class="fas fa-seedling"></i> Getting started</span></div>
     <div class="card-body">
         <ol class="mb-0">
             <li class="{{ 'text-muted' if ingredient_count }}"><a href="{{ url_for('ingredients.ingredient_add') }}">Add ingredients</a> with prices and units
@@ -22,58 +32,220 @@
 </div>
 {% endif %}
 
-
-<div class="row mb-2">
-    {% for count, label, endpoint, action in [
-        (ingredient_count, 'Ingredients', 'ingredients.ingredient_list', 'Manage'),
-        (recipe_count, 'Recipes', 'recipes.recipe_list', 'Manage'),
-        (rule_count, 'Active meal rules', 'meal_plan.meal_rule_list', 'Manage'),
-        (entry_count, 'Planned meals', 'meal_plan.meal_plan_view', 'View plan'),
-    ] %}
-    <div class="col-6 col-md-3 mb-3">
-        <div class="card text-center h-100">
-            <div class="card-body">
-                <div class="stat-value">{{ count }}</div>
-                <p class="card-text text-muted">{{ label }}</p>
-                <a href="{{ url_for(endpoint) }}" class="btn btn-sm btn-outline-primary">{{ action }}</a>
-            </div>
+<div class="kpi-row mb-4">
+    <div class="kpi-tile" data-tone="{{ 'ok' if coverage and coverage.pct == 100 else ('warn' if coverage and coverage.days_planned else 'neutral') }}">
+        <div class="kpi-label"><i class="fas fa-calendar-check"></i> Meals planned</div>
+        <div class="kpi-value">
+            {% if coverage %}{{ coverage.days_planned }}<span class="kpi-unit">/ {{ coverage.days_total }} days</span>{% else %}&mdash;{% endif %}
+        </div>
+        {% if coverage %}
+        <div class="progress mt-2" style="height: 5px">
+            <div class="progress-bar" style="width: {{ coverage.pct }}%"></div>
+        </div>
+        {% endif %}
+        <div class="kpi-context">
+            {% if plan_start %}{{ plan_start|nice_date }} &ndash; {{ plan_end|nice_date }}{% else %}No plan dates set{% endif %}
         </div>
     </div>
-    {% endfor %}
+
+    <div class="kpi-tile" data-tone="{{ 'ok' if shopping.items == 0 else 'neutral' }}">
+        <div class="kpi-label"><i class="fas fa-shopping-basket"></i> Shopping list</div>
+        <div class="kpi-value">{{ shopping.items }}<span class="kpi-unit">to buy</span></div>
+        <div class="kpi-context">
+            {% if shopping.items %}{{ shopping.cost|money }} est &middot; {{ shopping.checked }} ticked{% else %}Nothing to buy yet{% endif %}
+        </div>
+    </div>
+
+    <div class="kpi-tile" data-tone="{{ pantry.tone }}">
+        <div class="kpi-label"><i class="fas fa-box-open"></i> Pantry</div>
+        <div class="kpi-value">{{ pantry.expired_count + pantry.expiring_count + pantry.low_count }}<span class="kpi-unit">alerts</span></div>
+        <div class="kpi-context">
+            {% if pantry.expired_count or pantry.expiring_count or pantry.low_count %}
+                {{ pantry.expired_count }} expired &middot; {{ pantry.expiring_count }} soon &middot; {{ pantry.low_count }} low
+            {% else %}All fresh{% endif %}
+        </div>
+    </div>
+
+    <div class="kpi-tile" data-tone="neutral">
+        <div class="kpi-label"><i class="fas fa-receipt"></i> Avg shop</div>
+        <div class="kpi-value">
+            {% if spend and spend.avg_per_shop is not none %}{{ spend.avg_per_shop|money }}<span class="kpi-unit">/ shop</span>{% else %}&mdash;{% endif %}
+        </div>
+        {% if spend and spend.avg_per_shop is not none %}
+        <div class="kpi-context">
+            {% if spend_delta %}<span class="trend"><i class="fas fa-arrow-{{ 'up' if spend_delta.direction == 'up' else ('down' if spend_delta.direction == 'down' else 'right') }}"></i> {{ spend_delta.pct }}%</span> &middot; {% endif %}
+            last 90 days &middot; {{ spend.shops }} shop{{ '' if spend.shops == 1 else 's' }}
+        </div>
+        {% if spend_spark %}
+        <svg class="sparkline" width="84" height="28" viewBox="0 0 84 28" aria-hidden="true">
+            <polyline fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" points="{{ spend_spark }}"></polyline>
+        </svg>
+        {% endif %}
+        {% else %}
+        <div class="kpi-context"><a href="{{ url_for('spend.spend_import') }}">Import purchases</a> to track spend</div>
+        {% endif %}
+    </div>
 </div>
 
 <div class="row">
-    <div class="col-lg-6 mb-4">
-        <div class="card h-100">
-            <div class="card-header"><strong>Current plan</strong></div>
+    <div class="col-lg-8 mb-4">
+        <div class="card h-100 section-card">
+            <div class="card-header"><span class="section-title"><i class="fas fa-chart-line"></i> Recent spend</span>
+                <span class="small text-muted ml-2">per month</span></div>
             <div class="card-body">
-                {% if plan_start and plan_end %}
-                <p>{{ plan_start|nice_date }} to {{ plan_end|nice_date }}</p>
-                <a href="{{ url_for('meal_plan.meal_plan_view') }}" class="btn btn-primary btn-sm">Meal plan</a>
-                <a href="{{ url_for('shopping_list.shopping_list_view') }}" class="btn btn-success btn-sm">Shopping list</a>
+                {% if monthly %}
+                <div class="chart-box"><canvas id="spendChart" aria-label="Monthly spend chart" role="img"></canvas></div>
                 {% else %}
-                <p class="text-muted">No plan dates set yet.</p>
-                <a href="{{ url_for('settings.settings') }}" class="btn btn-primary btn-sm">Set plan dates</a>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-    <div class="col-lg-6 mb-4">
-        <div class="card h-100">
-            <div class="card-header"><strong>Recent spend</strong></div>
-            <div class="card-body">
-                {% if spend %}
-                <p class="mb-1">Last {{ spend.window_days }} days of purchases:
-                    <strong>{{ spend.total_spend|money }}</strong> over {{ spend.total_shops }} shops</p>
-                <p class="text-muted small">About {{ spend.avg_spend_per_shop|money }} a shop, every {{ spend.avg_days_between_shops }} days.</p>
-                <a href="{{ url_for('spend.spend_dashboard') }}" class="btn btn-outline-primary btn-sm">Spend dashboard</a>
-                {% else %}
-                <p class="text-muted">Import your order history to track what you spend.</p>
+                <p class="text-muted mb-2">No purchase history yet.</p>
                 <a href="{{ url_for('spend.spend_import') }}" class="btn btn-outline-primary btn-sm">Import purchases</a>
                 {% endif %}
             </div>
         </div>
     </div>
+    <div class="col-lg-4 mb-4">
+        <div class="card h-100 section-card">
+            <div class="card-header"><span class="section-title"><i class="fas fa-utensils"></i> This week's dinners</span></div>
+            <div class="card-body py-2">
+                {% if upcoming %}
+                    {% for day, rows in upcoming|groupby('date') %}
+                    <div class="d-flex justify-content-between align-items-start py-1 {{ 'border-top' if not loop.first }}">
+                        <div class="small text-muted" style="width: 5.5rem">{{ day|nice_date }}</div>
+                        <div class="flex-grow-1 small">
+                            {% for r in rows %}
+                            <div>{{ r.recipe_name or 'Unplanned' }}{% if r.is_continuation %} <span class="text-muted">(leftovers)</span>{% endif %}</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                    <a class="small d-inline-block mt-2" href="{{ url_for('meal_plan.meal_plan_view') }}">Open meal plan</a>
+                {% else %}
+                <p class="text-muted small mb-2">No meals planned for the next 7 days.</p>
+                <a class="small" href="{{ url_for('meal_plan.meal_plan_view') }}">Plan meals</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
 </div>
 
+<div class="row">
+    <div class="col-md-4 mb-4">
+        <div class="card h-100 section-card">
+            <div class="card-header"><span class="section-title"><i class="fas fa-shopping-basket"></i> To buy</span></div>
+            <div class="card-body py-2">
+                {% if to_buy %}
+                <ul class="list-unstyled mb-2">
+                    {% for item in to_buy %}
+                    <li class="d-flex justify-content-between py-1 {{ 'border-top' if not loop.first }}">
+                        <span class="small">{{ item|label }}</span>
+                        <span class="small num text-muted">{{ item.quantity|amount(item.unit) }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                <a class="small" href="{{ url_for('shopping_list.shopping_list_view') }}">Open shopping list</a>
+                {% else %}
+                <p class="text-muted small mb-2">Nothing on the list.</p>
+                <a class="small" href="{{ url_for('shopping_list.shopping_list_view') }}">Shopping list</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4 mb-4">
+        <div class="card h-100 section-card">
+            <div class="card-header"><span class="section-title"><i class="fas fa-leaf"></i> Use these up</span></div>
+            <div class="card-body py-2">
+                {% if spare_items %}
+                <ul class="list-unstyled mb-2">
+                    {% for s in spare_items %}
+                    <li class="d-flex justify-content-between py-1 {{ 'border-top' if not loop.first }}">
+                        <span class="small">{{ s.name }}</span>
+                        <span class="small num text-muted">{{ s.shown|amount(s.shown_unit) }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% if spare_recipes %}
+                <div class="small text-muted">Try: {{ spare_recipes[0].name }}</div>
+                {% endif %}
+                <a class="small d-inline-block mt-1" href="{{ url_for('meal_plan.meal_plan_view') }}">Add a meal</a>
+                {% else %}
+                <p class="text-muted small mb-0">No leftovers waiting to be used.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4 mb-4">
+        <div class="card h-100 section-card">
+            <div class="card-header"><span class="section-title"><i class="fas fa-clock"></i> Expiring soon</span></div>
+            <div class="card-body py-2">
+                {% if pantry.expired or pantry.expiring %}
+                <ul class="list-unstyled mb-2">
+                    {% for item in pantry.expired + pantry.expiring %}
+                    <li class="d-flex justify-content-between align-items-center py-1 {{ 'border-top' if not loop.first }}">
+                        <span class="small">{{ item|label }}</span>
+                        <span class="status-badge {{ 'danger' if item.status == 'expired' else 'warn' }}">
+                            <i class="fas fa-{{ 'exclamation-circle' if item.status == 'expired' else 'hourglass-half' }}"></i>
+                            {{ 'Expired' if item.status == 'expired' else (item.days_left ~ 'd left') }}
+                        </span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                <a class="small" href="{{ url_for('pantry.pantry_list') }}">Open pantry</a>
+                {% else %}
+                <p class="text-muted small mb-2">Nothing expiring soon.</p>
+                <a class="small" href="{{ url_for('pantry.pantry_list') }}">Open pantry</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if monthly %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"
+        integrity="sha384-NrKB+u6Ts6AtkIhwPixiKTzgSKNblyhlk0Sohlgar9UHUBzai/sgnNNWWd291xqt" crossorigin="anonymous"></script>
+<script>
+(function () {
+    const css = getComputedStyle(document.documentElement);
+    const brand = (css.getPropertyValue('--brand') || '#c25e3a').trim();
+    const inkSoft = (css.getPropertyValue('--ink-soft') || '#7a6c58').trim();
+    const line = (css.getPropertyValue('--line') || '#e2d6c1').trim();
+    const raw = {{ monthly|tojson }};
+    const el = document.getElementById('spendChart');
+    if (!el || !raw.length) return;
+    const labels = raw.map(([m]) => {
+        const [y, mo] = m.split('-');
+        return new Date(+y, +mo - 1, 1).toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
+    });
+    new Chart(el, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{
+                data: raw.map(d => d[1]),
+                borderColor: brand,
+                backgroundColor: brand + '22',
+                fill: true,
+                tension: 0.32,
+                borderWidth: 2,
+                pointRadius: 3,
+                pointBackgroundColor: brand
+            }]
+        },
+        options: {
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: c => '$' + c.parsed.y.toFixed(2) } }
+            },
+            scales: {
+                x: { grid: { display: false }, ticks: { color: inkSoft } },
+                y: { beginAtZero: true, grid: { color: line }, ticks: { color: inkSoft, callback: v => '$' + v } }
+            }
+        }
+    });
+})();
+</script>
+{% endif %}
 {% endblock %}
