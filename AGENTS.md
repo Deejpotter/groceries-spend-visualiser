@@ -99,7 +99,7 @@ tests/            Unit tests for services + integration tests via Flask test cli
 
 ## Feature notes worth knowing
 
-- **Meal plan generation** (`services/plan_generator.py`): rules are tried in `sort_order`, first match wins. `day_of_week` is comma-separated (`mon,wed,fri`) and also supports `weekday`, `weekend`, `all`. Manual entries are preserved across regeneration. Two-night recipes cascade to the next day and set `is_continuation=1` so ingredients aren't bought twice — anything that deletes or overwrites a slot must handle continuation entries.
+- **Meal plan generation** (`services/plan_generator.py`): rules are tried in `sort_order`, first match wins. `day_of_week` is comma-separated (`mon,wed,fri`) and also supports `weekday`, `weekend`, `all`. Manual entries are preserved across regeneration. Recipes can cover N days; continuations use the next free slot of the same meal type and link to the original entry so ingredients aren't bought twice. Removing or replacing an original meal promotes its continuations to standalone meals.
 - **Shopping list** (`services/shopping_list_generator.py`): aggregates ingredients across the plan, scales by servings, merges compatible units (g + kg → one line), optionally subtracts pantry stock (keyed by **ingredient id**), and estimates cost per line.
 - **Spend import** (`services/spend_import.py`): de-duplicated by `UNIQUE(store, basket_id, product_name)`. Cup prices like `$1.51 / 100G` are parsed and converted to per-unit prices. Unpriced rows are skipped with a summary, not an error.
 

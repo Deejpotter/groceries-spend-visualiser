@@ -37,9 +37,9 @@
     </thead>
     <tbody>
         {% for item in items %}
-        <tr class="{{ 'table-danger' if item.expiry_status == 'expired' else 'table-warning' if item.expiry_status == 'soon' else '' }}">
+        <tr class="{{ 'row-expired' if item.expiry_status == 'expired' else 'row-soon' if item.expiry_status == 'soon' else '' }}">
             <td>
-                <strong>{{ item.ingredient_name }}</strong>
+                <strong>{{ item|label }}</strong>
                 <div class="text-muted small">{{ item.category or '' }}</div>
             </td>
             <td style="text-align: right;">{{ item.quantity }}</td>
@@ -63,13 +63,13 @@
             </td>
             <td>
                 {% if item.expiry_status == 'expired' %}
-                <span class="text-danger"><strong>Expired!</strong></span>
+                <span class="status-badge danger"><i class="fas fa-exclamation-circle"></i> Expired</span>
                 {% elif item.expiry_status == 'soon' %}
-                <span class="text-warning">Expiring soon</span>
+                <span class="status-badge warn"><i class="fas fa-hourglass-half"></i> Use soon</span>
                 {% elif item.expiry_status == 'no_date' %}
-                <span class="text-muted">—</span>
+                <span class="status-badge neutral">No date</span>
                 {% else %}
-                <span class="text-success">OK</span>
+                <span class="status-badge fresh"><i class="fas fa-check"></i> Fresh</span>
                 {% endif %}
             </td>
             <td>

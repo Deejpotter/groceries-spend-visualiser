@@ -140,13 +140,13 @@ class TestGeneratePlanEntries:
         types = {e["meal_type"] for e in entries}
         assert types == {"breakfast", "lunch", "dinner", "snack"}
 
-    def test_two_night_cascade(self):
-        """A two-night recipe on Monday also fills Tuesday."""
+    def test_recipe_covers_multiple_days(self):
+        """A recipe covering multiple days fills that many same-type slots."""
         rules = [
             make_rule(day_of_week="mon", meal_type="dinner", id=1),
         ]
         recipes = [
-            make_recipe(id=1, name="Bolognese", is_two_night=True),
+            make_recipe(id=1, name="Bolognese", covers_days=2),
         ]
         existing = []
         entries, err = generate_plan_entries("2026-10-05", "2026-10-07", rules, recipes, existing)
@@ -155,19 +155,36 @@ class TestGeneratePlanEntries:
         assert len(dinner_entries) == 2
         assert dinner_entries[0]["date"] == "2026-10-05"
         assert dinner_entries[1]["date"] == "2026-10-06"
+        assert dinner_entries[1]["continuation_of"] == ("2026-10-05", "dinner")
 
-    def test_two_night_no_cascade_if_next_day_full(self):
-        """Two-night recipe doesn't cascade if next day already has entry."""
+    def test_continuation_skips_occupied_same_type_slot(self):
+        """A continuation uses the next free slot without overwriting an entry."""
         rules = [
             make_rule(day_of_week="mon", meal_type="dinner", id=1),
         ]
-        recipes = [make_recipe(id=1, name="Bolognese", is_two_night=True)]
+        recipes = [make_recipe(id=1, name="Bolognese", covers_days=2)]
         existing = [{"date": "2026-10-06", "meal_type": "dinner"}]
         entries, err = generate_plan_entries("2026-10-05", "2026-10-07", rules, recipes, existing)
         assert err is None
         dinner_entries = [e for e in entries if e["meal_type"] == "dinner"]
-        assert len(dinner_entries) == 1  # only Monday, Tuesday blocked
-        assert dinner_entries[0]["date"] == "2026-10-05"
+        assert [e["date"] for e in dinner_entries] == ["2026-10-05", "2026-10-07"]
+        assert dinner_entries[1]["is_continuation"] == 1
+
+    def test_three_day_recipe_skips_occupied_slots_and_keeps_servings(self):
+        rules = [make_rule(day_of_week="mon", meal_type="dinner", id=1)]
+        recipes = [make_recipe(id=1, name="Batch stew", servings=6, covers_days=3)]
+        occupied = [{"date": "2026-10-06", "meal_type": "dinner"}]
+
+        entries, err = generate_plan_entries(
+            "2026-10-05", "2026-10-08", rules, recipes, occupied,
+        )
+
+        assert err is None
+        assert [(e["date"], e["servings"], e["is_continuation"]) for e in entries] == [
+            ("2026-10-05", 6, 0),
+            ("2026-10-07", 6, 1),
+            ("2026-10-08", 6, 1),
+        ]
 
     def test_manual_override_respected(self):
         """Existing manual entry blocks auto-generation for that slot."""
@@ -313,40 +330,39 @@ class TestPlanGenerationWorkflow:
         breakfast_entries = [e for e in entries if e["meal_type"] == "breakfast"]
         assert len(breakfast_entries) == 0  # Mon-Fri has no weekend days
 
-    def test_two_night_weekday_dinner_chain(self):
-        """Two-night recipes chain across weekday dinner slots."""
+    def test_multi_day_weekday_dinner_chain(self):
+        """Multi-day recipes fill coverage before another recipe is selected."""
         rules = [
             make_rule(id=1, day_of_week="weekday", meal_type="dinner", sort_order=0),
         ]
         recipes = [
-            make_recipe(id=1, name="Bolognese", is_two_night=True, tags="standard"),
+            make_recipe(id=1, name="Bolognese", covers_days=2, tags="standard"),
             make_recipe(id=2, name="Grilled Fish", tags="standard"),
         ]
         # Mon-Wed: 2026-10-05 to 2026-10-07
         entries, err = generate_plan_entries("2026-10-05", "2026-10-07", rules, recipes, [])
         assert err is None
         dinners = [e for e in entries if e["meal_type"] == "dinner"]
-        # Mon→Bolognese (two-night), Tue→Bolognese (cascade), Wed→Grilled Fish
-        # (unused recipes are preferred, so Bolognese isn't picked a third night)
+        # Monday and Tuesday are covered by Bolognese; Wednesday gets another recipe.
         assert len(dinners) == 3
         by_date = {d["date"]: d["recipe_id"] for d in dinners}
         assert by_date == {"2026-10-05": 1, "2026-10-06": 1, "2026-10-07": 2}
 
-    def test_two_night_cascade_prevents_next_day_rule(self):
-        """A two-night cascade blocks the next day's independent rule evaluation."""
+    def test_coverage_continuation_prevents_rule_on_occupied_slot(self):
+        """A continuation blocks independent generation in its occupied slot."""
         rules = [
             make_rule(id=1, day_of_week="mon", meal_type="dinner", tag_filter="pasta", sort_order=0),
             make_rule(id=2, day_of_week="tue", meal_type="dinner", tag_filter="fish", sort_order=0),
         ]
         recipes = [
-            make_recipe(id=1, name="Bolognese", is_two_night=True, tags="pasta"),
+            make_recipe(id=1, name="Bolognese", covers_days=2, tags="pasta"),
             make_recipe(id=2, name="Fish Tacos", tags="fish"),
         ]
         # Mon-Tue: 2026-10-05 to 2026-10-06
         entries, err = generate_plan_entries("2026-10-05", "2026-10-06", rules, recipes, [])
         assert err is None
         dinners = [e for e in entries if e["meal_type"] == "dinner"]
-        # Mon→Bolognese (pasta rule), Tue→Bolognese (cascade blocks fish rule)
+        # Monday's Bolognese continuation occupies Tuesday before the fish rule runs.
         assert len(dinners) == 2
         assert dinners[0]["recipe_id"] == 1  # Bolognese on Monday
         assert dinners[1]["recipe_id"] == 1  # Bolognese cascade on Tuesday
@@ -403,3 +419,18 @@ class TestPlanGenerationEdgeCases:
         assert err is None
         assert len(entries) == 1  # only one entry per slot
         assert entries[0]["recipe_id"] == 1  # first matching rule wins
+
+
+def test_plan_summary_counts_slots_recipes_and_today():
+    from services.plan_generator import plan_summary
+    dinner = {"recipe_id": 1, "recipe_name": "Bolognese", "servings": 4, "is_auto_generated": 1}
+    manual = {"recipe_id": 2, "recipe_name": "Eggs", "servings": 2, "is_auto_generated": 0}
+    days = [
+        {"is_today": False, "meals": {"breakfast": None, "dinner": dinner}},
+        {"is_today": True, "meals": {"breakfast": manual, "dinner": dinner}},
+        {"is_today": False, "meals": {"breakfast": None, "dinner": None}},
+    ]
+    s = plan_summary(days, ["breakfast", "dinner"])
+    assert (s["slots"], s["planned"], s["open"], s["recipes"], s["manual"]) == (6, 3, 3, 2, 1)
+    assert s["today"] == [("breakfast", manual), ("dinner", dinner)]
+    assert plan_summary(days[:1], ["dinner"])["today"] is None

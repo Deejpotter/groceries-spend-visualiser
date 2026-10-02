@@ -6,6 +6,7 @@ import sqlite3
 import pytest
 
 from conftest import create_user, login
+from models import label_of, short_name
 from services.plan_generator import generate_plan_entries, make_recipe, make_rule
 from services.shopping_list_generator import (
     generate_shopping_list, make_ingredient, make_plan_entry, make_recipe_dict, make_recipe_ingredient,
@@ -36,9 +37,9 @@ def test_login_returns_to_requested_page(client):
 
 # --- plan / shopping list -----------------------------------------------------
 
-def test_two_night_leftovers_not_bought_twice():
+def test_multi_day_leftovers_not_bought_twice():
     rules = [make_rule(id=1, day_of_week="all", meal_type="dinner")]
-    recipes = [make_recipe(id=1, name="Roast", servings=4, is_two_night=True)]
+    recipes = [make_recipe(id=1, name="Roast", servings=4, covers_days=2)]
     entries, _ = generate_plan_entries("2026-10-05", "2026-10-06", rules, recipes, [])
     assert [e["is_continuation"] for e in entries] == [0, 1]
     result = generate_shopping_list(
@@ -49,14 +50,34 @@ def test_two_night_leftovers_not_bought_twice():
     assert result["meat"][0]["quantity"] == 2  # not 4
 
 
-def test_removing_first_night_makes_leftovers_count(client, db):
+def test_removing_original_meal_makes_leftovers_count(client, db):
     login(client)
     db.execute("INSERT INTO recipes (id, name, servings) VALUES (1, 'Roast', 4)")
     db.execute("INSERT INTO meal_plan_entries (id, date, meal_type, recipe_id, servings, is_continuation) "
-               "VALUES (1, '2026-10-05', 'dinner', 1, 4, 0), (2, '2026-10-06', 'dinner', 1, 4, 1)")
+               "VALUES (1, '2026-10-05', 'dinner', 1, 4, 0), "
+               "(2, '2026-10-06', 'dinner', 1, 4, 1), "
+               "(3, '2026-10-08', 'dinner', 1, 4, 1)")
+    db.execute("UPDATE meal_plan_entries SET continuation_of = 1 WHERE id IN (2, 3)")
     db.commit()
     client.post("/meal-plan/remove/1")
     assert db.execute("SELECT is_continuation FROM meal_plan_entries WHERE id = 2").fetchone()[0] == 0
+    assert db.execute("SELECT is_continuation FROM meal_plan_entries WHERE id = 3").fetchone()[0] == 0
+
+
+def test_swapping_original_meal_promotes_its_continuations(client, db):
+    login(client)
+    db.execute("INSERT INTO recipes (id, name, servings) VALUES (1, 'Batch', 4), (2, 'New meal', 2)")
+    db.execute("INSERT INTO meal_plan_entries (id, date, meal_type, recipe_id, servings, is_continuation, continuation_of) "
+               "VALUES (1, '2026-10-05', 'dinner', 1, 4, 0, NULL), "
+               "(2, '2026-10-06', 'dinner', 1, 4, 1, 1)")
+    db.commit()
+
+    client.post("/meal-plan/swap/1", data={"recipe_id": "2", "servings": "2"})
+
+    promoted = db.execute(
+        "SELECT is_continuation, continuation_of FROM meal_plan_entries WHERE id = 2"
+    ).fetchone()
+    assert (promoted["is_continuation"], promoted["continuation_of"]) == (0, None)
 
 
 def test_compatible_units_merged_before_pantry_subtraction():
@@ -100,10 +121,16 @@ def test_ticks_survive_unit_preference_change(client, db):
     client.post("/shopping-list/generate", data={})
     item_id = db.execute("SELECT id FROM shopping_list_items").fetchone()[0]
     client.post(f"/shopping-list/toggle/{item_id}")
+    # Same preference regenerates with the same unit, so the tick is kept.
+    client.post("/shopping-list/generate", data={})
+    row = db.execute("SELECT unit, checked FROM shopping_list_items").fetchone()
+    assert (row["unit"], row["checked"]) == ("kg", 1)
+    # A unit-preference flip changes the line unit, so ticks reset rather
+    # than silently sharing state between incompatible lines.
     client.post("/settings/save", data={"action": "save_prefs", "unit_preference": "imperial", "default_servings": "2"})
     client.post("/shopping-list/generate", data={})
     row = db.execute("SELECT unit, checked FROM shopping_list_items").fetchone()
-    assert (row["unit"], row["checked"]) == ("lb", 1)
+    assert (row["unit"], row["checked"]) == ("lb", 0)
 
 
 @pytest.mark.parametrize("path", ["/meal-plan/add", "/meal-plan/swap/1"])
@@ -185,3 +212,152 @@ def test_bad_quantity_rows_rejected(qty):
     rows, errors = parse_purchase_csv(f"date,product_name,quantity,unit_price\n2026-09-01,Eggs,{qty},6\n")
     assert rows == []
     assert "quantity must be a positive number" in errors[0]
+
+
+def test_nice_date_filter(app):
+    """Plan dates render as 'Wed 30 Sep 2026'; bad input passes through."""
+    f = app.jinja_env.filters["nice_date"]
+    assert f("2026-09-30") == "Wed 30 Sep 2026"
+    assert f("not-a-date") == "not-a-date"
+    assert f("") == ""
+
+
+def test_static_urls_are_cache_busted(app):
+    """Static URLs carry a version so a deploy's new CSS/JS isn't hidden by browser caches."""
+    with app.test_request_context():
+        from flask import url_for
+        assert "?v=" in url_for("static", filename="css/style.css")
+
+
+def test_today_uses_app_timezone(monkeypatch):
+    """'Today' follows APP_TIMEZONE so evenings in Australia aren't shown as yesterday (UTC)."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    import models
+    monkeypatch.setenv("APP_TIMEZONE", "Pacific/Kiritimati")  # UTC+14
+    assert models.today() == datetime.now(ZoneInfo("Pacific/Kiritimati")).date()
+    monkeypatch.delenv("APP_TIMEZONE")
+    assert models.today() == datetime.now(ZoneInfo("Australia/Sydney")).date()
+
+
+def test_ingredient_rejects_non_http_link(client, db):
+    """A javascript: product link is refused, so it can never render as a clickable href."""
+    from conftest import login
+    login(client)
+    resp = client.post("/ingredients/add", data={
+        "name": "Bad link", "category": "other", "unit": "each", "url": "javascript:alert(1)",
+    }, follow_redirects=True)
+    assert b"must start with http" in resp.data
+    assert db.execute("SELECT COUNT(*) FROM ingredients WHERE name = 'Bad link'").fetchone()[0] == 0
+
+
+def test_http_url_filter(app):
+    f = app.jinja_env.filters["http_url"]
+    assert f("https://www.woolworths.com.au/shop/productdetails/1") == "https://www.woolworths.com.au/shop/productdetails/1"
+    assert f("javascript:alert(1)") is None
+    assert f(None) is None
+
+
+def test_meal_plan_week_and_rules_tabs(client, db):
+    """The meal plan page is split into a Week tab (day cards) and a Rules tab; rule edits land on Rules."""
+    from conftest import login
+    login(client)
+    db.execute("INSERT INTO settings (key, value) VALUES ('plan_start_date', '2026-10-05'), ('plan_end_date', '2026-10-11')")
+    db.commit()
+    week = client.get("/meal-plan").data
+    assert week.count(b'class="day-card') == 7 and b"Meals planned" in week
+    resp = client.post("/meal-rules/add", data={"day_of_week": "mon", "meal_type": "dinner", "is_active": "on"})
+    assert "tab=rules" in resp.headers["Location"]
+
+
+def test_shopping_list_prices_whole_packs(client, db):
+    """A 0.3 kg need of a 1.5 kg bag is priced as the whole bag, with the exact-amount figure alongside."""
+    from conftest import login
+    login(client)
+    cur = db.execute("INSERT INTO ingredients (name, category, unit, price) VALUES ('Carrots 1.5kg', 'produce', 'kg', 2.0)")
+    db.execute("INSERT INTO shopping_list_items (ingredient_name, quantity, unit, category, ingredient_id, estimated_cost)"
+               " VALUES ('Carrots 1.5kg', 0.3, 'kg', 'produce', ?, 0.6)", (cur.lastrowid,))
+    db.commit()
+    page = client.get("/shopping-list").data
+    assert b"1 \xc3\x97 1.5 kg pack" in page
+    assert b"$3.00" in page and b"$0.60 for just what the recipes use" in page
+
+
+def test_spares_panel_and_better_linked_size(client, db):
+    """Spare stock is listed with recipes that use it; a linked product in a closer size is picked."""
+    from conftest import login
+    login(client)
+    carrots = db.execute("INSERT INTO ingredients (name, category, unit, price) VALUES ('Carrots 1.5kg', 'produce', 'kg', 2.0)").lastrowid
+    soup = db.execute("INSERT INTO recipes (name, servings) VALUES ('Carrot soup', 4)").lastrowid
+    db.execute("INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity) VALUES (?, ?, 1)", (soup, carrots))
+    db.execute("INSERT INTO shopping_list_items (ingredient_name, quantity, unit, category, ingredient_id, estimated_cost)"
+               " VALUES ('Carrots', 0.3, 'kg', 'produce', ?, 0.6)", (carrots,))
+    db.commit()
+    page = client.get("/shopping-list").data.decode()
+    assert "1.2 kg spare" in page and "Spare after this shop" in page and "Carrot soup" in page
+    db.execute("INSERT INTO settings (key, value) VALUES ('plan_start_date', '2026-10-05'), ('plan_end_date', '2026-10-06')")
+    db.commit()
+    assert "Carrot soup ♻ uses spare Carrots" in client.get("/meal-plan").data.decode()
+
+    db.execute("INSERT INTO purchases (order_date, basket_id, store, product_name, quantity, unit_price, line_total, ingredient_id)"
+               " VALUES ('2026-09-01', 'b1', 'Woolworths', 'Carrots Prepacked 500g', 1, 1.5, 1.5, ?)", (carrots,))
+    db.commit()
+    page = client.get("/shopping-list").data.decode()
+    assert "buy <em>Carrots Prepacked 500g</em>" in page and "200 g spare" in page
+    assert "1 other size" in page
+
+
+# --- short display names -----------------------------------------------------
+
+def test_short_name_strips_only_a_trailing_size_or_pack_token():
+    assert short_name("Carrots 1.5kg") == "Carrots"
+    assert short_name("Cheese Pizza Blend 225g") == "Cheese Pizza Blend"
+    assert short_name("Woolworths Frozen Australian Broccoli Florets 500g") == "Woolworths Frozen Australian Broccoli Florets"
+    assert short_name("Milk 2L") == "Milk"
+    assert short_name("Cans 30x375ml") == "Cans"
+    assert short_name("Plain Olives") == "Plain Olives"
+    assert short_name("") == ""
+
+
+def test_label_of_prefers_display_name_then_shortens_the_raw_name():
+    assert label_of({"name": "The Odd Bunch Carrots 1.5kg", "display_name": "Carrots"}) == "Carrots"
+    assert label_of({"name": "The Odd Bunch Carrots 1.5kg"}) == "The Odd Bunch Carrots"
+    assert label_of({"ingredient_name": "Cheese 225g"}) == "Cheese"
+    assert label_of("Milk 2L") == "Milk"
+    assert label_of(None) == ""
+
+
+def test_label_of_accepts_db_rows():
+    con = sqlite3.connect(":memory:")
+    con.row_factory = sqlite3.Row
+    row = con.execute("SELECT 'Milk 2L' AS name, NULL AS display_name").fetchone()
+    assert label_of(row) == "Milk"
+
+
+def test_buy_hint_absent_when_the_own_pack_is_best(client, db):
+    """The '· buy X' hint must not fire when you'd just buy the ingredient's own product."""
+    from conftest import login
+    login(client)
+    carrots = db.execute("INSERT INTO ingredients (name, category, unit, price) VALUES ('Carrots 1.5kg', 'produce', 'kg', 2.0)").lastrowid
+    db.execute("INSERT INTO shopping_list_items (ingredient_name, quantity, unit, category, ingredient_id, estimated_cost)"
+               " VALUES ('Carrots', 0.3, 'kg', 'produce', ?, 0.6)", (carrots,))
+    db.commit()
+    assert "buy <em>" not in client.get("/shopping-list").data.decode()
+
+
+def test_display_name_shortens_the_list_and_spares(client, db):
+    """An ingredient's short display name is what the shopping list and spares panel show."""
+    from conftest import login
+    login(client)
+    carrots = db.execute(
+        "INSERT INTO ingredients (name, display_name, category, unit, price)"
+        " VALUES ('The Odd Bunch Carrots 1.5kg', 'Carrots', 'produce', 'kg', 2.0)").lastrowid
+    soup = db.execute("INSERT INTO recipes (name, servings) VALUES ('Carrot soup', 4)").lastrowid
+    db.execute("INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity) VALUES (?, ?, 1)", (soup, carrots))
+    db.execute("INSERT INTO shopping_list_items (ingredient_name, quantity, unit, category, ingredient_id, estimated_cost)"
+               " VALUES ('The Odd Bunch Carrots 1.5kg', 0.3, 'kg', 'produce', ?, 0.6)", (carrots,))
+    db.execute("INSERT INTO settings (key, value) VALUES ('plan_start_date', '2026-10-05'), ('plan_end_date', '2026-10-06')")
+    db.commit()
+    page = client.get("/shopping-list").data.decode()
+    assert "Carrots" in page and "The Odd Bunch Carrots 1.5kg" not in page
+    assert "Carrot soup ♻ uses spare Carrots" in client.get("/meal-plan").data.decode()

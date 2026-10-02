@@ -9,7 +9,7 @@
 <form method="post" action="{{ action }}" class="d-inline"
       {% if confirm %}onsubmit="return confirm({{ confirm|tojson|forceescape }})"{% endif %}>
     {{ csrf() }}
-    <button type="submit" class="{{ class }}"{% if title %} title="{{ title }}"{% endif %}>
+    <button type="submit" class="{{ class }}"{% if title %} title="{{ title }}"{% if not label %} aria-label="{{ title }}"{% endif %}{% endif %}>
         {%- if icon %}<i class="fas fa-{{ icon }}"></i>{% if label %} {% endif %}{% endif %}{{ label -}}
     </button>
 </form>

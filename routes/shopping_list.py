@@ -1,12 +1,16 @@
 """Routes for shopping list generation and management."""
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 
 from auth import login_required
 from database import get_db, get_plan_dates
 from models import CATEGORY_LOOKUP, UNIT_LOOKUP, validate_date_format
-from services.repository import load_shopping_inputs, load_pantry_stock, shopping_preferences
-from services.shopping_list_generator import generate_shopping_list
+from services.repository import (
+    load_linked_products, load_list_rows, load_pantry_stock, load_shopping_inputs, shopping_preferences,
+)
+from services.shopping_list_generator import (
+    generate_shopping_list, list_totals, plan_list_lines, recipes_using_spares, spares,
+)
 from services.spend_analysis import average_spend_per_shop
 
 shopping_bp = Blueprint("shopping_list", __name__)
@@ -33,16 +37,15 @@ def build_list(start, end):
 def shopping_list_view():
     db = get_db()
     start_str, end_str = get_plan_dates()
-    rows = db.execute(
-        "SELECT * FROM shopping_list_items ORDER BY checked, category, ingredient_name"
-    ).fetchall()
-
+    rows = plan_list_lines(load_list_rows(), load_linked_products())
     grouped = {}
     for row in rows:
         grouped.setdefault(row["category"] or "other", []).append(row)
     ordered = {cat: grouped[cat] for cat in sorted(grouped, key=lambda c: CATEGORY_LOOKUP.get(c, c))}
 
-    cost_estimate = round(sum(r["estimated_cost"] or 0 for r in rows if not r["is_manual"]), 2)
+    totals = list_totals(rows)
+    spare_items = spares(rows)
+    _, recipes, recipe_ingredients, ingredients = load_shopping_inputs(start_str, end_str)
     has_plan = bool(start_str and end_str and db.execute(
         "SELECT 1 FROM meal_plan_entries WHERE date BETWEEN ? AND ? LIMIT 1", (start_str, end_str)
     ).fetchone())
@@ -56,7 +59,9 @@ def shopping_list_view():
         has_plan=has_plan,
         plan_start=start_str,
         plan_end=end_str,
-        cost_estimate=cost_estimate,
+        totals=totals,
+        spare_items=spare_items,
+        spare_recipes=recipes_using_spares(spare_items, recipes, recipe_ingredients, ingredients),
         avg_shop_spend=average_spend_per_shop(db),
     )
 
@@ -73,10 +78,12 @@ def shopping_list_generate():
 
     db = get_db()
     # Remember what was already ticked so a regenerate doesn't lose progress.
-    # Keyed by ingredient id so a unit-preference change doesn't drop ticks.
+    # Keyed by (ingredient, unit) so two lines for one ingredient in
+    # incompatible units keep independent ticks. A unit-preference flip
+    # resets ticks; that is rarer and safer than silently sharing them.
     previously_checked = {
-        r["ingredient_id"]
-        for r in db.execute("SELECT ingredient_id FROM shopping_list_items WHERE checked = 1 AND is_manual = 0")
+        (r["ingredient_id"], r["unit"])
+        for r in db.execute("SELECT ingredient_id, unit FROM shopping_list_items WHERE checked = 1 AND is_manual = 0")
     }
     db.execute("DELETE FROM shopping_list_items WHERE is_manual = 0")
 
@@ -89,7 +96,7 @@ def shopping_list_generate():
                     recipe_ref, estimated_cost)
                    VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)""",
                 (item["ingredient_id"], item["ingredient_name"], item["quantity"], item["unit"], cat,
-                 1 if item["ingredient_id"] in previously_checked else 0,
+                 1 if (item["ingredient_id"], item["unit"]) in previously_checked else 0,
                  item["meal_date"], ", ".join(item["recipe_refs"]), item["estimated_cost"]),
             )
     db.commit()
@@ -105,6 +112,9 @@ def shopping_list_toggle(item_id):
     db = get_db()
     db.execute("UPDATE shopping_list_items SET checked = 1 - checked WHERE id = ?", (item_id,))
     db.commit()
+    if request.accept_mimetypes.best == "application/json":
+        row = db.execute("SELECT checked FROM shopping_list_items WHERE id = ?", (item_id,)).fetchone()
+        return jsonify({"checked": bool(row and row["checked"])})
     return _back()
 
 
@@ -112,12 +122,15 @@ def shopping_list_toggle(item_id):
 @login_required
 def shopping_list_add_manual():
     name = request.form.get("name", "").strip() or request.form.get("ingredient_name", "").strip()
-    quantity = request.form.get("quantity", type=float) or 1
+    quantity = request.form.get("quantity", type=float)
     unit = request.form.get("unit", "each").strip()
     category = request.form.get("category", "other").strip()
 
     if not name:
         flash("Item name is required.", "error")
+        return _back()
+    if quantity is None or quantity <= 0:
+        flash("Quantity must be a number greater than zero.", "error")
         return _back()
     if unit not in UNIT_LOOKUP:
         unit = "each"

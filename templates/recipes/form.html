@@ -42,12 +42,9 @@
                                    min="0" value="{{ recipe.cook_time if recipe else '' }}">
                         </div>
                         <div class="form-group col-md-3">
-                            <label></label>
-                            <div class="custom-control custom-checkbox">
-                                <input type="checkbox" class="custom-control-input" id="is_two_night"
-                                       name="is_two_night" {% if recipe and recipe.is_two_night %}checked{% endif %}>
-                                <label class="custom-control-label" for="is_two_night">Two-night recipe</label>
-                            </div>
+                            <label for="covers_days">Covers N days</label>
+                            <input type="number" class="form-control" id="covers_days" name="covers_days"
+                                   min="1" value="{{ recipe.covers_days if recipe else 1 }}" required>
                         </div>
                     </div>
 
@@ -61,9 +58,12 @@
                     <div class="form-group">
                         <label>Recipe Image</label>
                         {% if recipe and recipe.image_url %}
+                        {% set safe_image = recipe.image_url|http_url %}
+                        {% if safe_image %}
                         <div class=" mb-2">
-                            <img src="{{ recipe.image_url }}" alt="{{ recipe.name }}" style="max-height: 200px;">
+                            <img src="{{ safe_image }}" alt="{{ recipe.name }}" style="max-height: 200px;">
                         </div>
+                        {% endif %}
                         {% endif %}
                         <div class="input-group">
                             <div class="input-group-prepend">
@@ -98,7 +98,7 @@
                                 <div class="col-md-6">
                                     <select class="form-control ingredient-select" name="ingredient_ids"
                                             data-selected="{{ ri.ingredient_id }}">
-                                        <option value="{{ ri.ingredient_id }}" selected>{{ ri.ingredient_name }} ({{ ri.unit }})</option>
+                                        <option value="{{ ri.ingredient_id }}" selected>{{ ri|label }} ({{ ri.unit }})</option>
                                     </select>
                                 </div>
                                 <div class="col-md-2">
@@ -147,7 +147,7 @@
                 <ul>
                     <li><strong>Tags</strong> are used by meal rules to select recipes for meal slots</li>
                     <li>Use <strong>standard</strong> for regular meals, <strong>friday-special</strong> for treats</li>
-                    <li>Mark <strong>two-night</strong> recipes that cover 2 days (e.g. roast chicken)</li>
+                    <li>Set <strong>Covers N days</strong> for batch recipes; servings carry over to the next free meal slots</li>
                     <li>Ingredient quantities are for the default servings above</li>
                     <li>You can override servings per meal plan entry</li>
                 </ul>
@@ -157,7 +157,7 @@
             <div class="card-header">Suggested Tags</div>
             <div class="card-body">
                 <div class="d-flex flex-wrap gap-1">
-                    {% for tag in ['breakfast', 'lunch', 'dinner', 'snack', 'standard', 'single-night', 'two-night', 'quick', 'slow-cook', 'vegetarian', 'vegan', 'gluten-free', 'dessert', 'easy', 'medium', 'hard'] %}
+                    {% for tag in ['breakfast', 'lunch', 'dinner', 'snack', 'standard', 'single-night', 'quick', 'slow-cook', 'vegetarian', 'vegan', 'gluten-free', 'dessert', 'easy', 'medium', 'hard'] %}
                     <span class="badge badge-light text-dark tag-suggestion" data-tag="{{ tag }}">{{ tag }}</span>
                     {% endfor %}
                 </div>
@@ -211,7 +211,7 @@
         select.innerHTML = '';
         select.add(new Option('Select ingredient...', ''));
         ingredients.forEach(ing => {
-            const opt = new Option(`${ing.name} (${ing.unit})`, ing.id);
+            const opt = new Option(`${ing.label || ing.name} (${ing.unit})`, ing.id);
             if (String(ing.id) === String(selected)) opt.selected = true;
             select.add(opt);
         });

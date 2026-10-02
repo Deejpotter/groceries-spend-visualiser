@@ -14,6 +14,15 @@ REQUIRED_COLUMNS = {"date", "product_name", "quantity"}
 CUP_UNITS = {"G": "g", "KG": "kg", "ML": "mL", "L": "L", "EA": "each"}
 CUP_PRICE_RE = re.compile(r"\$\s*([\d.]+)\s*/\s*([\d.]*)\s*([A-Za-z]+)")
 
+PRODUCT_URLS = {"woolworths": "https://www.woolworths.com.au/shop/productdetails/{}"}
+
+
+def product_url(store: Optional[str], stockcode) -> Optional[str]:
+    """Store product page for a stockcode, or None when the store or code is unknown."""
+    template = PRODUCT_URLS.get((store or "").strip().lower())
+    code = str(stockcode or "").strip()
+    return template.format(code) if template and code.isdigit() else None
+
 
 def parse_cup_price(text: Optional[str]) -> Optional[Tuple[float, float, str]]:
     """Parse '$1.51 / 100G' -> (1.51, 100.0, 'g'). Returns None if unrecognised."""

@@ -136,26 +136,47 @@ def generate_plan_entries(
                 })
                 used_ids.add(recipe["id"])
 
-                # Handle two-night recipes
-                if recipe.get("is_two_night"):
-                    next_date = date + timedelta(days=1)
-                    if next_date <= end:
-                        next_key = (next_date.strftime("%Y-%m-%d"), meal_type)
-                        if next_key not in existing_set:
-                            entries.append({
-                                "date": next_date.strftime("%Y-%m-%d"),
-                                "meal_type": meal_type,
-                                "recipe_id": recipe["id"],
-                                "servings": servings,
-                                "is_auto_generated": 1,
-                                "is_continuation": 1,  # leftovers: no extra ingredients
-                                "source_rule_id": rule["id"],
-                            })
-                            # Block the cascade target from being filled by a rule on its own day
-                            existing_set.add(next_key)
+                existing_set.add(entry_key)
+                covers_days = max(1, int(recipe.get("covers_days") or 1))
+                continuation_date = date
+                continuations_added = 0
+                while continuations_added < covers_days - 1:
+                    continuation_date += timedelta(days=1)
+                    if continuation_date > end:
+                        break
+                    continuation_key = (continuation_date.strftime("%Y-%m-%d"), meal_type)
+                    if continuation_key in existing_set:
+                        continue
+                    entries.append({
+                        "date": continuation_key[0],
+                        "meal_type": meal_type,
+                        "recipe_id": recipe["id"],
+                        "servings": servings,
+                        "is_auto_generated": 1,
+                        "is_continuation": 1,
+                        "source_rule_id": rule["id"],
+                        "continuation_of": entry_key,
+                    })
+                    existing_set.add(continuation_key)
+                    continuations_added += 1
                 break  # First matching rule wins
 
     return entries, None
+
+
+def plan_summary(days: List[Dict], meal_types: List[str]) -> Dict:
+    """Headline numbers for the plan dashboard from the day rows built for the view."""
+    entries = [d["meals"].get(mt) for d in days for mt in meal_types]
+    planned = [e for e in entries if e]
+    today = next((d for d in days if d.get("is_today")), None)
+    return {
+        "slots": len(entries),
+        "planned": len(planned),
+        "open": len(entries) - len(planned),
+        "recipes": len({e["recipe_id"] for e in planned}),
+        "manual": sum(1 for e in planned if not e.get("is_auto_generated", 1)),
+        "today": [(mt, today["meals"][mt]) for mt in meal_types if today["meals"].get(mt)] if today else None,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -187,7 +208,7 @@ def make_recipe(
     id: int = 1,
     name: str = "Test Recipe",
     servings: int = 4,
-    is_two_night: bool = False,
+    covers_days: int = 1,
     tags: Optional[str] = None,
 ) -> Dict:
     """Create a recipe dict for testing."""
@@ -195,6 +216,6 @@ def make_recipe(
         "id": id,
         "name": name,
         "servings": servings,
-        "is_two_night": is_two_night,
+        "covers_days": covers_days,
         "tags": tags or "",
     }

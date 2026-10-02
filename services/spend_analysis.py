@@ -11,10 +11,19 @@ from typing import Dict, Iterable, List, Optional
 DAYS_PER_MONTH = 30.44
 
 
-def _as_date(value) -> date:
+def _as_date(value):
+    """Parse YYYY-MM-DD to a date; None when missing or unparseable.
+
+    One legacy purchase row must not crash the whole spend report.
+    """
+    if value is None or value == "":
+        return None
     if isinstance(value, date):
         return value
-    return datetime.strptime(str(value)[:10], "%Y-%m-%d").date()
+    try:
+        return datetime.strptime(str(value)[:10], "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return None
 
 
 def analyze_purchases(purchases: Iterable[Dict], top_n: int = 20) -> Optional[Dict]:
@@ -34,6 +43,8 @@ def analyze_purchases(purchases: Iterable[Dict], top_n: int = 20) -> Optional[Di
 
     for r in rows:
         d = _as_date(r["order_date"])
+        if d is None:
+            continue
         total = float(r["line_total"] or 0)
         basket_key = (r.get("store") or "", r["basket_id"])  # basket ids are only unique per store
 
@@ -60,6 +71,8 @@ def analyze_purchases(purchases: Iterable[Dict], top_n: int = 20) -> Optional[Di
         p["total_qty"] = round(p["total_qty"], 2)
         product_rows.append(p)
 
+    if not baskets:
+        return None
     first_date = min(b["date"] for b in baskets.values())
     last_date = max(b["date"] for b in baskets.values())
     span_days = (last_date - first_date).days or 1
@@ -114,9 +127,10 @@ def average_spend_per_shop(db) -> Optional[float]:
 def summarise_recent_spend(db, days: int = 90) -> Optional[Dict]:
     """Small summary for the dashboard: last N days relative to the latest purchase."""
     latest = db.execute("SELECT MAX(order_date) FROM purchases").fetchone()[0]
-    if not latest:
+    latest_day = _as_date(latest) if latest else None
+    if latest_day is None:
         return None
-    start = (_as_date(latest) - timedelta(days=days)).isoformat()
+    start = (latest_day - timedelta(days=days)).isoformat()
     stats = analyze_purchases(load_purchases(db, start=start), top_n=5)
     if stats:
         stats["window_days"] = days

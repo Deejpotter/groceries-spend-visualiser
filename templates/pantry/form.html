@@ -18,7 +18,7 @@
                             <option value="">Select ingredient...</option>
                             {% for ing in ingredients %}
                             <option value="{{ ing.id }}" {% if item and item.ingredient_id == ing.id %}selected{% endif %}>
-                                {{ ing.name }} ({{ ing.unit }})
+                                {{ ing|label }} ({{ ing.unit }})
                             </option>
                             {% endfor %}
                         </select>

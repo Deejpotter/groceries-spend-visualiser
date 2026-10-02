@@ -1,4 +1,4 @@
-"""Tests for database persistence helpers: fresh-DB detection, backups, stats."""
+"""Tests for database persistence helpers: migrations, fresh-DB detection, backups, and stats."""
 
 import os
 import sqlite3
@@ -27,6 +27,31 @@ def test_init_db_reports_fresh_database_then_existing(temp_db_path):
     assert database.init_db() is False
     assert os.path.exists(temp_db_path)
     assert database.init_db() is True
+
+
+def test_migration_maps_two_night_recipes_to_two_covered_days(temp_db_path):
+    legacy = sqlite3.connect(temp_db_path)
+    legacy_schema = database.SCHEMA.replace(
+        "    covers_days INTEGER NOT NULL DEFAULT 1,\n",
+        "    is_two_night INTEGER DEFAULT 0,\n",
+    )
+    legacy.executescript(legacy_schema)
+    legacy.execute("INSERT INTO recipes (name, is_two_night) VALUES ('Roast', 1)")
+    legacy.execute("INSERT INTO recipes (name, is_two_night) VALUES ('Pasta', 0)")
+    legacy.commit()
+    legacy.close()
+
+    database.init_db()
+
+    db = database._connect()
+    try:
+        rows = db.execute("SELECT name, covers_days FROM recipes ORDER BY name").fetchall()
+    finally:
+        db.close()
+    assert [(row["name"], row["covers_days"]) for row in rows] == [
+        ("Pasta", 1),
+        ("Roast", 2),
+    ]
 
 
 def test_database_stats_on_missing_file(temp_db_path):

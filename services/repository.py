@@ -4,6 +4,7 @@ from typing import Dict, List, Tuple
 
 from database import get_db, get_setting
 from models import convert_unit, units_compatible
+from services.spend_import import product_url
 
 
 def load_rules() -> List[Dict]:
@@ -12,7 +13,7 @@ def load_rules() -> List[Dict]:
 
 def load_recipes() -> List[Dict]:
     return [dict(r) for r in get_db().execute(
-        "SELECT id, name, servings, is_two_night, tags FROM recipes ORDER BY name"
+        "SELECT id, name, servings, covers_days, tags FROM recipes ORDER BY name"
     )]
 
 
@@ -41,17 +42,29 @@ def load_shopping_inputs(start: str, end: str) -> Tuple[List[Dict], Dict, Dict, 
     return entries, recipes, recipe_ingredients, ingredients
 
 
-def load_pantry_stock() -> Dict[int, Tuple[float, str]]:
+def load_pantry_stock(today=None) -> Dict[int, Tuple[float, str]]:
     """Pantry totals per ingredient id as (quantity, unit).
 
     Rows are converted to the ingredient's unit and summed; rows in a unit that
     can't be converted (e.g. 'each' for a kg ingredient) are left out.
+    Expired rows are left out so old stock doesn't shrink the shopping list.
     """
+    from datetime import datetime
+    from models import today as local_today
+    today = today or local_today()
     stock: Dict[int, Tuple[float, str]] = {}
     for r in get_db().execute(
-        "SELECT p.ingredient_id, p.quantity, COALESCE(NULLIF(p.unit, ''), i.unit) AS unit, i.unit AS base_unit "
-        "FROM pantry_items p JOIN ingredients i ON p.ingredient_id = i.id"
+        "SELECT p.ingredient_id, p.quantity, COALESCE(NULLIF(p.unit, ''), i.unit) AS unit, i.unit AS base_unit, "
+        "p.expiry_date FROM pantry_items p JOIN ingredients i ON p.ingredient_id = i.id"
     ):
+        expiry = r["expiry_date"]
+        if expiry:
+            try:
+                exp_day = datetime.strptime(str(expiry)[:10], "%Y-%m-%d").date()
+            except (ValueError, TypeError):
+                exp_day = None
+            if exp_day is not None and exp_day < today:
+                continue
         if not units_compatible(r["unit"], r["base_unit"]):
             continue
         qty = convert_unit(r["quantity"], r["unit"], r["base_unit"])
@@ -62,3 +75,32 @@ def load_pantry_stock() -> Dict[int, Tuple[float, str]]:
 
 def shopping_preferences() -> Tuple[str, bool]:
     return get_setting("unit_preference", "metric"), get_setting("subtract_pantry_from_list", "0") == "1"
+
+
+def load_list_rows() -> List[Dict]:
+    """Shopping-list rows with the fields of their ingredient (ing_*), ticked items last."""
+    return [dict(r) for r in get_db().execute(
+        """SELECT s.*, i.url AS product_url, i.name AS ing_name, i.display_name,
+                  i.unit AS ing_unit, i.pack_size AS ing_pack_size, i.price AS ing_price
+           FROM shopping_list_items s
+           LEFT JOIN ingredients i ON i.id = s.ingredient_id
+           ORDER BY s.checked, s.category, s.ingredient_name"""
+    )]
+
+
+def load_linked_products() -> Dict[int, List[Dict]]:
+    """Purchased products linked to each ingredient, with the shelf price last paid and product link."""
+    products: Dict[int, List[Dict]] = {}
+    for r in get_db().execute(
+        """SELECT p.ingredient_id, p.product_name, p.unit_price, p.store, p.stockcode
+           FROM purchases p
+           WHERE p.ingredient_id IS NOT NULL AND p.unit_price IS NOT NULL
+             AND p.order_date = (SELECT MAX(x.order_date) FROM purchases x
+                                 WHERE x.product_name = p.product_name AND x.unit_price IS NOT NULL)
+           GROUP BY p.ingredient_id, p.product_name"""
+    ):
+        products.setdefault(r["ingredient_id"], []).append({
+            "product_name": r["product_name"], "unit_price": r["unit_price"],
+            "url": product_url(r["store"], r["stockcode"]),
+        })
+    return products

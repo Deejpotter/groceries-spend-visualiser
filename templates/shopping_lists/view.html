@@ -3,6 +3,11 @@
 
 {% block title %}Shopping List — Grocery Visualiser{% endblock %}
 
+{% macro pack_label(o) -%}
+{%- if o.unit == 'each' %}{{ o.count }} × {{ o.size|qty }}-pack
+{%- else %}{{ o.count }} × {{ o.size|amount(o.unit) }} pack{{ '' if o.count == 1 else 's' }}{% endif -%}
+{%- endmacro %}
+
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
     <h1 class="mb-2">Shopping List</h1>
@@ -10,7 +15,7 @@
         {% if has_plan %}
         <form method="post" action="{{ url_for('shopping_list.shopping_list_generate') }}" class="d-inline">
             {{ csrf() }}
-            <button type="submit" class="btn btn-info">
+            <button type="submit" class="btn btn-primary">
                 <i class="fas fa-sync"></i> {{ 'Regenerate' if has_generated else 'Generate' }} from Plan
             </button>
         </form>
@@ -20,7 +25,7 @@
 </div>
 
 {% if plan_start and plan_end %}
-<p class="text-muted">Plan period {{ plan_start }} to {{ plan_end }}.
+<p class="text-muted">Plan period {{ plan_start|nice_date }} to {{ plan_end|nice_date }}.
     {% if has_plan and not has_generated %}Click <strong>Generate from Plan</strong> to build the list from your meal plan.{% endif %}
     {% if not has_plan %}<a href="{{ url_for('meal_plan.meal_plan_view') }}">Generate a meal plan</a> first.{% endif %}
 </p>
@@ -28,13 +33,16 @@
 <div class="alert alert-warning">Set your plan dates in <a href="{{ url_for('settings.settings') }}">Settings</a>, then generate a meal plan.</div>
 {% endif %}
 
-{% if cost_estimate or avg_shop_spend %}
+{% if totals.packs_total or avg_shop_spend %}
 <div class="row mb-3">
-    {% if cost_estimate %}
+    {% if totals.packs_total %}
     <div class="col-sm-6 mb-2">
         <div class="card"><div class="card-body py-2">
-            <div class="text-muted small">Estimated cost (priced ingredients)</div>
-            <div class="h4 mb-0">${{ "%.2f"|format(cost_estimate) }}</div>
+            <div class="text-muted small">Estimated till total (whole packs)</div>
+            <div class="h4 mb-0">{{ totals.packs_total|money }}</div>
+            {% if totals.exact_total and totals.exact_total < totals.packs_total %}
+            <div class="small text-muted">{{ totals.exact_total|money }} for just what the recipes use</div>
+            {% endif %}
         </div></div>
     </div>
     {% endif %}
@@ -42,15 +50,48 @@
     <div class="col-sm-6 mb-2">
         <div class="card"><div class="card-body py-2">
             <div class="text-muted small">Your average shop (from <a href="{{ url_for('spend.spend_dashboard') }}">spend history</a>)</div>
-            <div class="h4 mb-0">${{ "%.2f"|format(avg_shop_spend) }}</div>
+            <div class="h4 mb-0">{{ avg_shop_spend|money }}</div>
         </div></div>
     </div>
     {% endif %}
 </div>
 {% endif %}
 
+{% if spare_items %}
+<div class="card mb-3 border-left-brand d-print-none">
+    <div class="card-header py-2"><strong><i class="fas fa-box-open"></i> Spare after this shop</strong>
+        <span class="text-muted small">— plan a meal to use it before the plan ends</span></div>
+    <div class="card-body py-2">
+        <ul class="list-inline mb-2">
+            {% for s in spare_items %}<li class="list-inline-item"><span class="badge badge-light border pack-badge">{{ s.shown|amount(s.shown_unit) }} {{ s.name }}</span></li>{% endfor %}
+        </ul>
+        {% if spare_recipes %}
+        <div class="small text-muted mb-1">Recipes that use them up:</div>
+        <ul class="mb-1">
+            {% for r in spare_recipes[:5] %}
+            <li><a href="{{ url_for('recipes.recipe_detail', recipe_id=r.recipe_id) }}">{{ r.name }}</a>
+                <span class="text-muted small">uses {{ r.uses|join(', ') }}</span></li>
+            {% endfor %}
+        </ul>
+        <a href="{{ url_for('meal_plan.meal_plan_view') }}" class="small">Add one to an open slot on the meal plan →</a>
+        {% else %}
+        <div class="small text-muted">None of your recipes use these yet.</div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
 {% if grouped %}
-<p class="small text-muted">{{ checked_count }} of {{ item_count }} items ticked.</p>
+<div class="shop-progress mb-3" data-total="{{ item_count }}">
+    <div class="d-flex justify-content-between small text-muted mb-1">
+        <span><span class="js-checked-count">{{ checked_count }}</span> of {{ item_count }} items ticked</span>
+        <span class="js-checked-pct">{{ (100 * checked_count / item_count)|round|int if item_count else 0 }}%</span>
+    </div>
+    <div class="progress" style="height: 6px">
+        <div class="progress-bar bg-success" role="progressbar" style="width: {{ (100 * checked_count / item_count) if item_count else 0 }}%"
+             aria-valuenow="{{ checked_count }}" aria-valuemin="0" aria-valuemax="{{ item_count }}" aria-label="Items ticked"></div>
+    </div>
+</div>
 {% for category, items in grouped.items() %}
 <div class="card mb-3">
     <div class="card-header py-2"><strong>{{ category_label(category) }}</strong>
@@ -59,17 +100,38 @@
     <ul class="list-group list-group-flush">
         {% for item in items %}
         <li class="list-group-item d-flex align-items-center py-2 {{ 'list-group-item-light checked-item' if item.checked }}">
-            <form method="post" action="{{ url_for('shopping_list.shopping_list_toggle', item_id=item.id) }}" class="mr-3">
+            <form method="post" action="{{ url_for('shopping_list.shopping_list_toggle', item_id=item.id) }}" class="mr-3 js-toggle-form">
                 {{ csrf() }}
-                <input type="checkbox" class="big-check" onchange="this.form.submit()" {% if item.checked %}checked{% endif %}
-                       aria-label="Mark {{ item.ingredient_name }} as bought">
+                <input type="checkbox" class="big-check" {% if item.checked %}checked{% endif %}
+                       aria-label="Mark {{ item|label }} as bought">
             </form>
             <div class="flex-grow-1">
-                <span class="item-name">{{ item.quantity|amount(item.unit) }} {{ item.ingredient_name }}</span>
+                <span class="item-name">{{ item.quantity|amount(item.unit) }} {{ item|label }}</span>
+                {% set choice = item.pack_choice %}
+                {% if choice %}<span class="badge badge-light border pack-badge" title="Packs to buy">{{ pack_label(choice.best) }}</span>{% endif %}
                 {% if item.is_manual %}<span class="badge badge-secondary">manual</span>{% endif %}
+                {% if item.product_url|http_url %}<a href="{{ item.product_url }}" target="_blank" rel="noopener noreferrer"
+                   class="small ml-1 d-print-none" title="Open product page" aria-label="Open product page for {{ item|label }}"><i class="fas fa-external-link-alt"></i></a>{% endif %}
                 {% if item.recipe_ref %}<div class="small text-muted">{{ item.recipe_ref }}</div>{% endif %}
+                {% if choice %}
+                <div class="small text-muted">
+                    {% if choice.best.spare > 0 %}<span class="text-warning-dark"><i class="fas fa-box-open"></i> {{ choice.best.spare_shown|amount(choice.best.spare_shown_unit) }} spare</span>{% else %}<span class="text-success"><i class="fas fa-check"></i> right size</span>{% endif %}
+                    {% if choice.best.name != item.ing_name %}· buy <em>{{ choice.best.name }}</em>{% endif %}
+                </div>
+                {% if choice.others %}
+                <details class="pack-others d-print-none">
+                    <summary>{{ choice.others|length }} other size{{ '' if choice.others|length == 1 else 's' }}</summary>
+                    <ul class="list-unstyled small mb-0">
+                        {% for o in choice.others %}
+                        <li>{{ pack_label(o) }} {{ o.name }} — {{ o.cost|money if o.cost else 'no price' }},
+                            {{ o.spare_shown|amount(o.spare_shown_unit) ~ ' spare' if o.spare > 0 else 'nothing spare' }}</li>
+                        {% endfor %}
+                    </ul>
+                </details>
+                {% endif %}
+                {% endif %}
             </div>
-            {% if item.estimated_cost %}<span class="text-muted small mr-3">${{ "%.2f"|format(item.estimated_cost) }}</span>{% endif %}
+            {% if item.line_cost %}<span class="text-muted small mr-3 num">{{ item.line_cost|money }}</span>{% endif %}
             <div class="d-print-none">
             {{ post_button(url_for('shopping_list.shopping_list_delete', item_id=item.id), '', class='btn btn-sm btn-link text-danger',
                            icon='times', title='Remove item') }}

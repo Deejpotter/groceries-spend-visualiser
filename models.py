@@ -1,7 +1,24 @@
 """Constants, validation, and helper functions for Grocery Visualiser."""
 
-from datetime import datetime, timedelta
+import os
+import re
+from datetime import date, datetime, timedelta
 from typing import Optional
+from zoneinfo import ZoneInfo
+
+DEFAULT_TIMEZONE = "Australia/Sydney"
+
+MAX_PLAN_DAYS = 92
+
+
+def is_http_url(value) -> bool:
+    """True for absolute http(s) URLs; blocks javascript: and other schemes in links."""
+    return isinstance(value, str) and value.lower().startswith(("http://", "https://"))
+
+
+def today() -> date:
+    """Today's date in the household's timezone (APP_TIMEZONE), not the server's UTC clock."""
+    return datetime.now(ZoneInfo(os.getenv("APP_TIMEZONE") or DEFAULT_TIMEZONE)).date()
 
 
 # ---------------------------------------------------------------------------
@@ -25,8 +42,47 @@ CATEGORY_LOOKUP = {code: label for code, label in CATEGORIES}
 
 
 def category_label(code):
-    """Human-readable label for a category code (falls back to the code)."""
-    return CATEGORY_LOOKUP.get(code, code)
+  """Human-readable label for a category code (falls back to the code)."""
+  return CATEGORY_LOOKUP.get(code, code)
+
+
+# Trailing pack-size/count tokens that make a product name unreadable as a label.
+_NAME_SUFFIX_RE = re.compile(
+  r"[\s,;:–\-]*(?:\d+(?:\.\d+)?\s*(?:kg|g|ml|l|litr\w*|litre\w*|gram\w*|kilo\w*)"
+  r"|\d+\s*x\s*\d+(?:\.\d+)?\s*(?:kg|g|ml|l)?"
+  r"|\d+\s*(?:pack|pk|packs)|x\s*\d+\s*(?:pack|pk)?)\s*$",
+  re.I,
+)
+
+
+def short_name(product_name: str) -> str:
+  """Readable label derived from a product name: 'Carrots 1.5kg' -> 'Carrots'.
+
+  Only strips a trailing size or multipack token, so it never invents words.
+  """
+  text = (product_name or "").strip()
+  stripped = _NAME_SUFFIX_RE.sub("", text).strip(" ,-–;")
+  return stripped or text
+
+
+def label_of(item) -> str:
+  """Short display name for an ingredient-like object.
+
+  Prefers an explicit display_name; otherwise strips a trailing size/multipack token
+  from the raw (often product-derived) name. Accepts dicts, DB rows, or a bare string.
+  """
+  if item is None or isinstance(item, str):
+    return short_name(item or "")
+  if isinstance(item, dict):
+    data = item
+  elif hasattr(item, "keys"):
+    data = {k: item[k] for k in item.keys()}
+  else:
+    return short_name(str(item))
+  explicit = (data.get("display_name") or "").strip()
+  if explicit:
+    return explicit
+  return short_name(data.get("ingredient_name") or data.get("name") or "")
 
 
 # ---------------------------------------------------------------------------

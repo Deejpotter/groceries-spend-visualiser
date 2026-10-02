@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import post_button, csrf %}
+{% from "_macros.html" import post_button %}
 
 {% block title %}Ingredients — Grocery Visualiser{% endblock %}
 
@@ -14,10 +14,12 @@
 <form method="get" class="mb-4">
     <div class="row">
         <div class="col-md-4">
-            <input type="text" name="search" class="form-control" placeholder="Search ingredients..." value="{{ request.args.get('search', '') }}">
+            <label class="sr-only" for="ingredient-search">Search ingredients</label>
+            <input type="text" id="ingredient-search" name="search" class="form-control" placeholder="Search ingredients..." value="{{ request.args.get('search', '') }}">
         </div>
         <div class="col-md-3">
-            <select name="category" class="form-control">
+            <label class="sr-only" for="ingredient-category">Filter by category</label>
+            <select id="ingredient-category" name="category" class="form-control">
                 <option value="">All Categories</option>
                 {% for code, label in categories %}
                 <option value="{{ code }}" {% if request.args.get('category') == code %}selected{% endif %}>{{ label }}</option>
@@ -49,11 +51,11 @@
     <tbody>
         {% for ing in ingredients %}
         <tr>
-            <td><strong>{{ ing.name }}</strong></td>
+            <td>{% set lbl = ing|label %}<strong>{{ lbl }}</strong>{% if ing.name != lbl %}<div class="text-muted small">{{ ing.name }}</div>{% endif %}</td>
             <td>{{ category_lookup.get(ing.category, ing.category) }}</td>
             <td>{{ unit_label(ing.unit) }}</td>
             <td>{% if ing.price %}{{ ing.price|unit_price }}/{{ ing.unit|replace('_', ' ') }}{% else %}—{% endif %}</td>
-            <td>{{ ing.store or '—' }}</td>
+            <td>{% if ing.url|http_url %}<a href="{{ ing.url }}" target="_blank" rel="noopener noreferrer">{{ ing.store or 'Product page' }} <i class="fas fa-external-link-alt small"></i></a>{% else %}{{ ing.store or '—' }}{% endif %}</td>
             <td>{{ ing.minimum_stock or 0 }}</td>
             <td>
                 <div class="btn-group btn-group-sm">

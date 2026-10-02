@@ -6,7 +6,9 @@ import pytest
 
 from conftest import login
 from services.spend_analysis import analyze_purchases
-from services.spend_import import import_purchases, parse_cup_price, parse_purchase_csv, price_per_unit
+from services.spend_import import (
+    import_purchases, parse_cup_price, parse_purchase_csv, price_per_unit, product_url,
+)
 
 WOOLIES_CSV = """date,basket_id,channel,product_name,quantity,unit_price,cup_price,stockcode
 2026-08-24,b1,online,"Beef Mince 500g",2,8.00,"$16.00 / 1KG",1
@@ -44,6 +46,14 @@ def test_price_per_unit_falls_back_to_pack_price_for_count_units():
     assert price_per_unit(None, 4.5, "pack") == 4.5
     assert price_per_unit("$16.00 / 1KG", 8.0, "each") == 8.0
     assert price_per_unit(None, 4.5, "kg") is None  # can't guess a weight price
+
+
+def test_product_url():
+    assert product_url("Woolworths", "55613") == "https://www.woolworths.com.au/shop/productdetails/55613"
+    assert product_url("woolworths", 3408) == "https://www.woolworths.com.au/shop/productdetails/3408"
+    assert product_url("Coles", "55613") is None
+    assert product_url("Woolworths", "") is None
+    assert product_url("Woolworths", "abc") is None
 
 
 def test_parse_purchase_csv():
@@ -155,6 +165,7 @@ def test_link_product_create_new_ingredient(client, db):
     ing = db.execute("SELECT * FROM ingredients WHERE name = 'Milk 2L'").fetchone()
     assert ing["unit"] == "L"
     assert ing["price"] == pytest.approx(1.55)
+    assert ing["url"] == "https://www.woolworths.com.au/shop/productdetails/3"
 
 
 def test_products_page_filters(client, db):
@@ -176,3 +187,23 @@ def test_cli_import(app, tmp_path):
     csv_path.write_text(WOOLIES_CSV, encoding="utf-8")
     result = app.test_cli_runner().invoke(args=["import-purchases", str(csv_path)])
     assert "Imported 4 lines" in result.output
+
+
+def test_analyze_purchases_skips_bad_dates():
+    rows = [
+        {"order_date": "2026-09-07", "basket_id": "b1", "store": "Woolworths",
+         "product_name": "Milk", "quantity": 1, "line_total": 3.0},
+        {"order_date": "not-a-date", "basket_id": "b2", "store": "Woolworths",
+         "product_name": "Bad", "quantity": 1, "line_total": 99.0},
+    ]
+    stats = analyze_purchases(rows)
+    assert stats["total_spend"] == 3.0
+    assert stats["total_shops"] == 1
+
+
+def test_analyze_purchases_all_bad_dates_returns_none():
+    rows = [
+        {"order_date": "bad", "basket_id": "b1", "store": "Woolworths",
+         "product_name": "Bad", "quantity": 1, "line_total": 5.0},
+    ]
+    assert analyze_purchases(rows) is None

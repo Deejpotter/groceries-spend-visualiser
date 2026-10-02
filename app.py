@@ -13,7 +13,8 @@ from database import init_db, get_db, close_db, get_plan_dates, get_database_pat
 from auth import login_user, logout_user, get_current_user, is_logged_in, login_required, hash_password, verify_password
 from models import (
     CATEGORIES, UNITS, MEAL_TYPES, DAYS_OF_WEEK,
-    CATEGORY_LOOKUP, DAY_LABELS, UNIT_LOOKUP, MEAL_TYPE_LABELS, category_label,
+    CATEGORY_LOOKUP, DAY_LABELS, UNIT_LOOKUP, MEAL_TYPE_LABELS,
+    category_label, is_http_url, parse_date, label_of,
 )
 from routes import register_all_routes
 
@@ -47,6 +48,14 @@ def create_app(testing=False):
     register_all_routes(application)
     application.teardown_appcontext(close_db)
 
+    @application.url_defaults
+    def static_cache_bust(endpoint, values):
+        """Append ?v=<mtime> to static URLs so deploys aren't masked by cached CSS/JS."""
+        if endpoint == "static" and "filename" in values:
+            path = os.path.join(application.static_folder, values["filename"])
+            if os.path.isfile(path):
+                values["v"] = int(os.stat(path).st_mtime)
+
     @application.template_filter("qty")
     def format_quantity(value):
         """Show 500 not 500.0, and at most 2 decimal places."""
@@ -77,6 +86,22 @@ def create_app(testing=False):
     @application.template_filter("money")
     def format_money(value):
         return f"${value:,.2f}" if value is not None else "—"
+
+    @application.template_filter("http_url")
+    def filter_http_url(value):
+        """Only http(s) URLs are rendered as links."""
+        return value if is_http_url(value) else None
+
+    @application.template_filter("label")
+    def filter_label(value):
+        """Short display name for an ingredient-like dict."""
+        return label_of(value)
+
+    @application.template_filter("nice_date")
+    def format_nice_date(value):
+        """'2026-09-30' -> 'Wed 30 Sep 2026'; unparseable values pass through."""
+        parsed = parse_date(value) if value else None
+        return parsed.strftime("%a %d %b %Y") if parsed else (value or "")
 
     @application.context_processor
     def inject_common():
@@ -131,7 +156,7 @@ def create_app(testing=False):
             return redirect(url_for("login"))
         return render_template("login.html")
 
-    @application.route("/logout", methods=["GET", "POST"])
+    @application.route("/logout", methods=["POST"])
     @login_required
     def logout():
         logout_user()
@@ -173,13 +198,68 @@ def create_app(testing=False):
     @application.route("/")
     @login_required
     def dashboard():
-        from services.spend_analysis import summarise_recent_spend
+        from datetime import date, timedelta
+
+        from models import today as local_today
+        from services import dashboard as dash
+        from services.repository import load_linked_products, load_list_rows, load_shopping_inputs
+        from services.shopping_list_generator import plan_list_lines, recipes_using_spares, spares
+        from services.spend_analysis import analyze_purchases, load_purchases
+
         db = get_db()
 
         def count(sql):
             return db.execute(sql).fetchone()[0]
 
         plan_start, plan_end = get_plan_dates()
+        today = local_today()
+
+        plan_entries = []
+        if plan_start and plan_end:
+            plan_entries = [dict(r) for r in db.execute(
+                "SELECT date, is_continuation FROM meal_plan_entries WHERE date BETWEEN ? AND ?",
+                (plan_start, plan_end))]
+        coverage = dash.plan_coverage(plan_entries, plan_start, plan_end) if plan_start and plan_end else None
+
+        shopping = dash.shopping_summary([dict(r) for r in db.execute(
+            "SELECT estimated_cost, checked, is_manual FROM shopping_list_items")])
+        to_buy = [dict(r) for r in db.execute(
+            "SELECT ingredient_name, quantity, unit FROM shopping_list_items"
+            " WHERE checked = 0 ORDER BY category, ingredient_name LIMIT 8")]
+
+        pantry = dash.pantry_alerts([dict(r) for r in db.execute(
+            "SELECT p.id, p.quantity, p.unit, p.expiry_date, i.name, i.display_name,"
+            " i.minimum_stock, i.category"
+            " FROM pantry_items p JOIN ingredients i ON p.ingredient_id = i.id")])
+
+        latest = db.execute("SELECT MAX(order_date) FROM purchases").fetchone()[0]
+        spend = None
+        spend_delta = None
+        monthly = []
+        spend_spark = ""
+        if latest:
+            latest_day = date.fromisoformat(str(latest)[:10])
+            recent_start = (latest_day - timedelta(days=90)).isoformat()
+            prior_start = (latest_day - timedelta(days=180)).isoformat()
+            spend = dash.spend_window(load_purchases(db, start=recent_start))
+            prior = dash.spend_window(load_purchases(db, start=prior_start, end=recent_start))
+            spend_delta = dash.trend(spend["avg_per_shop"], prior["avg_per_shop"])
+            stats = analyze_purchases(load_purchases(db), top_n=5)
+            monthly = stats["monthly_spend"] if stats else []
+            spend_spark = dash.sparkline([v for _, v in monthly])
+
+        week_end = (today + timedelta(days=6)).isoformat()
+        upcoming = [dict(r) for r in db.execute(
+            "SELECT e.date, e.meal_type, e.is_continuation, r.name AS recipe_name"
+            " FROM meal_plan_entries e LEFT JOIN recipes r ON r.id = e.recipe_id"
+            " WHERE e.date BETWEEN ? AND ? ORDER BY e.date, e.meal_type",
+            (today.isoformat(), week_end))]
+
+        spare_items = spares(plan_list_lines(load_list_rows(), load_linked_products()))
+        _, recipes, recipe_ingredients, ingredients = load_shopping_inputs(
+            plan_start or today.isoformat(), plan_end or week_end)
+        spare_recipes = recipes_using_spares(spare_items, recipes, recipe_ingredients, ingredients)
+
         return render_template(
             "dashboard.html",
             ingredient_count=count("SELECT COUNT(*) FROM ingredients"),
@@ -188,7 +268,18 @@ def create_app(testing=False):
             entry_count=count("SELECT COUNT(*) FROM meal_plan_entries"),
             plan_start=plan_start,
             plan_end=plan_end,
-            spend=summarise_recent_spend(db),
+            today=today.isoformat(),
+            coverage=coverage,
+            shopping=shopping,
+            to_buy=to_buy,
+            pantry=pantry,
+            spend=spend,
+            spend_delta=spend_delta,
+            spend_spark=spend_spark,
+            monthly=monthly,
+            upcoming=upcoming,
+            spare_items=spare_items,
+            spare_recipes=spare_recipes,
         )
 
     @application.cli.command("init-db")

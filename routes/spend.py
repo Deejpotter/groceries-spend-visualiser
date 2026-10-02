@@ -7,8 +7,9 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 
 from auth import login_required
 from database import get_db
+from models import label_of, short_name
 from services.spend_analysis import analyze_purchases, load_purchases
-from services.spend_import import import_csv_file, import_purchases, parse_cup_price, parse_purchase_csv, price_per_unit
+from services.spend_import import import_csv_file, import_purchases, parse_cup_price, parse_purchase_csv, price_per_unit, product_url
 
 spend_bp = Blueprint("spend", __name__)
 
@@ -97,12 +98,12 @@ def spend_products():
         sql += " HAVING MAX(p.ingredient_id) IS NULL"
     sql += " ORDER BY total_spend DESC LIMIT 150"
     products = db.execute(sql, params).fetchall()
-    ingredients = db.execute("SELECT id, name, unit, price FROM ingredients ORDER BY name").fetchall()
+    ingredients = db.execute("SELECT id, name, display_name, unit, price FROM ingredients ORDER BY name").fetchall()
     return render_template(
         "spend/products.html",
         products=products,
         ingredients=ingredients,
-        ingredient_names={i["id"]: i["name"] for i in ingredients},
+        ingredient_names={i["id"]: label_of(i) for i in ingredients},
         search=search,
         only_unlinked=only_unlinked,
     )
@@ -110,7 +111,7 @@ def spend_products():
 
 def _latest_purchase(db, product_name):
     return db.execute(
-        "SELECT unit_price, cup_price, store FROM purchases WHERE product_name = ? ORDER BY order_date DESC LIMIT 1",
+        "SELECT unit_price, cup_price, store, stockcode FROM purchases WHERE product_name = ? ORDER BY order_date DESC LIMIT 1",
         (product_name,),
     ).fetchone()
 
@@ -128,14 +129,18 @@ def spend_link_product():
         return back
 
     latest = _latest_purchase(db, product_name)
+    if latest is None:
+        flash("No purchases found for that product.", "error")
+        return back
     if choice == "new":
         # Create an ingredient named after the product, priced from the latest purchase.
         cup = parse_cup_price(latest["cup_price"]) if latest else None
         unit = {"g": "kg", "mL": "L"}.get(cup[2], cup[2]) if cup else "each"
         price = price_per_unit(latest["cup_price"], latest["unit_price"], unit) if latest else None
         cur = db.execute(
-            "INSERT INTO ingredients (name, category, unit, price, store) VALUES (?, 'other', ?, ?, ?)",
-            (product_name, unit, price, latest["store"] if latest else None),
+            "INSERT INTO ingredients (name, display_name, category, unit, price, store, url) VALUES (?, ?, 'other', ?, ?, ?, ?)",
+            (product_name, short_name(product_name), unit, price, latest["store"] if latest else None,
+             product_url(latest["store"], latest["stockcode"]) if latest else None),
         )
         ingredient_id = cur.lastrowid
         flash(f"Created ingredient “{product_name}”. Set its category on the Ingredients page.", "success")

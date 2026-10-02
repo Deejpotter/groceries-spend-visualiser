@@ -23,11 +23,14 @@
 {%- endmacro %}
 
 {% block content %}
-<div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
-    <h1 class="mb-2">Grocery Spend</h1>
-    <div class="mb-2">
-        <a href="{{ url_for('spend.spend_products') }}" class="btn btn-outline-secondary"><i class="fas fa-link"></i> Link products</a>
-        <a href="{{ url_for('spend.spend_import') }}" class="btn btn-primary"><i class="fas fa-file-import"></i> Import purchases</a>
+<div class="page-head">
+    <div>
+        <h1 class="mb-0">Grocery Spend</h1>
+        <p class="page-sub">What you spend, per shop and per month.</p>
+    </div>
+    <div class="d-flex flex-wrap">
+        <a href="{{ url_for('spend.spend_products') }}" class="btn btn-outline-secondary mr-2 mb-2"><i class="fas fa-link"></i> Link products</a>
+        <a href="{{ url_for('spend.spend_import') }}" class="btn btn-primary mb-2"><i class="fas fa-file-import"></i> Import purchases</a>
     </div>
 </div>
 
@@ -48,20 +51,27 @@
     &middot; {{ stats.total_shops }} shops &middot; {{ stats.total_items }} line items
 </p>
 
-<div class="row mb-2">
-    {% for value, label in [
-        (stats.total_spend|money, 'Total spend'),
-        (stats.avg_spend_per_month|money, 'Average per month'),
-        (stats.avg_spend_per_shop|money, 'Average per shop'),
-        (stats.avg_days_between_shops ~ ' days', 'Between shops'),
-    ] %}
-    <div class="col-6 col-md-3 mb-3">
-        <div class="card h-100"><div class="card-body py-3">
-            <div class="stat-value">{{ value }}</div>
-            <div class="text-muted small">{{ label }}</div>
-        </div></div>
+<div class="kpi-row mb-4">
+    <div class="kpi-tile" data-tone="neutral">
+        <div class="kpi-label"><i class="fas fa-receipt"></i> Total spend</div>
+        <div class="kpi-value">{{ stats.total_spend|money }}</div>
+        <div class="kpi-context">{{ stats.total_shops }} shop{{ '' if stats.total_shops == 1 else 's' }} &middot; {{ stats.total_items }} line items</div>
     </div>
-    {% endfor %}
+    <div class="kpi-tile" data-tone="neutral">
+        <div class="kpi-label"><i class="fas fa-calendar-alt"></i> Per month</div>
+        <div class="kpi-value">{{ stats.avg_spend_per_month|money }}</div>
+        <div class="kpi-context">on average</div>
+    </div>
+    <div class="kpi-tile" data-tone="neutral">
+        <div class="kpi-label"><i class="fas fa-shopping-cart"></i> Per shop</div>
+        <div class="kpi-value">{{ stats.avg_spend_per_shop|money }}</div>
+        <div class="kpi-context">on average</div>
+    </div>
+    <div class="kpi-tile" data-tone="neutral">
+        <div class="kpi-label"><i class="fas fa-clock"></i> Between shops</div>
+        <div class="kpi-value">{{ stats.avg_days_between_shops }}<span class="kpi-unit">days</span></div>
+        <div class="kpi-context">on average</div>
+    </div>
 </div>
 
 <div class="card mb-4">
@@ -110,16 +120,23 @@
         const [y, m] = month.split('-');
         return new Date(+y, +m - 1, 1).toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
     });
+    const css = getComputedStyle(document.documentElement);
+    const brand = (css.getPropertyValue('--brand') || '#c25e3a').trim();
+    const inkSoft = (css.getPropertyValue('--ink-soft') || '#7a6c58').trim();
+    const line = (css.getPropertyValue('--line') || '#e2d6c1').trim();
     new Chart(document.getElementById('monthlyChart'), {
         type: 'bar',
-        data: { labels, datasets: [{ label: 'Spend', data: data.map(d => d[1]), backgroundColor: '#007bff' }] },
+        data: { labels, datasets: [{ label: 'Spend', data: data.map(d => d[1]), backgroundColor: brand, borderRadius: 6 }] },
         options: {
             maintainAspectRatio: false,
             plugins: {
                 legend: { display: false },
                 tooltip: { callbacks: { label: ctx => '$' + ctx.parsed.y.toFixed(2) } }
             },
-            scales: { y: { beginAtZero: true, ticks: { callback: v => '$' + v } } }
+            scales: {
+                x: { grid: { display: false }, ticks: { color: inkSoft } },
+                y: { beginAtZero: true, grid: { color: line }, ticks: { color: inkSoft, callback: v => '$' + v } }
+            }
         }
     });
 })();

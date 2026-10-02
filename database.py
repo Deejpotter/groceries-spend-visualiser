@@ -55,12 +55,14 @@ CREATE TABLE IF NOT EXISTS settings (
 CREATE TABLE IF NOT EXISTS ingredients (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
+    display_name TEXT,
     category TEXT NOT NULL DEFAULT 'other',
     unit TEXT NOT NULL DEFAULT 'each',
     price REAL,
     url TEXT,
     store TEXT,
     minimum_stock REAL DEFAULT 0,
+    pack_size REAL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -74,7 +76,7 @@ CREATE TABLE IF NOT EXISTS recipes (
     source_url TEXT,
     image_url TEXT,
     instructions TEXT,
-    is_two_night INTEGER DEFAULT 0,
+    covers_days INTEGER NOT NULL DEFAULT 1,
     tags TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -107,6 +109,7 @@ CREATE TABLE IF NOT EXISTS meal_plan_entries (
     servings INTEGER NOT NULL,
     is_auto_generated INTEGER DEFAULT 1,
     is_continuation INTEGER DEFAULT 0,
+    continuation_of INTEGER,
     source_rule_id INTEGER,
     FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE
 );
@@ -164,6 +167,10 @@ MIGRATIONS = [
     ("shopping_list_items", "estimated_cost", "REAL"),
     ("shopping_list_items", "ingredient_id", "INTEGER"),
     ("meal_plan_entries", "is_continuation", "INTEGER DEFAULT 0"),
+    ("meal_plan_entries", "continuation_of", "INTEGER"),
+    ("recipes", "covers_days", "INTEGER NOT NULL DEFAULT 1"),
+    ("ingredients", "pack_size", "REAL"),
+    ("ingredients", "display_name", "TEXT"),
 ]
 
 
@@ -184,7 +191,25 @@ def _apply_migrations(db):
     for table, column, definition in MIGRATIONS:
         existing = {row[1] for row in db.execute(f"PRAGMA table_info({table})")}
         if column not in existing:
-            db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+            if table == "recipes" and column == "covers_days":
+                db.execute("ALTER TABLE recipes ADD COLUMN covers_days INTEGER NOT NULL DEFAULT 1")
+                if "is_two_night" in existing:
+                    db.execute(
+                        "UPDATE recipes SET covers_days = 2 "
+                        "WHERE is_two_night = 1 AND covers_days = 1"
+                    )
+            else:
+                db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+                if table == "meal_plan_entries" and column == "continuation_of":
+                    db.execute(
+                        """UPDATE meal_plan_entries AS continuation SET continuation_of = (
+                               SELECT original.id FROM meal_plan_entries AS original
+                               WHERE original.date = date(continuation.date, '-1 day')
+                                 AND original.meal_type = continuation.meal_type
+                                 AND original.recipe_id = continuation.recipe_id
+                                 AND original.is_continuation = 0
+                           ) WHERE continuation.is_continuation = 1"""
+                    )
     _migrate_purchase_identity(db)
 
 

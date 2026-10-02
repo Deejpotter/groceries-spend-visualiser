@@ -18,6 +18,14 @@
                                value="{{ ingredient.name if ingredient else '' }}" required>
                     </div>
 
+                    <div class="form-group">
+                        <label for="display_name">Short name <span class="text-muted font-weight-normal">(optional)</span></label>
+                        <input type="text" class="form-control" id="display_name" name="display_name"
+                               value="{{ ingredient.display_name if ingredient else '' }}"
+                               placeholder="Shown on lists, e.g. Carrots">
+                        <small class="text-muted">Leave blank to shorten the name automatically (drops a trailing size like 1.5kg).</small>
+                    </div>
+
                     <div class="form-row">
                         <div class="form-group col-md-4">
                             <label for="category">Category</label>
@@ -56,6 +64,14 @@
                                    value="{{ ingredient.store if ingredient else '' }}"
                                    placeholder="e.g. Coles, Woolworths">
                         </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="pack_size">Pack size <span class="text-muted font-weight-normal">(optional, in the unit above)</span></label>
+                        <input type="number" class="form-control" id="pack_size" name="pack_size" min="0" step="any"
+                               value="{{ ingredient.pack_size if ingredient and ingredient.pack_size else '' }}"
+                               placeholder="Worked out from the name when blank, e.g. 500g → 0.5 kg">
+                        <small class="text-muted">Used to show how many packs to buy on the shopping list.</small>
                     </div>
 
                     <div class="form-group">

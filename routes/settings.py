@@ -2,7 +2,7 @@
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 from database import get_db, get_setting, set_setting, get_plan_dates
-from models import parse_date
+from models import MAX_PLAN_DAYS, parse_date
 from auth import login_required, hash_password, verify_password
 
 settings_bp = Blueprint("settings", __name__)
@@ -37,7 +37,7 @@ def save():
             flash("Both dates are required.", "error")
         elif end < start:
             flash("The end date must be on or after the start date.", "error")
-        elif (end - start).days > 92:
+        elif (end - start).days > MAX_PLAN_DAYS:
             flash("Plans are limited to about three months.", "error")
         else:
             set_setting("plan_start_date", plan_start)

@@ -4,7 +4,7 @@ from datetime import datetime
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from database import get_db
 from auth import login_required
-from models import category_label, validate_date_format
+from models import UNIT_LOOKUP, category_label, today as local_today, validate_date_format
 
 pantry_bp = Blueprint("pantry", __name__)
 
@@ -14,7 +14,7 @@ pantry_bp = Blueprint("pantry", __name__)
 def pantry_list():
     db = get_db()
     location = request.args.get("location", "").strip()
-    sql = """SELECT p.*, i.name as ingredient_name, i.category, i.unit as ingredient_unit
+    sql = """SELECT p.*, i.name as ingredient_name, i.display_name, i.category, i.unit as ingredient_unit
              FROM pantry_items p JOIN ingredients i ON p.ingredient_id = i.id"""
     params = []
     if location:
@@ -24,7 +24,7 @@ def pantry_list():
 
     # Add computed fields
     result = []
-    today = datetime.now().date()
+    today = local_today()
     for item in items:
         entry = dict(item)
         entry["ingredient_label"] = f"{item['ingredient_name']} ({item['ingredient_unit']})"
@@ -66,7 +66,7 @@ def pantry_form(item_id=None):
             flash("Item not found.", "error")
             return redirect(url_for("pantry.pantry_list"))
 
-    ingredients = db.execute("SELECT id, name, unit, category FROM ingredients ORDER BY name").fetchall()
+    ingredients = db.execute("SELECT id, name, display_name, unit, category FROM ingredients ORDER BY name").fetchall()
 
     if request.method == "POST":
         ingredient_id = request.form.get("ingredient_id", type=int)
@@ -81,8 +81,12 @@ def pantry_form(item_id=None):
             errors.append("Ingredient is required.")
         if quantity is None or quantity < 0:
             errors.append("Quantity must be zero or more.")
+        if unit and unit not in UNIT_LOOKUP:
+            errors.append("Choose a valid unit.")
         if expiry_date and not validate_date_format(expiry_date):
             errors.append("Expiry date must be a valid date.")
+        if not location:
+            errors.append("Location is required.")
 
         if errors:
             for err in errors:

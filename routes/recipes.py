@@ -3,7 +3,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from database import get_db, get_setting
 from auth import login_required
-from models import UNIT_LOOKUP
+from models import UNIT_LOOKUP, is_http_url
 from services.plan_generator import parse_tags
 
 recipes_bp = Blueprint("recipes", __name__)
@@ -18,7 +18,7 @@ def get_recipe_with_ingredients(recipe_id):
 
     ingredients = db.execute(
         """SELECT ri.id as ri_id, ri.quantity, ri.unit_override,
-                  i.id as ingredient_id, i.name, i.unit, i.category
+                  i.id as ingredient_id, i.name, i.display_name, i.unit, i.category
            FROM recipe_ingredients ri
            JOIN ingredients i ON ri.ingredient_id = i.id
            WHERE ri.recipe_id = ?""",
@@ -135,13 +135,13 @@ def recipe_form(recipe_id=None):
         name = request.form.get("name", "").strip()
         description = request.form.get("description", "").strip()
         servings = request.form.get("servings", type=int) or 0
+        covers_days = request.form.get("covers_days", default=1, type=int)
         prep_time = request.form.get("prep_time", type=int)
         cook_time = request.form.get("cook_time", type=int)
         source_url = request.form.get("source_url", "").strip()
         image_url = request.form.get("image_url", "").strip()
         instructions = request.form.get("instructions", "").strip()
         tags = ", ".join(dict.fromkeys(parse_tags(request.form.get("tags", ""))))
-        is_two_night = 1 if request.form.get("is_two_night") else 0
 
         rows, row_errors = _read_ingredient_rows()
         errors = []
@@ -149,6 +149,16 @@ def recipe_form(recipe_id=None):
             errors.append("Recipe name is required.")
         if servings < 1:
             errors.append("Servings must be at least 1.")
+        if covers_days is None or covers_days < 1:
+            errors.append("Coverage must be at least 1 day.")
+        if prep_time is not None and prep_time < 0:
+            errors.append("Prep time can't be negative.")
+        if cook_time is not None and cook_time < 0:
+            errors.append("Cook time can't be negative.")
+        if source_url and not is_http_url(source_url):
+            errors.append("Source link must start with http:// or https://.")
+        if image_url and not is_http_url(image_url):
+            errors.append("Image link must start with http:// or https://.")
         errors.extend(row_errors)
 
         if errors:
@@ -160,19 +170,19 @@ def recipe_form(recipe_id=None):
         if recipe_id:
             db.execute(
                 """UPDATE recipes SET name=?, description=?, servings=?, prep_time=?,
-                   cook_time=?, source_url=?, image_url=?, instructions=?, tags=?, is_two_night=?
+                   cook_time=?, source_url=?, image_url=?, instructions=?, tags=?, covers_days=?
                    WHERE id=?""",
                 (name, description, servings, prep_time, cook_time,
-                 source_url, image_url, instructions, tags, is_two_night, recipe_id)
+                 source_url, image_url, instructions, tags, covers_days, recipe_id)
             )
             flash("Recipe updated successfully.", "success")
         else:
             db.execute(
                 """INSERT INTO recipes (name, description, servings, prep_time, cook_time,
-                   source_url, image_url, instructions, tags, is_two_night)
+                   source_url, image_url, instructions, tags, covers_days)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (name, description, servings, prep_time, cook_time,
-                 source_url, image_url, instructions, tags, is_two_night)
+                 source_url, image_url, instructions, tags, covers_days)
             )
             recipe_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
             flash("Recipe created successfully.", "success")

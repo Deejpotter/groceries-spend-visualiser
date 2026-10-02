@@ -1,7 +1,34 @@
 /* Custom styles for Grocery Visualiser */
 
+:root {
+    /* Warm fresh-market palette */
+    --surface: #ece3d2;
+    --card: #fbf7ef;
+    --ink: #2c2620;
+    --ink-soft: #7a6c58;
+    --line: #e2d6c1;
+    --brand: #c25e3a;
+    --brand-dark: #a64b2c;
+    --brand-tint: #f6e7dc;
+    --ok: #6c7a45;
+    --ok-tint: #e7ecd9;
+    --warn: #c8912f;
+    --warn-tint: #f6ead1;
+    --danger: #b23a2e;
+    --danger-tint: #f4ded9;
+    --radius: 14px;
+    --radius-sm: 9px;
+    --shadow: 0 2px 8px rgba(74, 56, 32, 0.09);
+    --shadow-lg: 0 10px 28px rgba(74, 56, 32, 0.14);
+}
+
+.bg-brand {
+    background-color: var(--brand) !important;
+}
+
 body {
-    background-color: #f8f9fa;
+    background-color: var(--surface);
+    color: var(--ink);
     min-height: 100vh;
     display: flex;
     flex-direction: column;
@@ -18,14 +45,12 @@ footer {
 
 /* Cards */
 .card {
-    border: none;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    border-radius: 8px;
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow);
+    border-radius: var(--radius);
+    background-color: var(--card);
 }
 
-.card:hover {
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-}
 
 /* Recipe cards */
 .card-img-top {
@@ -48,19 +73,19 @@ footer {
 
 /* Buttons */
 .btn-primary {
-    background-color: #4f6df5;
-    border-color: #4f6df5;
+    background-color: var(--brand);
+    border-color: var(--brand);
 }
 
 .btn-primary:hover {
-    background-color: #3a57d8;
-    border-color: #3a57d8;
+    background-color: var(--brand-dark);
+    border-color: var(--brand-dark);
 }
 
 /* Custom checkbox for two-night toggle */
 .custom-checkbox .custom-control-input:checked ~ .custom-control-label::before {
-    background-color: #4f6df5;
-    border-color: #4f6df5;
+    background-color: var(--brand);
+    border-color: var(--brand);
 }
 
 /* Recipe form - ingredient rows */
@@ -80,7 +105,7 @@ footer {
 }
 
 .tag-suggestion:hover {
-    background-color: #4f6df5;
+    background-color: var(--brand);
     color: #fff;
 }
 
@@ -126,20 +151,15 @@ main.container {
     flex: 1;
 }
 
-/* Meal plan grid */
-.meal-grid td.meal-slot {
-    min-width: 11rem;
-    vertical-align: top;
-}
-.meal-grid details summary {
-    cursor: pointer;
-}
-
 /* Shopping list */
 .big-check {
-    width: 1.3rem;
-    height: 1.3rem;
+    width: 1.5rem;
+    height: 1.5rem;
     cursor: pointer;
+}
+.progress-bar {
+    background-color: var(--brand);
+    transition: width 0.2s ease;
 }
 .checked-item .item-name {
     text-decoration: line-through;
@@ -147,10 +167,6 @@ main.container {
 }
 
 /* Spend dashboard */
-.stat-value {
-    font-size: 1.6rem;
-    font-weight: 700;
-}
 .num {
     text-align: right;
     font-variant-numeric: tabular-nums;
@@ -161,7 +177,7 @@ main.container {
 }
 /* Focus styles for keyboard accessibility */
 *:focus-visible {
-    outline: 2px solid #4f6df5;
+    outline: 2px solid var(--brand);
     outline-offset: 2px;
 }
 
@@ -170,4 +186,332 @@ main.container {
     background: #ffc107;
     color: #212529;
     font-weight: 600;
+}
+
+.btn-outline-primary {
+    color: var(--brand);
+    border-color: var(--brand);
+}
+.btn-outline-primary:hover {
+    background-color: var(--brand);
+    border-color: var(--brand);
+}
+a {
+    color: var(--brand-dark);
+}
+.border-left-brand {
+    border-left: 4px solid var(--brand) !important;
+}
+.nav-pills .nav-link.active,
+.badge-primary {
+    background-color: var(--brand);
+}
+.nav-pills .nav-link:not(.active),
+.text-primary {
+    color: var(--brand-dark) !important;
+}
+
+/* Dashboard stat strip */
+.stat-strip {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+.stat-tile {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    padding: 0.6rem 0.9rem;
+    min-width: 0;
+}
+.stat-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #6c757d;
+}
+.stat-main {
+    font-size: 1.15rem;
+    font-weight: 700;
+    line-height: 1.3;
+}
+.stat-sub {
+    font-size: 0.8rem;
+    color: #6c757d;
+}
+.stat-strip .progress-bar {
+    background-color: var(--brand);
+}
+
+/* Meal plan week: a grid of day cards (7 across on wide screens, stacked on phones) */
+.week-grid {
+    display: grid;
+    gap: 0.6rem;
+    grid-template-columns: 1fr;
+}
+@media (min-width: 576px) { .week-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 992px) { .week-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 1200px) { .week-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
+
+.day-card {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    border-top: 3px solid transparent;
+    min-width: 0;
+}
+.day-card.is-today {
+    border-top-color: var(--brand);
+    background: var(--brand-tint);
+}
+.day-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    padding: 0.5rem 0.7rem 0.25rem;
+}
+.day-dow {
+    font-weight: 700;
+}
+.day-date {
+    color: #6c757d;
+    font-size: 0.85rem;
+}
+.day-slots {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+}
+.slot {
+    padding: 0.4rem 0.7rem 0.55rem;
+    border-top: 1px solid #f1f3f5;
+    min-width: 0;
+}
+.slot-label {
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #adb5bd;
+}
+.slot-recipe {
+    font-weight: 600;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+.slot-meta {
+    font-size: 0.78rem;
+    color: #6c757d;
+}
+.slot-edit summary {
+    font-size: 0.78rem;
+    color: var(--brand-dark);
+    cursor: pointer;
+    list-style: none;
+}
+.slot-edit summary::-webkit-details-marker { display: none; }
+.slot-empty .slot-edit summary {
+    color: #6c757d;
+}
+.slot-empty .slot-edit summary:hover {
+    color: var(--brand-dark);
+}
+.slot-remove {
+    line-height: 1;
+}
+.slot-remove:hover {
+    color: #dc3545 !important;
+}
+
+/* On phones, day cards read as rows: day on the left, meals on the right */
+@media (max-width: 575.98px) {
+    .stat-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .day-card { display: grid; grid-template-columns: 4.2rem 1fr; border-top: none; border-left: 3px solid transparent; }
+    .day-card.is-today { border-left-color: var(--brand); }
+    .day-head { flex-direction: column; align-items: flex-start; gap: 0; padding: 0.5rem 0.2rem 0.5rem 0.6rem; }
+    .day-head .badge { margin-left: 0 !important; margin-top: 0.2rem; }
+    .slot { border-top: none; border-left: 1px solid #f1f3f5; }
+}
+
+/* Shopping list pack count */
+.pack-badge {
+    font-weight: 500;
+    color: #495057;
+}
+
+/* Meal rules as cards */
+.rule-grid {
+    display: grid;
+    gap: 0.6rem;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+}
+.rule-card {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    border-left: 3px solid var(--brand);
+    padding: 0.6rem 0.8rem 0.3rem;
+}
+.rule-card.is-inactive {
+    border-left-color: #ced4da;
+    opacity: 0.75;
+}
+.rule-card.is-editing {
+    box-shadow: 0 0 0 2px var(--brand);
+}
+.rule-priority {
+    font-size: 0.75rem;
+    color: #adb5bd;
+}
+.rule-what {
+    margin: 0.2rem 0;
+}
+.text-warning-dark {
+    color: #b8860b;
+}
+.pack-others summary {
+    font-size: 0.78rem;
+    color: var(--brand-dark);
+    cursor: pointer;
+}
+
+/* Dashboard: KPI tiles with a freshness rail */
+.kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 0.85rem;
+}
+.kpi-tile {
+    position: relative;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 0.85rem 1rem 0.8rem 1.15rem;
+    overflow: hidden;
+    min-width: 0;
+}
+.kpi-tile::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 6px;
+    background: var(--brand);
+}
+.kpi-tile[data-tone="ok"]::before { background: var(--ok); }
+.kpi-tile[data-tone="warn"]::before { background: var(--warn); }
+.kpi-tile[data-tone="danger"]::before { background: var(--danger); }
+.kpi-label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+}
+.kpi-value {
+    font-size: 1.9rem;
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+}
+.kpi-value .kpi-unit {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--ink-soft);
+    margin-left: 0.15rem;
+}
+.kpi-context {
+    font-size: 0.8rem;
+    color: var(--ink-soft);
+    margin-top: 0.15rem;
+}
+.kpi-tile .sparkline {
+    position: absolute;
+    right: 0.65rem;
+    bottom: 0.55rem;
+    opacity: 0.85;
+}
+
+/* Trend delta (vs previous period) */
+.trend {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+.trend.up { color: var(--ok); }
+.trend.down { color: var(--danger); }
+.trend.flat { color: var(--ink-soft); }
+
+/* Semantic status badges: fresh / use-soon / out (icon + label, never colour alone) */
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    line-height: 1.4;
+}
+.status-badge.ok,
+.status-badge.fresh { background: var(--ok-tint); color: var(--ok); }
+.status-badge.warn,
+.status-badge.soon { background: var(--warn-tint); color: var(--warn); }
+.status-badge.danger,
+.status-badge.expired,
+.status-badge.out { background: var(--danger-tint); color: var(--danger); }
+.status-badge.neutral { background: var(--line); color: var(--ink-soft); }
+
+/* Row-level freshness cues for tables */
+.row-expired { background: var(--danger-tint); }
+.row-soon { background: var(--warn-tint); }
+
+/* Section headers */
+.section-card .card-header {
+    background: transparent;
+    border-bottom: 1px solid var(--line);
+    font-weight: 600;
+}
+.section-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.page-head {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+}
+.page-head .page-sub {
+    color: var(--ink-soft);
+    margin: 0.15rem 0 0;
+}
+.sparkline { display: block; }
+
+/* Numbers that update or stack stay aligned */
+.stat-value,
+.num,
+.kpi-value {
+    font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        transition: none !important;
+        animation: none !important;
+    }
 }

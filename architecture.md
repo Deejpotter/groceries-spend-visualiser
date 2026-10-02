@@ -25,7 +25,7 @@ app.py (factory, auth, dashboard, template filters, CLI)
 │   └── settings.py       — plan dates, preferences, password change
 │
 ├── services/        — Pure Python: no Flask or SQL dependency
-│   ├── plan_generator.py          — rule-based plan generation, two-night cascade
+│   ├── plan_generator.py          — rule-based plan generation, multi-day continuation
 │   ├── shopping_list_generator.py — ingredient aggregation, pantry subtraction, costs
 │   ├── spend_import.py            — CSV parsing, cup-price parsing, de-duplicated import
 │   ├── spend_analysis.py          — pure spend statistics
@@ -64,7 +64,7 @@ Single SQLite file (default `./data/groceries.db`). Schema is created idempotent
 | `users` | Single admin account |
 | `settings` | Key/value store for plan dates, unit preferences, etc. |
 | `ingredients` | Name, category, unit, price, store, product URL, min stock |
-| `recipes` | Servings, prep/cook time, tags, two-night flag, instructions |
+| `recipes` | Servings, prep/cook time, tags, coverage days, instructions |
 | `recipe_ingredients` | Links recipes to ingredients with quantity and optional unit override |
 | `meal_rules` | Day-of-week + meal-type + tag-filter rules, with priority ordering |
 | `meal_plan_entries` | Generated or manual plan slots (date, meal_type, recipe, servings) |
@@ -95,7 +95,7 @@ Single-user session-based auth via Flask `session` cookies. Passwords hashed wit
 
 ## Meal Plan Generation
 
-Rules are tried in priority order per slot (date × meal_type). The first matching rule with a matching recipe wins. Among candidates, the generator prefers recipes not already in the plan. Two-night recipes cascade into the next day's same slot and mark the continuation entry (`is_continuation=1`) so ingredients aren't bought twice. Manual entries (added/changed by hand) are preserved across regenerations.
+Rules are tried in priority order per slot (date × meal_type). The first matching rule with a matching recipe wins. Among candidates, the generator prefers recipes not already in the plan. Recipes can cover multiple days; continuations fill the next free slot of the same meal type, preserve servings, and link to the original entry so ingredients aren't counted twice. Manual entries (added/changed by hand) are preserved across regenerations.
 
 ## Spend Tracking
 
@@ -157,7 +157,7 @@ python -m pytest
 | Test File | Coverage |
 |---|---|
 | `test_integration.py` | Full user workflows: auth, CRUD, meal plan, shopping list, pantry, settings |
-| `test_plan_generator.py` | Plan generation algorithm, two-night cascade, manual overrides |
+| `test_plan_generator.py` | Plan generation algorithm, multi-day continuations, manual overrides |
 | `test_shopping_list_generator.py` | Unit conversion, aggregation, pantry subtraction, cost estimation |
 | `test_spend.py` | CSV parsing, cup-price parsing, import idempotency, analysis |
 | `test_security.py` | Setup lockout, open redirect, CSRF, POST-only enforcement |
