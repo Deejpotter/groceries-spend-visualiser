@@ -29,8 +29,8 @@ items and ticks survive a regenerate. Print-friendly.
 **Pantry** — stock with quantity, location and expiry date; expiry highlighting;
 "use" an amount after cooking.
 
-**Spend tracking** — import a purchase-history CSV (the Woolworths order-history export
-works as-is). The spend dashboard shows total, monthly and per-shop spend, days between
+**Spend tracking** — import a Woolworths PDF tax invoice (the emailed invoice per
+order — there is no CSV export, so the PDF is the source). The spend dashboard shows total, monthly and per-shop spend, days between
 shops, a monthly chart, and your most frequently bought and highest-spend products, over
 3/6/12 months or all time. Link purchased products to your ingredients to:
 - see spend by category, and
@@ -75,13 +75,18 @@ The database is created automatically (default `./data/groceries.db`).
 
 ### Importing purchases
 
-Upload a CSV under **Spend → Import purchases**, or from the command line:
+Upload a Woolworths PDF tax invoice under **Spend → Import purchases**, or a CSV
+from the command line:
 
 ```bash
 flask --app app import-purchases data/woolworths_order_history.csv
 ```
 
-Columns: `date`, `product_name`, `quantity`, and `unit_price` or `line_total`; optional
+PDF invoices are read directly (order number becomes the basket id, unavailable
+and $0.00 lines skipped, totals cross-checked against the printed subtotal).
+Re-importing an invoice reports it as already imported instead of duplicating.
+
+CSV columns: `date`, `product_name`, `quantity`, and `unit_price` or `line_total`; optional
 `basket_id`, `channel`, `cup_price`, `stockcode`. Re-importing the same file skips lines that
 are already there.
 
