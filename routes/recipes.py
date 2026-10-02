@@ -193,6 +193,8 @@ def recipe_form(recipe_id=None):
             [(recipe_id, ing_id, qty, unit) for ing_id, qty, unit in rows],
         )
         db.commit()
+        if not rows and not row_errors:
+            flash("Recipe saved without ingredients — it won't add anything to the shopping list until you add some.", "warning")
         return redirect(url_for("recipes.recipe_detail", recipe_id=recipe_id))
 
     return render_template("recipes/form.html", recipe=recipe, recipe_ingredients=recipe_ingredients,

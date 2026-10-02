@@ -46,6 +46,7 @@
         <div class="kpi-context">
             {% if plan_start %}{{ plan_start|nice_date }} &ndash; {{ plan_end|nice_date }}{% else %}No plan dates set{% endif %}
         </div>
+        <a class="small" href="{{ url_for('meal_plan.meal_plan_view') }}">Open meal plan →</a>
     </div>
 
     <div class="kpi-tile" data-tone="{{ 'ok' if shopping.item_count == 0 else 'neutral' }}">
@@ -54,6 +55,7 @@
         <div class="kpi-context">
             {% if shopping.item_count %}{{ shopping.cost|money }} est &middot; {{ shopping.checked }} ticked{% else %}Nothing to buy yet{% endif %}
         </div>
+        <a class="small" href="{{ url_for('shopping_list.shopping_list_view') }}">Open shopping list →</a>
     </div>
 
     <div class="kpi-tile" data-tone="{{ pantry.tone }}">
@@ -64,6 +66,7 @@
                 {{ pantry.expired_count }} expired &middot; {{ pantry.expiring_count }} soon &middot; {{ pantry.low_count }} low
             {% else %}All fresh{% endif %}
         </div>
+        <a class="small" href="{{ url_for('pantry.pantry_list') }}">Open pantry →</a>
     </div>
 
     <div class="kpi-tile" data-tone="neutral">
@@ -104,7 +107,7 @@
     </div>
     <div class="col-lg-4 mb-4">
         <div class="card h-100 section-card">
-            <div class="card-header"><span class="section-title"><i class="fas fa-utensils"></i> This week's dinners</span></div>
+            <div class="card-header"><span class="section-title"><i class="fas fa-utensils"></i> This week</span></div>
             <div class="card-body py-2">
                 {% if upcoming %}
                     {% for day, rows in upcoming|groupby('date') %}
@@ -164,7 +167,7 @@
                     {% endfor %}
                 </ul>
                 {% if spare_recipes %}
-                <div class="small text-muted">Try: {{ spare_recipes[0].name }}</div>
+                <div class="small text-muted">Try: <a href="{{ url_for('recipes.recipe_detail', recipe_id=spare_recipes[0].recipe_id) }}">{{ spare_recipes[0].name }}</a></div>
                 {% endif %}
                 <a class="small d-inline-block mt-1" href="{{ url_for('meal_plan.meal_plan_view') }}">Add a meal</a>
                 {% else %}

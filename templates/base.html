@@ -44,11 +44,15 @@
                        {% if active %}aria-current="page"{% endif %}>{{ label }}</a>
                 </li>
                 {% endfor %}
+                <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint == 'meal_plan.meal_plan_view' and request.args.get('tab') == 'rules' }}"
+                       href="{{ url_for('meal_plan.meal_plan_view', tab='rules') }}">Rules</a>
+                </li>
             </ul>
             <ul class="navbar-nav">
                 <li class="nav-item">
                     <a class="nav-link {{ 'active' if request.endpoint and request.endpoint.startswith('settings.') }}"
-                       href="{{ url_for('settings.settings') }}" title="Settings"><i class="fas fa-cog"></i> {{ current_user }}</a>
+                       href="{{ url_for('settings.settings') }}" title="Settings"><i class="fas fa-cog" aria-hidden="true"></i> Settings <span class="text-muted small">({{ current_user }})</span></a>
                 </li>
                 <li class="nav-item">
                     <form method="post" action="{{ url_for('logout') }}" class="form-inline">

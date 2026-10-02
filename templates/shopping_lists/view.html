@@ -13,7 +13,8 @@
     <h1 class="mb-2">Shopping List</h1>
     <div class="mb-2 d-print-none">
         {% if has_plan %}
-        <form method="post" action="{{ url_for('shopping_list.shopping_list_generate') }}" class="d-inline">
+        <form method="post" action="{{ url_for('shopping_list.shopping_list_generate') }}" class="d-inline"
+              {% if has_generated %}onsubmit="return confirm('Regenerate? Your current list (including removed items) will be replaced; ticked items are kept where the unit matches.')"{% endif %}>
             {{ csrf() }}
             <button type="submit" class="btn btn-primary">
                 <i class="fas fa-sync"></i> {{ 'Regenerate' if has_generated else 'Generate' }} from Plan
@@ -134,7 +135,7 @@
             {% if item.line_cost %}<span class="text-muted small mr-3 num">{{ item.line_cost|money }}</span>{% endif %}
             <div class="d-print-none">
             {{ post_button(url_for('shopping_list.shopping_list_delete', item_id=item.id), '', class='btn btn-sm btn-link text-danger',
-                           icon='times', title='Remove item') }}
+                           icon='times', title='Remove item', confirm='Remove ' ~ (item|label) ~ ' from the list?') }}
             </div>
         </li>
         {% endfor %}

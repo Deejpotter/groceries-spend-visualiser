@@ -31,9 +31,11 @@
                         <small class="text-muted">
                             The meal plan and shopping list are generated for this date range.
                             Set dates that work for your shopping cycle (e.g., 2 weeks).
+                            Changing the dates hides entries outside the new range (nothing is deleted).
                         </small>
                     </div>
                     <button type="submit" name="action" value="save_dates" class="btn btn-primary">Save Dates</button>
+                    <a href="{{ url_for('meal_plan.meal_plan_view', tab='rules') }}" class="small ml-2">Next: add meal rules →</a>
                 </form>
             </div>
         </div>
@@ -58,6 +60,7 @@
                         <small class="text-muted">
                             Shopping lists will display quantities in your preferred unit system.
                             Unit conversion is applied at display time.
+                            Note: switching systems resets ticked items on the next regenerate.
                         </small>
                     </div>
 
@@ -84,6 +87,7 @@
                     </div>
 
                     <button type="submit" name="action" value="save_prefs" class="btn btn-primary">Save Preferences</button>
+                    <a href="{{ url_for('shopping_list.shopping_list_view') }}" class="small ml-2">Next: open the shopping list →</a>
                 </form>
             </div>
         </div>

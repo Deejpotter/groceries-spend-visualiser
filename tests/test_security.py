@@ -155,6 +155,16 @@ def test_shopping_regenerate_keeps_ticks_per_unit(client, db):
     assert by_unit.get("kg") == 1
 
 
+def test_recipe_without_ingredients_saves_with_warning(client, db):
+    login(client)
+    resp = client.post("/recipes/add", data={
+        "name": "No links yet", "servings": "2", "covers_days": "1",
+    }, follow_redirects=True)
+    assert resp.status_code == 200
+    assert db.execute("SELECT COUNT(*) FROM recipes WHERE name='No links yet'").fetchone()[0] == 1
+    assert b"without ingredients" in resp.data
+
+
 def test_expired_pantry_stock_is_ignored(client, db):
     from datetime import date
     from services.repository import load_pantry_stock

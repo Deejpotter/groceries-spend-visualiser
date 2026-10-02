@@ -32,6 +32,7 @@
         <a href="{{ url_for('shopping_list.shopping_list_view') }}" class="btn btn-success btn-sm">
             <i class="fas fa-shopping-cart"></i> Shopping list
         </a>
+        <button type="button" onclick="window.print()" class="btn btn-outline-secondary btn-sm ml-2 d-print-none"><i class="fas fa-print"></i> Print</button>
     </div>
 </div>
 
@@ -39,6 +40,9 @@
 <div class="alert alert-warning">
     <strong>No plan dates set.</strong> Go to <a href="{{ url_for('settings.settings') }}">Settings</a> to choose your plan start and end dates.
 </div>
+{% endif %}
+{% if tab == 'week' and not rules %}
+<div class="alert alert-info d-print-none">No meal rules yet — the plan can't fill itself. <a href="{{ url_for('meal_plan.meal_plan_view', tab='rules') }}">Add rules</a>, or place meals by hand below.</div>
 {% endif %}
 
 {% if days %}
@@ -74,7 +78,7 @@
 <ul class="nav nav-tabs mb-3" role="tablist">
     <li class="nav-item">
         <a class="nav-link {{ 'active' if tab == 'week' }}" href="{{ url_for('meal_plan.meal_plan_view') }}"
-           {% if tab == 'week' %}aria-current="page"{% endif %}><i class="far fa-calendar"></i> Week</a>
+           {% if tab == 'week' %}aria-current="page"{% endif %}><i class="far fa-calendar"></i> Plan{% if plan_start and plan_end %} <span class="small text-muted">{{ plan_start[5:] }}–{{ plan_end[5:] }}</span>{% endif %}</a>
     </li>
     <li class="nav-item">
         <a class="nav-link {{ 'active' if tab == 'rules' }}" href="{{ url_for('meal_plan.meal_plan_view', tab='rules') }}"
@@ -105,7 +109,7 @@
                 <div class="d-flex justify-content-between align-items-start">
                     <div class="slot-recipe">{{ entry.recipe_name }}</div>
                     {{ post_button(url_for('meal_plan.meal_plan_remove', entry_id=entry.id), '', class='btn btn-sm btn-link text-muted p-0 ml-1 slot-remove',
-                                   icon='times', title='Remove ' ~ entry.recipe_name) }}
+                                   icon='times', title='Remove ' ~ entry.recipe_name, confirm='Remove ' ~ entry.recipe_name ~ ' from the plan?') }}
                 </div>
                 <div class="slot-meta">
                     Serves {{ entry.servings }}

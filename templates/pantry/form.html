@@ -22,7 +22,8 @@
                             </option>
                             {% endfor %}
                         </select>
-                        <small class="text-muted">Select the ingredient from your database.</small>
+                        <small class="text-muted">Select the ingredient from your database.
+                            {% if not ingredients %}No ingredients yet — <a href="{{ url_for('ingredients.ingredient_add') }}">add one</a> first.{% endif %}</small>
                     </div>
 
                     <div class="form-row">
