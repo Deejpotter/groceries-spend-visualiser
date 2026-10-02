@@ -16,7 +16,10 @@
     <div class="col-md-8">
         <div class="card mb-4">
             {% if recipe.image_url %}
-            <img src="{{ recipe.image_url }}" class="card-img-top" alt="{{ recipe.name }}" style="height: 250px; object-fit: cover;">
+            {% set safe_image = recipe.image_url|http_url %}
+            {% if safe_image %}
+            <img src="{{ safe_image }}" class="card-img-top" alt="{{ recipe.name }}" style="height: 250px; object-fit: cover;">
+            {% endif %}
             {% endif %}
             <div class="card-body">
                 <h1 class="card-title">{{ recipe.name }}</h1>
@@ -35,8 +38,8 @@
                         <strong>Serves:</strong> {{ recipe.servings }}
                     </div>
                     <div class="col-md-3">
-                        {% if recipe.is_two_night %}
-                        <span class="badge badge-warning">Two-night recipe</span>
+                        {% if recipe.covers_days > 1 %}
+                        <span class="badge badge-warning">Covers {{ recipe.covers_days }} days</span>
                         {% endif %}
                     </div>
                 </div>

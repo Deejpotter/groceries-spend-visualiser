@@ -51,6 +51,8 @@ def _read_form():
         errors.append("Pack size can't be negative.")
     if values["price"] is not None and values["price"] < 0:
         errors.append("Price can't be negative.")
+    if values["minimum_stock"] is not None and values["minimum_stock"] < 0:
+        errors.append("Minimum stock can't be negative.")
     return values, errors
 
 

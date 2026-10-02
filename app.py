@@ -156,7 +156,7 @@ def create_app(testing=False):
             return redirect(url_for("login"))
         return render_template("login.html")
 
-    @application.route("/logout", methods=["GET", "POST"])
+    @application.route("/logout", methods=["POST"])
     @login_required
     def logout():
         logout_user()

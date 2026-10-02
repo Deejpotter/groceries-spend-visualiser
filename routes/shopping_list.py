@@ -78,10 +78,12 @@ def shopping_list_generate():
 
     db = get_db()
     # Remember what was already ticked so a regenerate doesn't lose progress.
-    # Keyed by ingredient id so a unit-preference change doesn't drop ticks.
+    # Keyed by (ingredient, unit) so two lines for one ingredient in
+    # incompatible units keep independent ticks. A unit-preference flip
+    # resets ticks; that is rarer and safer than silently sharing them.
     previously_checked = {
-        r["ingredient_id"]
-        for r in db.execute("SELECT ingredient_id FROM shopping_list_items WHERE checked = 1 AND is_manual = 0")
+        (r["ingredient_id"], r["unit"])
+        for r in db.execute("SELECT ingredient_id, unit FROM shopping_list_items WHERE checked = 1 AND is_manual = 0")
     }
     db.execute("DELETE FROM shopping_list_items WHERE is_manual = 0")
 
@@ -94,7 +96,7 @@ def shopping_list_generate():
                     recipe_ref, estimated_cost)
                    VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)""",
                 (item["ingredient_id"], item["ingredient_name"], item["quantity"], item["unit"], cat,
-                 1 if item["ingredient_id"] in previously_checked else 0,
+                 1 if (item["ingredient_id"], item["unit"]) in previously_checked else 0,
                  item["meal_date"], ", ".join(item["recipe_refs"]), item["estimated_cost"]),
             )
     db.commit()
@@ -120,12 +122,15 @@ def shopping_list_toggle(item_id):
 @login_required
 def shopping_list_add_manual():
     name = request.form.get("name", "").strip() or request.form.get("ingredient_name", "").strip()
-    quantity = request.form.get("quantity", type=float) or 1
+    quantity = request.form.get("quantity", type=float)
     unit = request.form.get("unit", "each").strip()
     category = request.form.get("category", "other").strip()
 
     if not name:
         flash("Item name is required.", "error")
+        return _back()
+    if quantity is None or quantity <= 0:
+        flash("Quantity must be a number greater than zero.", "error")
         return _back()
     if unit not in UNIT_LOOKUP:
         unit = "each"

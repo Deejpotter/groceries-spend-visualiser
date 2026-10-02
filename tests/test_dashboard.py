@@ -15,7 +15,7 @@ def test_plan_coverage_counts_days_with_meals():
     entries = [
         {"date": "2026-10-05"},
         {"date": "2026-10-06"},
-        {"date": "2026-10-06"},  # continuation of a two-night recipe: same day
+        {"date": "2026-10-06"},  # continuation entry on this day.
         {"date": "2026-10-08"},
         {"date": "2026-10-20"},  # outside the range: ignored
     ]
@@ -101,3 +101,28 @@ def test_trend_without_a_previous_value():
     assert trend(100, None) is None
     assert trend(None, 100) is None
     assert trend(100, 0) is None
+
+
+def test_plan_coverage_skips_bad_entry_dates():
+    entries = [
+        {"date": "2026-10-05"},
+        {"date": "not-a-date"},
+        {"date": None},
+    ]
+    result = plan_coverage(entries, "2026-10-05", "2026-10-11")
+    assert result["days_planned"] == 1
+
+
+def test_plan_coverage_bad_range_returns_empty():
+    assert plan_coverage([], "bad-date", "2026-10-11")["days_total"] == 0
+
+
+def test_pantry_alerts_skips_bad_expiry_dates():
+    today = date(2026, 10, 10)
+    items = [
+        {"id": 1, "quantity": 1, "expiry_date": "not-a-date", "minimum_stock": 0},
+        {"id": 2, "quantity": 1, "expiry_date": "2026-10-08", "minimum_stock": 0},
+    ]
+    result = pantry_alerts(items, today=today)
+    assert [r["id"] for r in result["expired"]] == [2]
+    assert result["tone"] == "danger"

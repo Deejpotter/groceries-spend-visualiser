@@ -56,7 +56,7 @@
     <div class="stat-tile">
         <div class="stat-label">Meals planned</div>
         <div class="stat-main">{{ summary.planned }}<span class="text-muted"> / {{ summary.slots }}</span></div>
-        <div class="progress mt-1" style="height: 4px"><div class="progress-bar" style="width: {{ (100 * summary.planned / summary.slots) if summary.slots else 0 }}%"></div></div>
+        <div class="progress mt-1" style="height: 4px" role="progressbar" aria-valuenow="{{ (100 * summary.planned / summary.slots) if summary.slots else 0 }}" aria-valuemin="0" aria-valuemax="100" aria-label="Meals planned"><div class="progress-bar" style="width: {{ (100 * summary.planned / summary.slots) if summary.slots else 0 }}%"></div></div>
     </div>
     <div class="stat-tile">
         <div class="stat-label">Open slots</div>
@@ -109,7 +109,8 @@
                 </div>
                 <div class="slot-meta">
                     Serves {{ entry.servings }}
-                    {% if entry.is_two_night %}<span class="badge badge-warning">Two-night</span>{% endif %}
+                    {% if entry.covers_days > 1 and not entry.is_continuation %}<span class="badge badge-warning">Covers {{ entry.covers_days }} days</span>{% endif %}
+                    {% if entry.is_continuation %}<span class="badge badge-light">Leftovers</span>{% endif %}
                     {% if not entry.is_auto_generated %}<span class="badge badge-info" title="Kept when you regenerate">Manual</span>{% endif %}
                 </div>
                 <details class="slot-edit">
@@ -163,7 +164,7 @@
             </p>
             <h6>Examples</h6>
             <ul class="text-muted mb-0">
-                <li><strong>Weekday dinner → tag "standard"</strong> — Two-night recipes like roast chicken, stir fry</li>
+                <li><strong>Weekday dinner → tag "standard"</strong> — Batch recipes can cover multiple days</li>
                 <li><strong>Friday dinner → tag "friday-special"</strong> — Treat meals, single night</li>
                 <li><strong>Saturday & Sunday breakfast → tag "breakfast"</strong> — Weekend breakfast options</li>
             </ul>
@@ -321,15 +322,14 @@ document.querySelectorAll('.day-toggle input').forEach(function(inp) {
     inp.addEventListener('change', syncDays);
 });
 
-document.getElementById('rule-form').querySelector('form').addEventListener('submit', function() {
+document.getElementById('rule-form').querySelector('form').addEventListener('submit', function(e) {
     syncDays();
     if (!document.getElementById('day_of_week').value) {
         alert('Please select at least one day.');
-        event.preventDefault();
+        e.preventDefault();
     }
 });
 
-syncDays();
 </script>
 {% endif %}
 {% endblock %}

@@ -471,3 +471,13 @@ def test_list_totals_uses_pack_cost_and_skips_manual_lines():
     ]
     assert list_totals(items) == {"packs_total": 4.07, "exact_total": 1.82}
     assert list_totals([]) == {"packs_total": 0, "exact_total": 0}
+
+
+def test_parse_pack_size_imperial_units():
+    assert parse_pack_size("Flour 2lb", "lb") == pytest.approx(2.0)
+    assert parse_pack_size("Sugar 8oz", "oz") == pytest.approx(8.0)
+    assert parse_pack_size("Milk 1gal", "gal") == pytest.approx(1.0)
+    assert parse_pack_size("Cream 8fl oz", "fl_oz") == pytest.approx(8.0)
+    assert parse_pack_size("Cream 8fl_oz", "fl_oz") == pytest.approx(8.0)
+    assert parse_pack_size("Mince 500g", "kg") == pytest.approx(0.5)
+    assert parse_pack_size("Milk 2L", "gal") == pytest.approx(0.528, abs=0.01)

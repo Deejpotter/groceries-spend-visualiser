@@ -39,7 +39,7 @@
             {% if coverage %}{{ coverage.days_planned }}<span class="kpi-unit">/ {{ coverage.days_total }} days</span>{% else %}&mdash;{% endif %}
         </div>
         {% if coverage %}
-        <div class="progress mt-2" style="height: 5px">
+        <div class="progress mt-2" style="height: 5px" role="progressbar" aria-valuenow="{{ coverage.pct }}" aria-valuemin="0" aria-valuemax="100" aria-label="Meals planned">
             <div class="progress-bar" style="width: {{ coverage.pct }}%"></div>
         </div>
         {% endif %}

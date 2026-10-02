@@ -13,7 +13,7 @@ def load_rules() -> List[Dict]:
 
 def load_recipes() -> List[Dict]:
     return [dict(r) for r in get_db().execute(
-        "SELECT id, name, servings, is_two_night, tags FROM recipes ORDER BY name"
+        "SELECT id, name, servings, covers_days, tags FROM recipes ORDER BY name"
     )]
 
 
@@ -42,17 +42,29 @@ def load_shopping_inputs(start: str, end: str) -> Tuple[List[Dict], Dict, Dict, 
     return entries, recipes, recipe_ingredients, ingredients
 
 
-def load_pantry_stock() -> Dict[int, Tuple[float, str]]:
+def load_pantry_stock(today=None) -> Dict[int, Tuple[float, str]]:
     """Pantry totals per ingredient id as (quantity, unit).
 
     Rows are converted to the ingredient's unit and summed; rows in a unit that
     can't be converted (e.g. 'each' for a kg ingredient) are left out.
+    Expired rows are left out so old stock doesn't shrink the shopping list.
     """
+    from datetime import datetime
+    from models import today as local_today
+    today = today or local_today()
     stock: Dict[int, Tuple[float, str]] = {}
     for r in get_db().execute(
-        "SELECT p.ingredient_id, p.quantity, COALESCE(NULLIF(p.unit, ''), i.unit) AS unit, i.unit AS base_unit "
-        "FROM pantry_items p JOIN ingredients i ON p.ingredient_id = i.id"
+        "SELECT p.ingredient_id, p.quantity, COALESCE(NULLIF(p.unit, ''), i.unit) AS unit, i.unit AS base_unit, "
+        "p.expiry_date FROM pantry_items p JOIN ingredients i ON p.ingredient_id = i.id"
     ):
+        expiry = r["expiry_date"]
+        if expiry:
+            try:
+                exp_day = datetime.strptime(str(expiry)[:10], "%Y-%m-%d").date()
+            except (ValueError, TypeError):
+                exp_day = None
+            if exp_day is not None and exp_day < today:
+                continue
         if not units_compatible(r["unit"], r["base_unit"]):
             continue
         qty = convert_unit(r["quantity"], r["unit"], r["base_unit"])

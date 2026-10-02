@@ -225,7 +225,7 @@ class TestRecipes:
             "prep_time": "5",
             "cook_time": "8",
             "source_url": "https://example.com/omelette",
-            "is_two_night": "",  # not a two-night recipe
+            "covers_days": "1",  # single-day recipe
             "tags": "breakfast, quick",
         }, follow_redirects=True)
         assert resp.status_code == 200
@@ -233,25 +233,30 @@ class TestRecipes:
         row = db.execute("SELECT * FROM recipes WHERE name = ?", ("Simple Omelette",)).fetchone()
         assert row is not None
         assert row["tags"] == "breakfast, quick"
-        assert row["is_two_night"] == 0
+        assert row["covers_days"] == 1
         assert row["servings"] == 1
+        assert row["source_url"] == "https://example.com/omelette"
 
-    def test_add_recipe_as_two_night(self, client, db):
-        """POST /recipes/add with is_two_night creates a two-night recipe."""
+    def test_add_recipe_covering_multiple_days(self, client, db):
+        """POST /recipes/add saves different multi-day coverage durations."""
         _login(client, "recuser", "test123")
 
-        resp = client.post("/recipes/add", data={
-            "name": "Bolognese Sauce",
-            "description": "Classic meat sauce",
-            "servings": "6",
-            "is_two_night": "1",
-            "tags": "dinner, italian",
-        }, follow_redirects=True)
-        assert resp.status_code == 200
+        for name, covers_days in (("Bolognese Sauce", 3), ("Batch Soup", 2)):
+            resp = client.post("/recipes/add", data={
+                "name": name,
+                "description": "Prepared ahead for multiple days",
+                "servings": "6",
+                "covers_days": str(covers_days),
+                "tags": "dinner, batch-cook",
+            }, follow_redirects=True)
+            assert resp.status_code == 200
 
-        row = db.execute("SELECT * FROM recipes WHERE name = ?", ("Bolognese Sauce",)).fetchone()
-        assert row["is_two_night"] == 1
-        assert row["tags"] == "dinner, italian"
+            row = db.execute(
+                "SELECT covers_days, tags FROM recipes WHERE name = ?", (name,)
+            ).fetchone()
+            assert row is not None
+            assert row["covers_days"] == covers_days
+            assert row["tags"] == "dinner, batch-cook"
 
     def test_add_recipe_with_ingredient_link(self, client, db):
         """POST /recipes/add with ingredient rows links ingredients to the recipe."""
@@ -274,7 +279,7 @@ class TestRecipes:
             "name": "Pasta Aglio e Olio",
             "description": "Simple garlic pasta",
             "servings": "2",
-            "is_two_night": "",
+            "covers_days": "1",
             "tags": "dinner, italian",
             "ingredient_ids": str(ingredient_id),
             "quantities": "200",
@@ -552,7 +557,7 @@ class TestMealPlanGeneration:
             "name": "Spaghetti Bolognese",
             "description": "Classic spaghetti",
             "servings": "4",
-            "is_two_night": "",
+            "covers_days": "1",
             "tags": "dinner, italian",
             "ingredient_ids": "1",
             "quantities": "400",

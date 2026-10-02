@@ -187,3 +187,23 @@ def test_cli_import(app, tmp_path):
     csv_path.write_text(WOOLIES_CSV, encoding="utf-8")
     result = app.test_cli_runner().invoke(args=["import-purchases", str(csv_path)])
     assert "Imported 4 lines" in result.output
+
+
+def test_analyze_purchases_skips_bad_dates():
+    rows = [
+        {"order_date": "2026-09-07", "basket_id": "b1", "store": "Woolworths",
+         "product_name": "Milk", "quantity": 1, "line_total": 3.0},
+        {"order_date": "not-a-date", "basket_id": "b2", "store": "Woolworths",
+         "product_name": "Bad", "quantity": 1, "line_total": 99.0},
+    ]
+    stats = analyze_purchases(rows)
+    assert stats["total_spend"] == 3.0
+    assert stats["total_shops"] == 1
+
+
+def test_analyze_purchases_all_bad_dates_returns_none():
+    rows = [
+        {"order_date": "bad", "basket_id": "b1", "store": "Woolworths",
+         "product_name": "Bad", "quantity": 1, "line_total": 5.0},
+    ]
+    assert analyze_purchases(rows) is None

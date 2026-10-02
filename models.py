@@ -8,6 +8,8 @@ from zoneinfo import ZoneInfo
 
 DEFAULT_TIMEZONE = "Australia/Sydney"
 
+MAX_PLAN_DAYS = 92
+
 
 def is_http_url(value) -> bool:
     """True for absolute http(s) URLs; blocks javascript: and other schemes in links."""

@@ -12,14 +12,13 @@ by a single SQLite file.
 **Ingredients** — name, category, unit, price per unit, store, product link, minimum stock.
 
 **Recipes** — servings, prep/cook time, source and image URLs, instructions, tags
-(`standard`, `quick`, `friday-special`, …), a *two-night* flag for leftovers, and a list of
-ingredients with quantities (optionally in a different unit to the ingredient's own).
+(`standard`, `quick`, `friday-special`, …), a *Covers N days* setting for batch meals, and a list of ingredients with quantities (optionally in a different unit to the ingredient's own).
 
 **Meal rules and plan generation** — rules say which recipes can fill which slots,
 e.g. *"weekday dinner → tagged `standard`"* or *"weekend breakfast → tagged `breakfast`"*.
 Rules are tried in priority order; the first matching rule with a matching recipe wins.
 Generation picks randomly among matching recipes, prefers ones not already in the plan,
-and cascades two-night recipes into the next day. Meals you pick or change by hand are
+and places batch-meal continuations in the next free slots of the same meal type. Meals you pick or change by hand are
 marked *manual* and are kept when you regenerate.
 
 **Shopping list** — aggregates every ingredient across the plan, scaled by servings,

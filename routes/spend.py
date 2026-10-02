@@ -129,6 +129,9 @@ def spend_link_product():
         return back
 
     latest = _latest_purchase(db, product_name)
+    if latest is None:
+        flash("No purchases found for that product.", "error")
+        return back
     if choice == "new":
         # Create an ingredient named after the product, priced from the latest purchase.
         cup = parse_cup_price(latest["cup_price"]) if latest else None

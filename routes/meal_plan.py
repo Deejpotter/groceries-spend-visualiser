@@ -1,13 +1,12 @@
 """Routes for meal rules and meal plan generation."""
 
 import random
-from datetime import timedelta
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 
 from auth import login_required
 from database import get_db, get_plan_dates, get_setting, set_setting
-from models import today as local_today, DAYS_OF_WEEK, DAY_LABELS, MEAL_TYPES, date_range, parse_date, validate_date_format
+from models import MAX_PLAN_DAYS, today as local_today, DAYS_OF_WEEK, DAY_LABELS, MEAL_TYPES, date_range, parse_date, validate_date_format
 from services.plan_generator import generate_plan_entries, plan_summary
 from services.repository import load_linked_products, load_list_rows, load_shopping_inputs
 from services.shopping_list_generator import plan_list_lines, recipes_using_spares, spares
@@ -127,12 +126,19 @@ def generate_plan(start_date_str, end_date_str, chooser=random.choice):
         "DELETE FROM meal_plan_entries WHERE date BETWEEN ? AND ? AND is_auto_generated = 1",
         (start_date_str, end_date_str),
     )
-    db.executemany(
-        """INSERT INTO meal_plan_entries
-           (date, meal_type, recipe_id, servings, is_auto_generated, is_continuation, source_rule_id)
-           VALUES (:date, :meal_type, :recipe_id, :servings, 1, :is_continuation, :source_rule_id)""",
-        entries,
-    )
+    entry_ids = {}
+    for entry in entries:
+        continuation_of = entry_ids.get(entry.get("continuation_of"))
+        cursor = db.execute(
+            """INSERT INTO meal_plan_entries
+               (date, meal_type, recipe_id, servings, is_auto_generated, is_continuation,
+                continuation_of, source_rule_id)
+               VALUES (?, ?, ?, ?, 1, ?, ?, ?)""",
+            (entry["date"], entry["meal_type"], entry["recipe_id"], entry["servings"],
+             entry["is_continuation"], continuation_of, entry["source_rule_id"]),
+        )
+        if not entry["is_continuation"]:
+            entry_ids[(entry["date"], entry["meal_type"])] = cursor.lastrowid
     db.commit()
     return len(entries), None
 
@@ -172,7 +178,7 @@ def meal_plan_view():
     days = []
     if start_str and end_str:
         entries = [dict(r) for r in db.execute(
-            """SELECT mpe.*, r.name AS recipe_name, r.is_two_night
+            """SELECT mpe.*, r.name AS recipe_name, r.covers_days
                FROM meal_plan_entries mpe JOIN recipes r ON mpe.recipe_id = r.id
                WHERE mpe.date BETWEEN ? AND ? ORDER BY mpe.date""",
             (start_str, end_str),
@@ -214,6 +220,13 @@ def meal_plan_generate():
     if not (validate_date_format(plan_start) and validate_date_format(plan_end)):
         flash("Please set valid plan start and end dates first.", "error")
         return _back_to_plan()
+    start, end = parse_date(plan_start), parse_date(plan_end)
+    if end < start:
+        flash("The end date must be on or after the start date.", "error")
+        return _back_to_plan()
+    if (end - start).days > MAX_PLAN_DAYS:
+        flash("Plans are limited to about three months.", "error")
+        return _back_to_plan()
 
     set_setting("plan_start_date", plan_start)
     set_setting("plan_end_date", plan_end)
@@ -251,8 +264,14 @@ def meal_plan_add():
         "SELECT id, is_continuation FROM meal_plan_entries WHERE date = ? AND meal_type = ?",
         (date, meal_type),
     ).fetchone()
-    if existing and existing["is_continuation"]:
-        flash("This slot is the second night of a two-night recipe. Replacing it.", "info")
+    if existing and not existing["is_continuation"]:
+        db.execute(
+            "UPDATE meal_plan_entries SET is_continuation = 0, continuation_of = NULL "
+            "WHERE continuation_of = ?",
+            (existing["id"],),
+        )
+    elif existing:
+        flash("This slot is a continuation of an earlier meal. Replacing it.", "info")
     db.execute("DELETE FROM meal_plan_entries WHERE date = ? AND meal_type = ?", (date, meal_type))
     db.execute(
         "INSERT INTO meal_plan_entries (date, meal_type, recipe_id, servings, is_auto_generated) VALUES (?, ?, ?, ?, 0)",
@@ -284,8 +303,15 @@ def meal_plan_swap(entry_id):
     if servings < 1:
         flash("Servings must be at least 1.", "error")
         return _back_to_plan()
+    if not entry["is_continuation"]:
+        db.execute(
+            "UPDATE meal_plan_entries SET is_continuation = 0, continuation_of = NULL "
+            "WHERE continuation_of = ?",
+            (entry_id,),
+        )
     db.execute(
-        "UPDATE meal_plan_entries SET recipe_id = ?, servings = ?, is_auto_generated = 0, is_continuation = 0 WHERE id = ?",
+        "UPDATE meal_plan_entries SET recipe_id = ?, servings = ?, is_auto_generated = 0, "
+        "is_continuation = 0, continuation_of = NULL WHERE id = ?",
         (new_recipe_id, servings, entry_id),
     )
     db.commit()
@@ -299,12 +325,10 @@ def meal_plan_remove(entry_id):
     db = get_db()
     entry = db.execute("SELECT * FROM meal_plan_entries WHERE id = ?", (entry_id,)).fetchone()
     if entry and not entry["is_continuation"]:
-        # Leftovers of a removed first night now need their own ingredients.
-        next_day = (parse_date(entry["date"]) + timedelta(days=1)).strftime("%Y-%m-%d")
         db.execute(
-            "UPDATE meal_plan_entries SET is_continuation = 0 "
-            "WHERE date = ? AND meal_type = ? AND recipe_id = ? AND is_continuation = 1",
-            (next_day, entry["meal_type"], entry["recipe_id"]),
+            "UPDATE meal_plan_entries SET is_continuation = 0, continuation_of = NULL "
+            "WHERE continuation_of = ?",
+            (entry_id,),
         )
     db.execute("DELETE FROM meal_plan_entries WHERE id = ?", (entry_id,))
     db.commit()

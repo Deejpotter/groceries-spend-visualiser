@@ -12,22 +12,38 @@ from typing import Dict, List, Optional
 from models import today as local_today
 
 
-def _as_date(value) -> date:
+def _as_date(value):
+    """Parse YYYY-MM-DD to a date; None when missing or unparseable.
+
+    Routes once assumed clean data, so one legacy expiry or purchase date
+    crashed the whole dashboard with a 500. Callers skip None instead.
+    """
+    if value is None or value == "":
+        return None
     if isinstance(value, date):
         return value
-    return datetime.strptime(str(value)[:10], "%Y-%m-%d").date()
+    try:
+        return datetime.strptime(str(value)[:10], "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return None
 
 
 def plan_coverage(entries, start, end) -> Dict:
     """Days in [start, end] that have at least one planned meal.
 
-    entries: [{date}]. A two-night recipe's second day counts as covered because
-    its continuation entry falls on that date. Returns days_total, days_planned
+    entries: [{date}]. Continuation entries count as covered days. Returns
+    days_total, days_planned
     and pct (0-100).
     """
     first, last = _as_date(start), _as_date(end)
+    if first is None or last is None:
+        return {"days_total": 0, "days_planned": 0, "pct": 0}
     days_total = (last - first).days + 1 if last >= first else 0
-    planned = {str(r["date"])[:10] for r in entries if first <= _as_date(r["date"]) <= last}
+    planned = set()
+    for r in entries:
+        day = _as_date(r["date"])
+        if day is not None and first <= day <= last:
+            planned.add(str(r["date"])[:10])
     days_planned = len(planned)
     return {
         "days_total": days_total,
@@ -68,7 +84,10 @@ def pantry_alerts(items, today=None, soon_days: int = 3) -> Dict:
         row = dict(it)
         expiry = row.get("expiry_date")
         if expiry:
-            days_left = (_as_date(expiry) - today).days
+            parsed = _as_date(expiry)
+            if parsed is None:
+                continue
+            days_left = (parsed - today).days
             row["days_left"] = days_left
             if days_left < 0:
                 row["status"] = "expired"

@@ -72,7 +72,7 @@ def generate_shopping_list(
 
     for entry in plan_entries:
         if entry.get("is_continuation"):
-            continue  # second night of a two-night recipe: cooked once, bought once
+            continue  # continuation meals share the original recipe's ingredients
         recipe = recipes.get(entry["recipe_id"])
         if not recipe:
             continue
@@ -135,9 +135,10 @@ def generate_shopping_list(
     }
 
 
-SIZE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(kg|g|ml|l)\b", re.I)
+SIZE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(kg|g|lb|oz|ml|l|gal|fl\s*oz|fl_oz)\b", re.I)
 COUNT_RE = re.compile(r"\b(\d+)\s*(?:pack|pk)\b|\bx\s*(\d+)\b|\b(\d+)\s*x(?=\s*\d)", re.I)
-SIZE_UNITS = {"kg": "kg", "g": "g", "ml": "mL", "l": "L"}
+SIZE_UNITS = {"kg": "kg", "g": "g", "lb": "lb", "oz": "oz", "ml": "mL", "l": "L",
+              "gal": "gal", "fl_oz": "fl_oz", "fl oz": "fl_oz", "floz": "fl_oz"}
 
 
 def parse_pack_size(product_name: Optional[str], unit: str) -> Optional[float]:
@@ -156,7 +157,10 @@ def parse_pack_size(product_name: Optional[str], unit: str) -> Optional[float]:
     if not sizes:
         return None
     amount, size_unit = sizes[-1]
-    size_unit = SIZE_UNITS[size_unit.lower()]
+    key = re.sub(r"[\s_]+", "", size_unit.lower())
+    size_unit = SIZE_UNITS.get(key) or SIZE_UNITS.get(size_unit.lower())
+    if size_unit is None:
+        return None
     if not units_compatible(size_unit, unit):
         return None
     return convert_unit(float(amount), size_unit, unit) * (count or 1)
@@ -171,8 +175,8 @@ def packs_to_buy(quantity: float, unit: str, pack_size: Optional[float], pack_un
 
 
 def _display_size(size: float, unit: str) -> Tuple[float, str]:
-    """Show packs under 1 kg / 1 L in g / mL ('500 g', not '0.5 kg')."""
-    small = {"kg": "g", "L": "mL"}
+    """Show packs under 1 kg / L / lb / gal in the smaller unit ('500 g', not '0.5 kg')."""
+    small = {"kg": "g", "L": "mL", "lb": "oz", "gal": "fl_oz"}
     if unit in small and size < 1:
         return round(convert_unit(size, unit, small[unit]), 2), small[unit]
     return size, unit

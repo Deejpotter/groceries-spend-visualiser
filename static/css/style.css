@@ -151,23 +151,11 @@ main.container {
     flex: 1;
 }
 
-/* Meal plan grid */
-.meal-grid td.meal-slot {
-    min-width: 11rem;
-    vertical-align: top;
-}
-.meal-grid details summary {
-    cursor: pointer;
-}
-
 /* Shopping list */
 .big-check {
     width: 1.5rem;
     height: 1.5rem;
     cursor: pointer;
-}
-.meal-grid tr.today-row > * {
-    background-color: var(--brand-tint);
 }
 .progress-bar {
     background-color: var(--brand);
@@ -179,10 +167,6 @@ main.container {
 }
 
 /* Spend dashboard */
-.stat-value {
-    font-size: 1.6rem;
-    font-weight: 700;
-}
 .num {
     text-align: right;
     font-variant-numeric: tabular-nums;

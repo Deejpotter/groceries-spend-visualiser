@@ -37,9 +37,9 @@ def test_login_returns_to_requested_page(client):
 
 # --- plan / shopping list -----------------------------------------------------
 
-def test_two_night_leftovers_not_bought_twice():
+def test_multi_day_leftovers_not_bought_twice():
     rules = [make_rule(id=1, day_of_week="all", meal_type="dinner")]
-    recipes = [make_recipe(id=1, name="Roast", servings=4, is_two_night=True)]
+    recipes = [make_recipe(id=1, name="Roast", servings=4, covers_days=2)]
     entries, _ = generate_plan_entries("2026-10-05", "2026-10-06", rules, recipes, [])
     assert [e["is_continuation"] for e in entries] == [0, 1]
     result = generate_shopping_list(
@@ -50,14 +50,34 @@ def test_two_night_leftovers_not_bought_twice():
     assert result["meat"][0]["quantity"] == 2  # not 4
 
 
-def test_removing_first_night_makes_leftovers_count(client, db):
+def test_removing_original_meal_makes_leftovers_count(client, db):
     login(client)
     db.execute("INSERT INTO recipes (id, name, servings) VALUES (1, 'Roast', 4)")
     db.execute("INSERT INTO meal_plan_entries (id, date, meal_type, recipe_id, servings, is_continuation) "
-               "VALUES (1, '2026-10-05', 'dinner', 1, 4, 0), (2, '2026-10-06', 'dinner', 1, 4, 1)")
+               "VALUES (1, '2026-10-05', 'dinner', 1, 4, 0), "
+               "(2, '2026-10-06', 'dinner', 1, 4, 1), "
+               "(3, '2026-10-08', 'dinner', 1, 4, 1)")
+    db.execute("UPDATE meal_plan_entries SET continuation_of = 1 WHERE id IN (2, 3)")
     db.commit()
     client.post("/meal-plan/remove/1")
     assert db.execute("SELECT is_continuation FROM meal_plan_entries WHERE id = 2").fetchone()[0] == 0
+    assert db.execute("SELECT is_continuation FROM meal_plan_entries WHERE id = 3").fetchone()[0] == 0
+
+
+def test_swapping_original_meal_promotes_its_continuations(client, db):
+    login(client)
+    db.execute("INSERT INTO recipes (id, name, servings) VALUES (1, 'Batch', 4), (2, 'New meal', 2)")
+    db.execute("INSERT INTO meal_plan_entries (id, date, meal_type, recipe_id, servings, is_continuation, continuation_of) "
+               "VALUES (1, '2026-10-05', 'dinner', 1, 4, 0, NULL), "
+               "(2, '2026-10-06', 'dinner', 1, 4, 1, 1)")
+    db.commit()
+
+    client.post("/meal-plan/swap/1", data={"recipe_id": "2", "servings": "2"})
+
+    promoted = db.execute(
+        "SELECT is_continuation, continuation_of FROM meal_plan_entries WHERE id = 2"
+    ).fetchone()
+    assert (promoted["is_continuation"], promoted["continuation_of"]) == (0, None)
 
 
 def test_compatible_units_merged_before_pantry_subtraction():
@@ -101,10 +121,16 @@ def test_ticks_survive_unit_preference_change(client, db):
     client.post("/shopping-list/generate", data={})
     item_id = db.execute("SELECT id FROM shopping_list_items").fetchone()[0]
     client.post(f"/shopping-list/toggle/{item_id}")
+    # Same preference regenerates with the same unit, so the tick is kept.
+    client.post("/shopping-list/generate", data={})
+    row = db.execute("SELECT unit, checked FROM shopping_list_items").fetchone()
+    assert (row["unit"], row["checked"]) == ("kg", 1)
+    # A unit-preference flip changes the line unit, so ticks reset rather
+    # than silently sharing state between incompatible lines.
     client.post("/settings/save", data={"action": "save_prefs", "unit_preference": "imperial", "default_servings": "2"})
     client.post("/shopping-list/generate", data={})
     row = db.execute("SELECT unit, checked FROM shopping_list_items").fetchone()
-    assert (row["unit"], row["checked"]) == ("lb", 1)
+    assert (row["unit"], row["checked"]) == ("lb", 0)
 
 
 @pytest.mark.parametrize("path", ["/meal-plan/add", "/meal-plan/swap/1"])

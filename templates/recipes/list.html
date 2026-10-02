@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import post_button, csrf %}
+{% from "_macros.html" import post_button %}
 
 {% block title %}Recipes — Grocery Visualiser{% endblock %}
 
@@ -16,10 +16,12 @@
 <form method="get" class="mb-4">
     <div class="row">
         <div class="col-md-6">
-            <input type="text" name="search" class="form-control" placeholder="Search recipes..." value="{{ request.args.get('search', '') }}">
+            <label class="sr-only" for="recipe-search">Search recipes</label>
+            <input type="text" id="recipe-search" name="search" class="form-control" placeholder="Search recipes..." value="{{ request.args.get('search', '') }}">
         </div>
         <div class="col-md-3">
-            <input type="text" name="tag" class="form-control" placeholder="Filter by tag (e.g. dinner)" value="{{ request.args.get('tag', '') }}">
+            <label class="sr-only" for="recipe-tag">Filter by tag</label>
+            <input type="text" id="recipe-tag" name="tag" class="form-control" placeholder="Filter by tag (e.g. dinner)" value="{{ request.args.get('tag', '') }}">
         </div>
         <div class="col-md-2">
             <button type="submit" class="btn btn-secondary">Filter</button>
@@ -36,7 +38,10 @@
     <div class="col-md-4 mb-3">
         <div class="card h-100">
             {% if recipe.image_url %}
-            <img src="{{ recipe.image_url }}" class="card-img-top" alt="{{ recipe.name }}" style="height: 160px; object-fit: cover;">
+            {% set safe_image = recipe.image_url|http_url %}
+            {% if safe_image %}
+            <img src="{{ safe_image }}" class="card-img-top" alt="{{ recipe.name }}" style="height: 160px; object-fit: cover;">
+            {% endif %}
             {% endif %}
             <div class="card-body">
                 <h5 class="card-title">{{ recipe.name }}</h5>
