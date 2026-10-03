@@ -73,7 +73,7 @@
                                    value="{{ recipe.image_url if recipe else '' }}"
                                    placeholder="https://...">
                         </div>
-                        <small class="text-muted">Or upload a file (if configured). Leave blank to keep current.</small>
+                        <small class="text-muted">Leave blank if there is no image.</small>
                     </div>
 
                     <div class="form-group">
@@ -87,7 +87,7 @@
                         <input type="text" class="form-control" id="tags" name="tags"
                                value="{{ recipe.tags if recipe else '' }}"
                                placeholder="e.g. dinner, standard, italian, quick">
-                        <small class="text-muted">Separate tags with commas. Tags are used by meal rules to select recipes.</small>
+                        <small class="text-muted">Separate tags with commas. Tags are used by <a href="{{ url_for('meal_plan.meal_plan_view', tab='rules') }}">meal rules</a> to select recipes (e.g. dinner, standard, quick).</small>
                     </div>
 
                     <div class="form-group">

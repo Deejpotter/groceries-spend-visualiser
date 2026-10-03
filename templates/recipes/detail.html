@@ -74,7 +74,7 @@
                 <h5>Instructions</h5>
             </div>
             <div class="card-body">
-                {{ recipe.instructions or 'No instructions provided.' }}
+                <div style="white-space: pre-line;">{{ recipe.instructions or 'No instructions provided.' }}</div>
             </div>
         </div>
     </div>
@@ -96,6 +96,9 @@
             <div class="card-body">
                 <a href="{{ url_for('recipes.recipe_form', recipe_id=recipe.id) }}" class="btn btn-primary btn-block">
                     Edit Recipe
+                </a>
+                <a href="{{ url_for('meal_plan.meal_plan_view') }}" class="btn btn-outline-primary btn-block mt-2">
+                    Add to Meal Plan
                 </a>
                 <div class="mt-2">
                     {{ post_button(url_for('recipes.recipe_delete', recipe_id=recipe.id), 'Delete Recipe',

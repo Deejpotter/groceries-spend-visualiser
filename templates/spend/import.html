@@ -12,8 +12,9 @@
                 <form method="post" enctype="multipart/form-data">
                     {{ csrf() }}
                     <div class="form-group">
-                        <label for="file">Purchase history CSV</label>
-                        <input type="file" class="form-control-file" id="file" name="file" accept=".csv,text/csv" required>
+                        <label for="file">Purchase file</label>
+                        <input type="file" class="form-control-file" id="file" name="file" accept=".pdf,.csv,application/pdf,text/csv" required>
+                        <small class="text-muted">A Woolworths PDF tax invoice (from your order emails or account), or a CSV in the format below. PDF invoices import under the store name Woolworths.</small>
                     </div>
                     <div class="form-group">
                         <label for="store">Store</label>
@@ -36,8 +37,9 @@
                     <li><code>unit_price</code> or <code>line_total</code></li>
                     <li>Optional: <code>basket_id</code>, <code>channel</code>, <code>cup_price</code> (e.g. <code>$1.51 / 100G</code>), <code>stockcode</code></li>
                 </ul>
-                <p class="mb-0">Re-importing the same file is safe: lines already imported are skipped.
-                    The Woolworths order-history export already uses this format.</p>
+                <p class="mb-0">Re-importing the same invoice or file is safe: you'll be told it was
+                    already imported and nothing is duplicated.
+                    Unavailable items (not supplied) and $0.00 freebies are skipped.</p>
             </div>
         </div>
     </div>

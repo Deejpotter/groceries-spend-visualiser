@@ -3,6 +3,7 @@
 import csv
 import io
 import re
+import unicodedata
 from datetime import datetime
 from typing import Dict, Iterable, List, Optional, Tuple
 
@@ -158,3 +159,169 @@ def import_csv_file(db, path: str, store: str = "Woolworths") -> Tuple[int, int,
         rows, errors = parse_purchase_csv(f.read(), store)
     added, skipped = import_purchases(db, rows)
     return added, skipped, errors
+
+
+# ---------------------------------------------------------------------------
+# Woolworths PDF tax invoices
+# ---------------------------------------------------------------------------
+# Woolworths has no CSV export; the real source is the PDF tax invoice emailed
+# (or downloadable) per order. Layout seen across 2023-2025 invoices:
+# header ("Invoice/Order Number: 155431528", "Date: 08 Apr 2023"), then item
+# lines ending "<ordered> <supplied> $<price> $<amount>". Items can span two
+# lines; substituted items carry a "(Sub)" marker with ordered 0 / supplied 1;
+# unavailable items show supplied 0; freebies show $0.00. Category and header
+# lines render text-doubled ("BakeryBakery") so they are never trusted.
+
+INVOICE_NUMBER_RE = re.compile(r"Invoice/Order Number:\s*(\d+)")
+INVOICE_DATE_RE = re.compile(r"Date:\s*(\d{1,2} [A-Za-z]{3} \d{4})")
+INVOICE_QTY_RE = re.compile(
+    r"^(?:(\d+)\s+)?(.*?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)"
+    r"(?:\s+(?:kg|g|ml|l|lb|oz|each))?\s+\$([\d,]+\.\d{2})\s+\$([\d,]+\.\d{2})\s*$",
+    re.I,
+)
+INVOICE_MONEY_RE = re.compile(r"^\$[\d,]+\.\d{2}$")
+INVOICE_LEAD_RE = re.compile(r"^\d+\s+")
+INVOICE_SUB_RE = re.compile(r"\(\s*Sub\s*\)", re.I)
+INVOICE_TOTAL_LABELS = [
+    (r"Sub Total\s*:", "subtotal"),
+    (r"Reusable bags\s*:", "bags"),
+    (r"Service Fee", "fee"),
+    (r"Delivery Fee", "fee"),
+    (r"Invoice Total\s*:", "total"),
+    (r"includes GST of", "gst"),
+    (r"Paid Amount\s*:", "paid"),
+    (r"Refund Amount\s*:", "refund"),
+]
+# Lines that must never become part of a product name.
+INVOICE_SKIP_PREFIXES = ("Tax Invoice Page", "ABN ", "Need help with")
+
+
+def _clean_invoice_name(text: str) -> str:
+    """'23 * (Sub) Vevelle ... 6 pack' -> 'Vevelle ... 6 pack'."""
+    text = INVOICE_SUB_RE.sub("", text.replace(" ", " "))
+    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"^\*\s*", "", text)
+    return text
+
+
+def parse_woolworths_invoice_text(text: str, store: str = "Woolworths") -> Tuple[Dict, List[Dict], List[str]]:
+    """Parse Woolworths tax-invoice text into purchase dicts.
+
+    Returns (meta, rows, warnings). meta holds invoice_number, order_date and
+    the printed subtotal/invoice_total when found; rows match the CSV shape so
+    import_purchases() dedupes them identically. Unavailable (supplied 0) and
+    free ($0.00) lines are skipped, never imported.
+    """
+    text = unicodedata.normalize("NFKC", text or "")
+    number = INVOICE_NUMBER_RE.search(text)
+    invoice_number = number.group(1) if number else None
+    day = INVOICE_DATE_RE.search(text or "")
+    order_date = None
+    if day:
+        try:
+            order_date = datetime.strptime(day.group(1), "%d %b %Y").date().isoformat()
+        except ValueError:
+            order_date = None
+    if not invoice_number or not order_date:
+        return {}, [], ["That doesn't look like a Woolworths tax invoice (no order number or date found)."]
+
+    rows, warnings = [], []
+    not_supplied = free = 0
+    buffer: List[str] = []
+    for raw in (text or "").splitlines():
+        line = raw.replace(" ", " ").strip()
+        if not line or INVOICE_MONEY_RE.match(line) or line.startswith(INVOICE_SKIP_PREFIXES):
+            continue
+        match = INVOICE_QTY_RE.match(line)
+        if not match:
+            buffer.append(line)
+            continue
+        _, prefix, ordered, supplied, price, amount = match.groups()
+        first_item = next((i for i, b in enumerate(buffer) if INVOICE_LEAD_RE.match(b)), len(buffer))
+        name = _clean_invoice_name(" ".join(buffer[first_item:] + [prefix]))
+        buffer = []
+        if not name:
+            continue
+        if float(supplied) <= 0:
+            not_supplied += 1
+            continue
+        if float(amount.replace(",", "")) <= 0:
+            free += 1
+            continue
+        rows.append({
+            "order_date": order_date,
+            "basket_id": invoice_number,
+            "store": store,
+            "channel": None,
+            "product_name": name,
+            "quantity": float(supplied),
+            "unit_price": float(price.replace(",", "")),
+            "line_total": float(amount.replace(",", "")),
+            "cup_price": None,
+            "stockcode": None,
+        })
+    if not_supplied:
+        warnings.append(f"{not_supplied} unavailable item(s) were skipped (not supplied).")
+    if free:
+        warnings.append(f"{free} free item(s) at $0.00 were skipped.")
+
+    meta: Dict = {"invoice_number": invoice_number, "order_date": order_date}
+    totals = _invoice_totals(text)
+    meta.update(totals)
+    if totals.get("subtotal") is not None:
+        read = round(sum(r["line_total"] for r in rows), 2)
+        if abs(read - totals["subtotal"]) > 0.05:
+            warnings.append(
+                f"Read {len(rows)} lines totalling ${read:.2f} but the invoice subtotal is "
+                f"${totals['subtotal']:.2f} — please check the import."
+            )
+    if not rows:
+        warnings.append("No priced items could be read from that invoice.")
+    return meta, rows, warnings
+
+
+def _invoice_totals(text: str) -> Dict:
+    """Map the printed totals run ({subtotal, total, ...}) by label order.
+
+    Values print as consecutive bare-money lines after the last item; labels
+    print (possibly duplicated) near the top. Falls back to positional mapping.
+    """
+    lines = [(raw.replace(" ", " ").strip()) for raw in (text or "").splitlines()]
+    values: List[float] = []
+    i = 0
+    while i < len(lines):
+        if INVOICE_MONEY_RE.match(lines[i]):
+            run = []
+            j = i
+            while j < len(lines) and INVOICE_MONEY_RE.match(lines[j]):
+                run.append(float(lines[j].replace("$", "").replace(",", "")))
+                j += 1
+            if len(run) >= 4 and len(run) > len(values):
+                values = run
+            i = j
+        else:
+            i += 1
+    if not values:
+        return {}
+    labelled = []
+    for pattern, key in INVOICE_TOTAL_LABELS:
+        at = next((i for i, line in enumerate(lines) if re.search(pattern, line, re.I)), None)
+        if at is not None and key not in {k for _, k in labelled}:
+            labelled.append((at, key))
+    labelled.sort()
+    if len(labelled) == len(values):
+        return {key: values[i] for i, (_, key) in enumerate(labelled)}
+    return {"subtotal": values[0], "invoice_total": values[3] if len(values) > 3 else values[0]}
+
+
+def parse_woolworths_invoice_pdf(data: bytes, store: str = "Woolworths") -> Tuple[Dict, List[Dict], List[str]]:
+    """Parse a Woolworths PDF tax invoice (raw bytes) into purchase dicts."""
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(io.BytesIO(data))
+        text = "\n".join([(page.extract_text() or "") for page in reader.pages])
+    except Exception:
+        return {}, [], ["That PDF couldn't be read — it may be encrypted or corrupted."]
+    if not text.strip():
+        return {}, [], ["No readable text found in that PDF."]
+    return parse_woolworths_invoice_text(text, store)

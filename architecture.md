@@ -99,7 +99,7 @@ Rules are tried in priority order per slot (date × meal_type). The first matchi
 
 ## Spend Tracking
 
-Import a Woolworths order-history CSV → `purchases` table (de-duplicated by `UNIQUE(store, basket_id, product_name)`). The spend dashboard computes total/monthly/per-shop spend, days between shops, and top products by frequency and spend over 3/6/12 months or all time. Purchased products can be linked to ingredients; the cup price (e.g. `$1.51 / 100G`) is parsed and converted to a per-unit price so shopping-list estimates match real spend.
+Import a Woolworths PDF tax invoice (or a CSV) → `purchases` table (de-duplicated by `UNIQUE(store, basket_id, product_name)`, where a PDF invoice's order number is the basket id, so re-imports are recognised). The spend dashboard computes total/monthly/per-shop spend, days between shops, and top products by frequency and spend over 3/6/12 months or all time. Purchased products can be linked to ingredients; the cup price (e.g. `$1.51 / 100G`) is parsed and converted to a per-unit price so shopping-list estimates match real spend.
 
 ## Deployment
 

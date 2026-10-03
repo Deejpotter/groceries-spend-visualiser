@@ -9,7 +9,9 @@
     <a href="{{ url_for('spend.spend_dashboard') }}" class="btn btn-outline-secondary mb-2">Back to spend</a>
 </div>
 <p class="text-muted">Linking a product you've bought to one of your ingredients groups its spend by category and lets you
-    pull the latest price into the ingredient, so shopping list estimates stay realistic.</p>
+    pull the latest price into the ingredient, so shopping list estimates stay realistic.
+    New ingredients start in the Other category — set the right one under <a href="{{ url_for('ingredients.ingredient_list') }}">Ingredients</a>.
+    Showing up to 150 products by spend.</p>
 
 <form method="get" class="form-row mb-3">
     <div class="col-md-6 mb-2"><input type="search" name="q" value="{{ search }}" class="form-control" placeholder="Search products…" aria-label="Search products"></div>

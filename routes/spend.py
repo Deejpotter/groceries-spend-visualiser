@@ -9,7 +9,10 @@ from auth import login_required
 from database import get_db
 from models import label_of, short_name
 from services.spend_analysis import analyze_purchases, load_purchases
-from services.spend_import import import_csv_file, import_purchases, parse_cup_price, parse_purchase_csv, price_per_unit, product_url
+from services.spend_import import (
+    import_csv_file, import_purchases, parse_cup_price, parse_purchase_csv,
+    parse_woolworths_invoice_pdf, price_per_unit, product_url,
+)
 
 spend_bp = Blueprint("spend", __name__)
 
@@ -52,10 +55,14 @@ def spend_import():
         upload = request.files.get("file")
         store = request.form.get("store", "").strip() or "Woolworths"
         if not upload or not upload.filename:
-            flash("Choose a CSV file to import.", "error")
+            flash("Choose a file to import (a Woolworths PDF invoice or a CSV).", "error")
             return redirect(url_for("spend.spend_import"))
+        raw = upload.read()
+        name = (upload.filename or "").lower()
+        if name.endswith(".pdf") or raw[:5] == b"%PDF-":
+            return _import_invoice(raw)
         try:
-            text = upload.read().decode("utf-8-sig")
+            text = raw.decode("utf-8-sig")
         except UnicodeDecodeError:
             flash("That file isn't a UTF-8 CSV.", "error")
             return redirect(url_for("spend.spend_import"))
@@ -107,6 +114,33 @@ def spend_products():
         search=search,
         only_unlinked=only_unlinked,
     )
+
+
+def _import_invoice(raw: bytes):
+    """Import one Woolworths PDF tax invoice, recognising re-imports.
+
+    Invoices are Woolworths-issued, so the store label is fixed rather than
+    taken from the form. Lines dedupe on (store, basket_id, product_name),
+    where basket_id is the invoice/order number.
+    """
+    meta, rows, warnings = parse_woolworths_invoice_pdf(raw)
+    if not meta:
+        flash(warnings[0] if warnings else "That PDF couldn't be read as a Woolworths invoice.", "error")
+        return redirect(url_for("spend.spend_import"))
+    db = get_db()
+    known = db.execute(
+        "SELECT COUNT(*) FROM purchases WHERE store = 'Woolworths' AND basket_id = ?",
+        (meta["invoice_number"],),
+    ).fetchone()[0]
+    added, skipped = import_purchases(db, rows)
+    label = f"Woolworths invoice #{meta['invoice_number']} ({meta['order_date']})"
+    if added == 0 and (skipped or known):
+        flash(f"{label} was already imported — no new lines.", "info")
+    else:
+        flash(f"Imported {label}: {added} items.", "success")
+    for warning in warnings[:3]:
+        flash(warning, "warning")
+    return redirect(url_for("spend.spend_dashboard", range="all"))
 
 
 def _latest_purchase(db, product_name):
