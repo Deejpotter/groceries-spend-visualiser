@@ -149,39 +149,167 @@ def test_invoice_import_dedupes_by_order_number(db):
     ).fetchone()[0] == 5
 
 
+def _upload_pdf(client, lines, filename="invoice.pdf"):
+    import io
+    return client.post(
+        "/spend/import",
+        data={"file": (io.BytesIO(_minimal_pdf(lines)), filename), "store": "Woolworths"},
+        content_type="multipart/form-data",
+    )
+
+
+REVIEW_LINES = [
+    "Sub Total:Sub Total:",
+    "Reusable bags: Reusable bags:",
+    "Delivery Fee:Delivery Fee:",
+    "Invoice Total:Invoice Total:",
+    "Invoice total includes GST of:Invoice total includes GST of:",
+    "Paid Amount:Paid Amount:",
+    "1 Golden crumpets round 6 pack 1 1 $2.20 $2.20",
+    "2 Tip top toast 600g 1 0 $4.40 $0.00",
+    "$2.20",
+    "$0.00",
+    "$0.00",
+    "$2.20",
+    "$0.20",
+    "$2.20",
+    "Invoice/Order Number: 999001999Invoice/Order Number: 999001999",
+    "Date: 07 Jul 2023Date: 07 Jul 2023",
+]
+
+
+def test_staged_edits_validate_and_autofill_total(db):
+    from services.spend_import import (
+        create_import_batch, get_import_batch, save_staged_edits,
+    )
+    meta = {"invoice_number": "777", "order_date": "2023-07-07", "subtotal": 4.40,
+            "skipped": []}
+    rows = [{"order_date": "2023-07-07", "basket_id": "777", "store": "Woolworths",
+             "channel": None, "product_name": "Toast", "quantity": 2,
+             "unit_price": 2.20, "line_total": 4.40, "cup_price": None, "stockcode": None}]
+    token = create_import_batch(db, meta, rows)
+    _, lines = get_import_batch(db, token)
+    assert lines[0]["already"] is False
+    # Blank total is filled from quantity x unit price.
+    assert save_staged_edits(db, token, [{
+        "id": lines[0]["id"], "product_name": "Toast",
+        "quantity": "2", "unit_price": "2.20", "line_total": "", "excluded": False,
+    }]) == []
+    _, lines = get_import_batch(db, token)
+    assert lines[0]["line_total"] == 4.40
+    # Included lines need a name, quantity and total.
+    assert save_staged_edits(db, token, [{
+        "id": lines[0]["id"], "product_name": "",
+        "quantity": "0", "unit_price": "", "line_total": "", "excluded": False,
+    }]) != []
+    # ...unless excluded.
+    assert save_staged_edits(db, token, [{
+        "id": lines[0]["id"], "product_name": "",
+        "quantity": "0", "unit_price": "", "line_total": "", "excluded": True,
+    }]) == []
+
+
+def test_commit_inherits_ingredient_links(db):
+    from services.spend_import import commit_import_batch, create_import_batch
+    db.execute("INSERT INTO ingredients (name, category, unit) VALUES ('Toast', 'bakery', 'each')")
+    ing = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+    db.execute("INSERT INTO purchases (order_date, basket_id, store, product_name, quantity,"
+               " line_total, ingredient_id) VALUES ('2023-01-01', 'old', 'Woolworths', 'Toast', 1, 2.0, ?)", (ing,))
+    db.commit()
+    meta = {"invoice_number": "778", "order_date": "2023-07-07", "subtotal": 2.0, "skipped": []}
+    rows = [{"order_date": "2023-07-07", "basket_id": "778", "store": "Woolworths",
+             "channel": None, "product_name": "Toast", "quantity": 1,
+             "unit_price": 2.0, "line_total": 2.0, "cup_price": None, "stockcode": None}]
+    token = create_import_batch(db, meta, rows)
+    assert commit_import_batch(db, token) == (1, 0)
+    assert db.execute("SELECT ingredient_id FROM purchases WHERE basket_id = '778'").fetchone()[0] == ing
+    # Committed batches disappear from review; discarding works for pending ones.
+    from services.spend_import import discard_import_batch, get_import_batch
+    assert get_import_batch(db, token) == (None, [])
+    token2 = create_import_batch(db, meta, rows)
+    assert discard_import_batch(db, token2) is True
+    assert get_import_batch(db, token2) == (None, [])
+
+
 def test_invoice_upload_and_reimport_message(client, db):
     login(client)
-    lines = [
-        "Sub Total:Sub Total:",
-        "Reusable bags: Reusable bags:",
-        "Delivery Fee:Delivery Fee:",
-        "Invoice Total:Invoice Total:",
-        "Invoice total includes GST of:Invoice total includes GST of:",
-        "Paid Amount:Paid Amount:",
-        "1 Golden crumpets round 6 pack 1 1 $2.20 $2.20",
-        "$2.20",
-        "$0.00",
-        "$0.00",
-        "$2.20",
-        "$0.20",
-        "$2.20",
-        "Invoice/Order Number: 999001999Invoice/Order Number: 999001999",
-        "Date: 07 Jul 2023Date: 07 Jul 2023",
+    first = _upload_pdf(client, REVIEW_LINES)
+    assert first.status_code == 302 and "/spend/import/review/" in first.headers["Location"]
+    token = first.headers["Location"].rsplit("/", 1)[-1]
+    # Nothing reaches purchases before confirmation.
+    assert db.execute("SELECT COUNT(*) FROM purchases").fetchone()[0] == 0
+    review = client.get(f"/spend/import/review/{token}")
+    assert review.status_code == 200
+    assert b"Golden crumpets" in review.data and b"Tip top toast" in review.data
+    assert b"$2.20" in review.data  # read total vs subtotal shown
+    line = db.execute("SELECT id FROM import_staged_lines").fetchone()
+    done = client.post(f"/spend/import/review/{token}", data={
+        "action": "confirm",
+        "line_id": [str(line["id"])],
+        "product_name": ["Golden crumpets round 6 pack"],
+        "quantity": ["1"], "unit_price": ["2.20"], "line_total": ["2.20"],
+    }, follow_redirects=True)
+    assert b"999001999" in done.data
+    assert db.execute("SELECT COUNT(*) FROM purchases").fetchone()[0] == 1
+    # Re-uploading the same invoice flags every line as already imported.
+    again = client.get(_upload_pdf(client, REVIEW_LINES).headers["Location"])
+    assert b"already imported" in again.data
+
+
+def test_invoice_net_suffixed_weight_line():
+    """'0.19 kg NET' (variable-weight veg) must parse alone, not fuse into the next row."""
+    text = """Sub Total:Sub Total:
+Reusable bags: Reusable bags:
+Delivery Fee:Delivery Fee:
+Invoice Total:Invoice Total:
+Invoice total includes GST of:Invoice total includes GST of:
+Paid Amount:Paid Amount:
+40 fresh zucchini green pdm each 1 1 $1.58 $1.58
+41 mushrooms cups loose pdm per 200g 0.20 0.19 kg NET $12.90 $2.49
+42 Wow spring onion bunch each 1 1 $3.30 $3.30
+$7.37
+$0.00
+$0.00
+$7.37
+$0.67
+$7.37
+Invoice/Order Number: 328324774Invoice/Order Number: 328324774
+Date: 28 Sep 2026Date: 28 Sep 2026
+"""
+    meta, rows, warnings = parse_woolworths_invoice_text(text)
+    assert meta["subtotal"] == 7.37
+    assert [r["product_name"] for r in rows] == [
+        "fresh zucchini green pdm each",
+        "mushrooms cups loose pdm per 200g",
+        "Wow spring onion bunch each",
     ]
-    pdf = _minimal_pdf(lines)
-    first = client.post(
-        "/spend/import",
-        data={"file": (io.BytesIO(pdf), "invoice.pdf"), "store": "Woolworths"},
-        content_type="multipart/form-data",
-        follow_redirects=True,
-    )
-    assert b"999001999" in first.data
-    assert db.execute("SELECT COUNT(*) FROM purchases").fetchone()[0] == 1
-    second = client.post(
-        "/spend/import",
-        data={"file": (io.BytesIO(pdf), "invoice.pdf"), "store": "Woolworths"},
-        content_type="multipart/form-data",
-        follow_redirects=True,
-    )
-    assert b"already imported" in second.data
-    assert db.execute("SELECT COUNT(*) FROM purchases").fetchone()[0] == 1
+    assert rows[1]["quantity"] == 0.19 and rows[1]["line_total"] == 2.49
+    assert not any("subtotal is" in w for w in warnings)
+
+
+def test_invoice_paper_bags_and_split_fees_map_totals():
+    """Paper bags + separate collection/service fees still map all seven totals."""
+    text = """Sub Total:Sub Total:
+Thank you for working with us towards a greener future. Paper bags: Paper bags:
+Collection fee
+Service fees
+Invoice Total:Invoice Total:
+Invoice total includes GST of:Invoice total includes GST of:
+Paid Amount:Paid Amount:
+1 Golden crumpets round 6 pack 1 1 $2.20 $2.20
+$313.88
+$2.00
+$0.00
+$0.00
+$315.88
+$9.61
+$315.88
+Invoice/Order Number: 328324774Invoice/Order Number: 328324774
+Date: 28 Sep 2026Date: 28 Sep 2026
+"""
+    meta, rows, warnings = parse_woolworths_invoice_text(text)
+    assert meta["subtotal"] == 313.88
+    assert meta["bags"] == 2.00
+    assert meta["total"] == 315.88
+    assert meta["gst"] == 9.61
+    assert meta["paid"] == 315.88

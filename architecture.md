@@ -21,13 +21,14 @@ app.py (factory, auth, dashboard, template filters, CLI)
 │   ├── meal_plan.py      — meal rules CRUD, plan generation, manual add/swap/remove
 │   ├── shopping_list.py  — generate from plan, toggle/delete, manual items
 │   ├── pantry.py         — stock management, expiry tracking, consume
-│   ├── spend.py          — CSV import, dashboard, product-to-ingredient linking
+│   ├── spend.py          — CSV/PDF import, import review, dashboard, product-to-ingredient linking
 │   └── settings.py       — plan dates, preferences, password change
 │
 ├── services/        — Pure Python: no Flask or SQL dependency
 │   ├── plan_generator.py          — rule-based plan generation, multi-day continuation
 │   ├── shopping_list_generator.py — ingredient aggregation, pantry subtraction, costs
-│   ├── spend_import.py            — CSV parsing, cup-price parsing, de-duplicated import
+│   ├── spend_import.py            — CSV parsing, cup-price parsing, PDF invoice parsing,
+│   │                               staged import batches (review/edit/confirm), de-duplicated import
 │   ├── spend_analysis.py          — pure spend statistics
 │   └── repository.py              — loads DB rows into the dicts the pure services use
 │
@@ -70,7 +71,8 @@ Single SQLite file (default `./data/groceries.db`). Schema is created idempotent
 | `meal_plan_entries` | Generated or manual plan slots (date, meal_type, recipe, servings) |
 | `shopping_list_items` | Aggregated list with tick state, manual items, cost estimates |
 | `pantry_items` | Stock per ingredient with quantity, unit, expiry, location |
-| `purchases` | Imported order lines (Woolworths CSV), linked to ingredients |
+| `purchases` | Imported order lines (Woolworths invoices/CSV), linked to ingredients |
+| `import_batches` / `import_staged_lines` | Pending PDF-import review batches and their editable lines |
 
 Indexes: `idx_purchases_date` on `purchases(order_date)`, `idx_plan_date` on `meal_plan_entries(date, meal_type)`.
 
@@ -99,7 +101,12 @@ Rules are tried in priority order per slot (date × meal_type). The first matchi
 
 ## Spend Tracking
 
-Import a Woolworths PDF tax invoice (or a CSV) → `purchases` table (de-duplicated by `UNIQUE(store, basket_id, product_name)`, where a PDF invoice's order number is the basket id, so re-imports are recognised). The spend dashboard computes total/monthly/per-shop spend, days between shops, and top products by frequency and spend over 3/6/12 months or all time. Purchased products can be linked to ingredients; the cup price (e.g. `$1.51 / 100G`) is parsed and converted to a per-unit price so shopping-list estimates match real spend.
+Import a Woolworths PDF tax invoice (or a CSV). A PDF upload is first staged as a pending
+import batch (`import_batches` / `import_staged_lines`) and shown on a review page with every
+parsed line editable and the read total cross-checked against the printed subtotal; confirming
+writes the approved lines to the `purchases` table (de-duplicated by `UNIQUE(store, basket_id, product_name)`,
+where a PDF invoice's order number is the basket id, so re-imports are recognised and flagged per line).
+The spend dashboard computes total/monthly/per-shop spend, days between shops, and top products by frequency and spend over 3/6/12 months or all time. Purchased products can be linked to ingredients; the cup price (e.g. `$1.51 / 100G`) is parsed and converted to a per-unit price so shopping-list estimates match real spend.
 
 ## Deployment
 
@@ -160,6 +167,7 @@ python -m pytest
 | `test_plan_generator.py` | Plan generation algorithm, multi-day continuations, manual overrides |
 | `test_shopping_list_generator.py` | Unit conversion, aggregation, pantry subtraction, cost estimation |
 | `test_spend.py` | CSV parsing, cup-price parsing, import idempotency, analysis |
+| `test_spend_pdf.py` | PDF invoice parsing (incl. NET weights, subs, totals labels), staged review/edit/confirm flow |
 | `test_security.py` | Setup lockout, open redirect, CSRF, POST-only enforcement |
 | `test_review_fixes.py` | Regression tests for PR #1 review findings |
 | `test_regressions.py` | Specific bugs from the refactor |
