@@ -3,8 +3,8 @@
 
 {% block title %}Meal Plan — Grocery Visualiser{% endblock %}
 
-{% macro recipe_select(name="recipe_id", selected=None) -%}
-<select name="{{ name }}" class="form-control form-control-sm" required aria-label="Recipe">
+{% macro recipe_select(name="recipe_id", selected=None, label="Recipe") -%}
+<select name="{{ name }}" class="form-control form-control-sm" required aria-label="{{ label }}">
     <option value="">Choose recipe…</option>
     {% for r in recipes %}
     <option value="{{ r.id }}" {% if r.id == selected %}selected{% endif %}>{{ r.name }}{% if spare_uses.get(r.id) %} ♻ uses spare {{ spare_uses[r.id]|join(', ') }}{% endif %}</option>
@@ -121,7 +121,7 @@
                     <summary>Change</summary>
                     <form method="post" action="{{ url_for('meal_plan.meal_plan_swap', entry_id=entry.id) }}" class="mt-1">
                         {{ csrf() }}
-                        {{ recipe_select(selected=entry.recipe_id) }}
+                        {{ recipe_select(selected=entry.recipe_id, label="Recipe for " ~ day.label ~ " " ~ meal_type_label(mt)) }}
                         <div class="input-group input-group-sm mt-1">
                             <input type="number" name="servings" min="1" value="{{ entry.servings }}" class="form-control" aria-label="Servings">
                             <div class="input-group-append"><button class="btn btn-outline-primary" type="submit">Save</button></div>
@@ -135,7 +135,7 @@
                         {{ csrf() }}
                         <input type="hidden" name="date" value="{{ day.date }}">
                         <input type="hidden" name="meal_type" value="{{ mt }}">
-                        {{ recipe_select() }}
+                        {{ recipe_select(label="Recipe for " ~ day.label ~ " " ~ meal_type_label(mt)) }}
                         <button class="btn btn-sm btn-outline-primary btn-block mt-1" type="submit">Add to {{ day.weekday }}</button>
                     </form>
                 </details>
@@ -144,6 +144,20 @@
                 {% endif %}
             </div>
             {% endfor %}
+            {% if hidden_types and recipes %}
+            <details class="slot-edit slot-add-type">
+                <summary><i class="fas fa-plus"></i> Meal</summary>
+                <form method="post" action="{{ url_for('meal_plan.meal_plan_add') }}" class="mt-1">
+                    {{ csrf() }}
+                    <input type="hidden" name="date" value="{{ day.date }}">
+                    <select name="meal_type" class="form-control form-control-sm mb-1" required aria-label="Meal type for {{ day.label }}">
+                        {% for mt in hidden_types %}<option value="{{ mt }}">{{ meal_type_label(mt) }}</option>{% endfor %}
+                    </select>
+                    {{ recipe_select(label="Recipe for " ~ day.label) }}
+                    <button class="btn btn-sm btn-outline-primary btn-block mt-1" type="submit">Add to {{ day.weekday }}</button>
+                </form>
+            </details>
+            {% endif %}
         </div>
     </section>
     {% endfor %}

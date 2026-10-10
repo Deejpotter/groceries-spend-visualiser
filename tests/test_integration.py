@@ -540,6 +540,41 @@ class TestMealPlanGeneration:
         assert b"Nothing planned yet" in resp.data
         assert db.execute("SELECT COUNT(*) FROM meal_plan_entries").fetchone()[0] == 0
 
+    def test_hidden_meal_types_offer_add_picker(self, client, db):
+        """Dinner-only setup still allows adding lunch by hand (A1)."""
+        _login(client, "planuser", "test123")
+        client.post("/recipes/add", data={
+            "name": "Toast",
+            "servings": "2",
+            "tags": "breakfast",
+        }, follow_redirects=True)
+        client.post("/meal-rules/add", data={
+            "day_of_week": "weekday",
+            "meal_type": "dinner",
+            "tag_filter": "",
+            "servings_override": "",
+            "is_active": "1",
+            "sort_order": "0",
+        }, follow_redirects=True)
+        client.post("/settings/save", data={
+            "action": "save_dates",
+            "plan_start": "2026-10-05",
+            "plan_end": "2026-10-09",
+            "unit_preference": "metric",
+            "default_servings": "2",
+        }, follow_redirects=True)
+        resp = client.get("/meal-plan")
+        assert resp.status_code == 200
+        assert b'value="lunch"' in resp.data
+        client.post("/meal-plan/add", data={
+            "date": "2026-10-05",
+            "meal_type": "lunch",
+            "recipe_id": "1",
+        }, follow_redirects=True)
+        assert db.execute("SELECT COUNT(*) FROM meal_plan_entries WHERE meal_type = 'lunch'").fetchone()[0] == 1
+        resp = client.get("/meal-plan")
+        assert b"Lunch" in resp.data
+
     def test_generate_plan_with_rules_and_recipes(self, client, db):
         """Full workflow: add ingredient → recipe → rule → set dates → generate plan."""
         _login(client, "planuser", "test123")
