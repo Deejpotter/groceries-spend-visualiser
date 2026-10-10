@@ -144,36 +144,22 @@ def pantry_delete(item_id):
 @login_required
 def pantry_consume(item_id):
     """Reduce pantry item quantity (e.g., after using in a recipe)."""
-    db = get_db()
-    entry = db.execute("SELECT * FROM pantry_items WHERE id = ?", (item_id,)).fetchone()
-
-    if not entry:
-        flash("Item not found.", "error")
-        return redirect(url_for("pantry.pantry_list"))
-
+    from services.mutations import consume_stock
     amount_str = request.form.get("amount", "").strip() or request.form.get("quantity", "0").strip()
     try:
         amount = float(amount_str)
     except ValueError:
         flash("Invalid amount.", "error")
         return redirect(url_for("pantry.pantry_list"))
-
-    if amount <= 0:
-        flash("Amount must be positive.", "error")
+    try:
+        result = consume_stock(get_db(), item_id, amount)
+    except ValueError as exc:
+        flash(str(exc), "error")
         return redirect(url_for("pantry.pantry_list"))
-
-    new_qty = max(0, entry["quantity"] - amount)
-    db.execute(
-        """UPDATE pantry_items SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
-        (new_qty, item_id)
-    )
-    db.commit()
-
-    if new_qty == 0:
-        flash(f"Used {amount} {entry['unit']}. Item depleted.", "info")
+    if result["depleted"]:
+        flash(f"Used {result['used']} {result['unit']}. Item depleted.", "info")
     else:
-        flash(f"Used {amount} {entry['unit']}. {new_qty} {entry['unit']} remaining.", "success")
-
+        flash(f"Used {result['used']} {result['unit']}. {result['remaining']} {result['unit']} remaining.", "success")
     return redirect(url_for("pantry.pantry_list"))
 
 

@@ -4,8 +4,9 @@ import pytest
 
 from database import get_db, set_setting
 from mcp_server.server import (
-    get_recipe, list_ingredients, list_rules, pantry_status, require_api_key,
-    shopping_list, spend_summary, week_plan,
+    add_list_item, add_meal, generate_plan, get_recipe, list_ingredients, list_rules,
+    pantry_status, remove_meal, set_item_ticked, shopping_list, spend_summary,
+    swap_meal, use_pantry, week_plan, require_api_key,
 )
 
 
@@ -103,3 +104,38 @@ def test_require_api_key_gate(db, monkeypatch):
         require_api_key()
     monkeypatch.setenv("GROCERIES_API_KEY", "gx_right")
     require_api_key()  # matches: no exit
+
+
+def test_mcp_meal_writes_round_trip(db):
+    _seed(db)
+    _set_dates(db)
+    placed = add_meal("2026-10-05", "dinner", "Bolognese")
+    assert placed["servings"] == 4
+    swapped = swap_meal(placed["entry_id"], "Bolognese", servings=6)
+    assert swapped["servings"] == 6
+    assert remove_meal(placed["entry_id"])["removed"] == placed["entry_id"]
+    with pytest.raises(ValueError, match="No recipe found"):
+        add_meal("2026-10-05", "dinner", "Nope")
+
+
+def test_mcp_generate_preview_then_confirm(db):
+    _seed(db)
+    assert generate_plan()["error"] == "No plan dates set."
+    _set_dates(db)
+    db.execute("INSERT INTO meal_rules (day_of_week, meal_type, is_active, sort_order)"
+               " VALUES ('mon', 'dinner', 1, 0)")
+    db.commit()
+    preview = generate_plan()
+    assert preview["confirmed"] is False and preview["auto_entries"] >= 1
+    done = generate_plan(confirm=True)
+    assert done["confirmed"] is True and done["entries"] >= 1
+
+
+def test_mcp_list_and_pantry_writes(db):
+    _seed(db)
+    item = add_list_item("Milk", 2, unit="L", category="dairy")
+    assert set_item_ticked(item["item_id"], True)["checked"] is True
+    db.execute("INSERT INTO pantry_items (ingredient_id, quantity, unit) VALUES (1, 5, 'kg')")
+    db.commit()
+    used = use_pantry(1, 2.0)
+    assert (used["remaining"], used["depleted"]) == (3, False)

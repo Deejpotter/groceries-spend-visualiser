@@ -3,7 +3,7 @@
 Agent-friendly face of the app: the same pure services the web UI uses,
 exposed over MCP (stdio). Agents and humans always see the same numbers.
 
-## Tools (read-only for now; writes are a later slice)
+## Tools
 
 | Tool | What it returns |
 |---|---|
@@ -14,6 +14,17 @@ exposed over MCP (stdio). Agents and humans always see the same numbers.
 | `get_rules` | Meal rules in evaluation order |
 | `search_ingredients` | Ingredients, optionally filtered by name |
 | `read_recipe` | One recipe with ingredients, by id or exact name |
+| `plan_add_meal` | Place a recipe in a slot (replaces; continuations handled) |
+| `plan_swap_meal` | Replace an entry's recipe (marks it manual) |
+| `plan_remove_meal` | Delete an entry (continuations go standalone) |
+| `plan_generate` | Preview counts; `confirm=true` regenerates auto entries |
+| `tick_item` | Tick/untick a shopping-list row |
+| `add_shopping_item` | Free-text row on the shopping list |
+| `use_pantry` | Use pantry stock; reports what remains |
+
+Writes share `services/mutations.py` with the web routes, so both faces
+stay consistent. Imports stay review-gated: there is no tool for them —
+stage in the UI and confirm there.
 
 ## Run it
 

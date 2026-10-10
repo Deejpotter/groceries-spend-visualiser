@@ -164,6 +164,90 @@ def get_recipe(ref: str) -> dict:
     return recipe
 
 
+def _resolve_recipe_id(db, ref: str) -> int:
+    """Recipe id from an id string or exact name; raises ValueError when unknown."""
+    ref = (ref or "").strip()
+    if ref.isdigit():
+        row = db.execute("SELECT id FROM recipes WHERE id = ?", (int(ref),)).fetchone()
+        if row:
+            return row["id"]
+    else:
+        row = db.execute("SELECT id FROM recipes WHERE name = ?", (ref,)).fetchone()
+        if row:
+            return row["id"]
+    raise ValueError(f"No recipe found for {ref!r}.")
+
+
+def add_meal(date: str, meal_type: str, recipe: str, servings: int = 0) -> dict:
+    """Place a recipe in a plan slot (replaces whatever is there)."""
+    from database import get_db, get_setting
+    from services.mutations import place_meal
+    db = get_db()
+    return place_meal(db, date.strip(), meal_type.strip(), _resolve_recipe_id(db, recipe),
+                      servings=servings or None,
+                      default_servings=int(get_setting("default_servings", "2")))
+
+
+def swap_meal(entry_id: int, recipe: str, servings: int = 0) -> dict:
+    """Replace a plan entry's recipe (marks it manual)."""
+    from database import get_db
+    from services.mutations import swap_meal as _swap
+    db = get_db()
+    return _swap(db, entry_id, _resolve_recipe_id(db, recipe), servings=servings or None)
+
+
+def remove_meal(entry_id: int) -> dict:
+    """Delete a plan entry (continuations become standalone meals)."""
+    from database import get_db
+    from services.mutations import remove_meal as _remove
+    return _remove(get_db(), entry_id)
+
+
+def generate_plan(confirm: bool = False) -> dict:
+    """Without confirm: preview counts. With confirm: regenerate auto entries."""
+    from database import get_db, get_plan_dates
+    from services.plan_generator import generate_plan_entries
+    from services.repository import load_manual_entries, load_recipes, load_rules
+    start, end = get_plan_dates()
+    if not (start and end):
+        return {"error": "No plan dates set."}
+    if not confirm:
+        manual = load_manual_entries(start, end)
+        entries, error = generate_plan_entries(
+            start, end, load_rules(), load_recipes(), manual)
+        if error:
+            return {"error": error}
+        return {"plan_start": start, "plan_end": end, "auto_entries": len(entries),
+                "manual_kept": len(manual), "confirmed": False,
+                "note": "Preview uses first-match picks; call again with confirm=true to regenerate."}
+    from routes.meal_plan import generate_plan as _generate
+    count, error = _generate(start, end)
+    if error:
+        return {"error": error}
+    return {"plan_start": start, "plan_end": end, "entries": count or 0, "confirmed": True}
+
+
+def set_item_ticked(item_id: int, checked: bool = True) -> dict:
+    """Tick or untick a shopping-list row."""
+    from database import get_db
+    from services.mutations import set_tick
+    return set_tick(get_db(), item_id, checked)
+
+
+def add_list_item(name: str, quantity: float, unit: str = "each", category: str = "other") -> dict:
+    """Add a free-text row to the shopping list."""
+    from database import get_db
+    from services.mutations import add_manual_item
+    return add_manual_item(get_db(), name, quantity, unit=unit, category=category)
+
+
+def use_pantry_stock(item_id: int, amount: float) -> dict:
+    """Use up pantry stock; reports what remains."""
+    from database import get_db
+    from services.mutations import consume_stock
+    return consume_stock(get_db(), item_id, amount)
+
+
 # ---------------------------------------------------------------------------
 # MCP tool wrappers (each call runs inside its own app context)
 # ---------------------------------------------------------------------------
@@ -222,6 +306,55 @@ def read_recipe(ref: str) -> dict:
     """One recipe with its ingredients, by id or exact name."""
     with _app_ctx():
         return _safe(get_recipe, ref=ref)
+
+
+@mcp.tool()
+def plan_add_meal(date: str, meal_type: str, recipe: str, servings: int = 0) -> dict:
+    """Place a recipe in a plan slot (replaces whatever is there)."""
+    with _app_ctx():
+        return _safe(add_meal, date=date, meal_type=meal_type, recipe=recipe, servings=servings)
+
+
+@mcp.tool()
+def plan_swap_meal(entry_id: int, recipe: str, servings: int = 0) -> dict:
+    """Replace a plan entry's recipe (marks it manual)."""
+    with _app_ctx():
+        return _safe(swap_meal, entry_id=entry_id, recipe=recipe, servings=servings)
+
+
+@mcp.tool()
+def plan_remove_meal(entry_id: int) -> dict:
+    """Delete a plan entry (continuations become standalone meals)."""
+    with _app_ctx():
+        return _safe(remove_meal, entry_id=entry_id)
+
+
+@mcp.tool()
+def plan_generate(confirm: bool = False) -> dict:
+    """Preview regeneration counts; with confirm=true, regenerate auto entries."""
+    with _app_ctx():
+        return _safe(generate_plan, confirm=confirm)
+
+
+@mcp.tool()
+def tick_item(item_id: int, checked: bool = True) -> dict:
+    """Tick or untick a shopping-list row."""
+    with _app_ctx():
+        return _safe(set_item_ticked, item_id=item_id, checked=checked)
+
+
+@mcp.tool()
+def add_shopping_item(name: str, quantity: float, unit: str = "each", category: str = "other") -> dict:
+    """Add a free-text row to the shopping list."""
+    with _app_ctx():
+        return _safe(add_list_item, name=name, quantity=quantity, unit=unit, category=category)
+
+
+@mcp.tool()
+def use_pantry(item_id: int, amount: float) -> dict:
+    """Use up pantry stock; reports what remains."""
+    with _app_ctx():
+        return _safe(use_pantry_stock, item_id=item_id, amount=amount)
 
 
 # ---------------------------------------------------------------------------
