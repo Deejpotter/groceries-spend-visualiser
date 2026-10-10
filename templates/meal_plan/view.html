@@ -133,7 +133,7 @@
                         {{ recipe_select(selected=entry.recipe_id, label="Recipe for " ~ day.label ~ " " ~ meal_type_label(mt)) }}
                         <div class="input-group input-group-sm mt-1">
                             <input type="number" name="servings" min="1" value="{{ entry.servings }}" class="form-control" aria-label="Servings for {{ day.label }} {{ meal_type_label(mt) }}">
-                            <div class="input-group-append"><button class="btn btn-outline-primary" type="submit">Save</button></div>
+                            <button class="btn btn-outline-primary" type="submit">Save</button>
                         </div>
                     </form>
                 </details>
@@ -253,7 +253,7 @@
                                 <button type="button" class="btn btn-outline-secondary" onclick="setDays('all')">All</button>
                             </div>
                         </div>
-                        <div class="btn-group-toggle" data-toggle="buttons">
+                        <div class="btn-group-toggle">
                             {% set editing_days = editing_rule.day_of_week.split(',') if editing_rule else [] %}
                             {% for code in ['mon','tue','wed','thu','fri','sat','sun'] %}
                             <label class="btn btn-outline-primary day-toggle {% if code in editing_days or (editing_rule and editing_rule.day_of_week in ['weekday','weekend','all']) %}active{% endif %}" style="min-width:3.2rem">
@@ -347,7 +347,10 @@ function syncDays() {
 }
 
 document.querySelectorAll('.day-toggle input').forEach(function(inp) {
-    inp.addEventListener('change', syncDays);
+    inp.addEventListener('change', function() {
+        inp.closest('label').classList.toggle('active', inp.checked);
+        syncDays();
+    });
 });
 
 document.getElementById('rule-form').querySelector('form').addEventListener('submit', function(e) {

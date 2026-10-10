@@ -1245,6 +1245,14 @@ class TestShoppingList:
         assert b"beforeprint" in js
         assert b"spinner-border" in js
 
+    def test_bootstrap5_no_jquery(self, client):
+        """Layout uses Bootstrap 5 (no jQuery, data-bs-*) (S1)."""
+        _login(client, "sluser", "test123")
+        html = client.get("/").data
+        assert b"bootstrap@5" in html
+        assert b"jquery" not in html.lower()
+        assert b"data-bs-toggle" in client.get("/meal-plan").data
+
     def test_regenerate_summary_states_consequences(self, client, db):
         """Shopping page states what regenerating rebuilds and keeps (A3)."""
         _login(client, "sluser", "test123")
