@@ -152,7 +152,7 @@
             </div>
             {% if item.line_cost %}<span class="text-muted small mr-3 num">{{ item.line_cost|money }}</span>{% endif %}
             <div class="d-print-none">
-            {{ post_button(url_for('shopping_list.shopping_list_delete', item_id=item.id), '', class='btn btn-sm btn-link text-danger',
+            {{ post_button(url_for('shopping_list.shopping_list_delete', item_id=item.id), '', class='btn btn-sm btn-link text-danger px-3 py-2',
                            icon='times', title='Remove item', confirm='Remove ' ~ (item|label) ~ ' from the list?') }}
             </div>
         </li>

@@ -84,7 +84,7 @@
 </div>
 {% endif %}
 
-<ul class="nav nav-tabs mb-3" role="tablist">
+<ul class="nav nav-tabs mb-3">
     <li class="nav-item">
         <a class="nav-link {{ 'active' if tab == 'week' }}" href="{{ url_for('meal_plan.meal_plan_view') }}"
            {% if tab == 'week' %}aria-current="page"{% endif %}><i class="far fa-calendar"></i> Plan{% if plan_start and plan_end %} <span class="small text-muted">{{ plan_start[5:] }}–{{ plan_end[5:] }}</span>{% endif %}</a>
@@ -132,7 +132,7 @@
                         {{ csrf() }}
                         {{ recipe_select(selected=entry.recipe_id, label="Recipe for " ~ day.label ~ " " ~ meal_type_label(mt)) }}
                         <div class="input-group input-group-sm mt-1">
-                            <input type="number" name="servings" min="1" value="{{ entry.servings }}" class="form-control" aria-label="Servings">
+                            <input type="number" name="servings" min="1" value="{{ entry.servings }}" class="form-control" aria-label="Servings for {{ day.label }} {{ meal_type_label(mt) }}">
                             <div class="input-group-append"><button class="btn btn-outline-primary" type="submit">Save</button></div>
                         </div>
                     </form>

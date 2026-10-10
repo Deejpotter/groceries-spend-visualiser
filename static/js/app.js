@@ -7,6 +7,31 @@ document.addEventListener('DOMContentLoaded', function () {
             .forEach(function (el) { el.remove(); });
     }, 5000);
 
+    // Print: expand every disclosure first so packed/hidden options reach paper.
+    window.addEventListener('beforeprint', function () {
+        document.querySelectorAll('details:not([open])').forEach(function (d) {
+            d.setAttribute('data-was-closed', '1');
+            d.open = true;
+        });
+    });
+    window.addEventListener('afterprint', function () {
+        document.querySelectorAll('details[data-was-closed]').forEach(function (d) {
+            d.open = false;
+            d.removeAttribute('data-was-closed');
+        });
+    });
+
+    // Generate buttons: disable with a spinner so a double-click can't double-POST.
+    document.querySelectorAll('form[action$="/generate"]').forEach(function (form) {
+        form.addEventListener('submit', function () {
+            var btn = form.querySelector('button[type=submit]');
+            if (btn && !btn.disabled) {
+                btn.disabled = true;
+                btn.insertAdjacentHTML('afterbegin',
+                    '<span class="spinner-border spinner-border-sm mr-1" role="status" aria-hidden="true"></span>');
+            }
+        });
+    });
     // Shopping list: tick items in place so the page (and your scroll position) doesn't reload.
     // Without JS each row has a Save button (noscript) submitting the same POST form.
     document.querySelectorAll('.js-toggle-form').forEach(function (form) {

@@ -264,7 +264,6 @@ a {
     grid-template-columns: 1fr;
 }
 @media (min-width: 576px) { .week-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (min-width: 992px) { .week-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (min-width: 1200px) { .week-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
 
 .day-card {
@@ -305,7 +304,7 @@ a {
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: #adb5bd;
+    color: #6c757d;
 }
 .slot-recipe {
     font-weight: 600;
@@ -339,7 +338,7 @@ a {
 /* On phones, day cards read as rows: day on the left, meals on the right */
 @media (max-width: 575.98px) {
     .stat-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .day-card { display: grid; grid-template-columns: 4.2rem 1fr; border-top: none; border-left: 3px solid transparent; }
+    .day-card { display: grid; grid-template-columns: 5rem 1fr; border-top: none; border-left: 3px solid transparent; }
     .day-card.is-today { border-left-color: var(--brand); }
     .day-head { flex-direction: column; align-items: flex-start; gap: 0; padding: 0.5rem 0.2rem 0.5rem 0.6rem; }
     .day-head .badge { margin-left: 0 !important; margin-top: 0.2rem; }
@@ -374,18 +373,36 @@ a {
 }
 .rule-priority {
     font-size: 0.75rem;
-    color: #adb5bd;
+    color: #6c757d;
 }
 .rule-what {
     margin: 0.2rem 0;
 }
 .text-warning-dark {
-    color: #b8860b;
+    color: #856404;
 }
 .pack-others summary {
     font-size: 0.78rem;
     color: var(--brand-dark);
     cursor: pointer;
+    list-style: none;
+}
+.pack-others summary::-webkit-details-marker { display: none; }
+
+/* Disclosure chevrons (native markers are removed above). */
+.slot-edit summary::after,
+.pack-others summary::after {
+    content: "";
+    display: inline-block;
+    margin-left: 0.3rem;
+    border-left: 0.32em solid currentColor;
+    border-top: 0.24em solid transparent;
+    border-bottom: 0.24em solid transparent;
+    vertical-align: baseline;
+}
+details[open].slot-edit > summary::after,
+details[open].pack-others > summary::after {
+    transform: rotate(90deg);
 }
 
 /* Dashboard: KPI tiles with a freshness rail */
