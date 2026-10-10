@@ -85,8 +85,8 @@ def pantry_form(item_id=None):
             errors.append("Ingredient is required.")
         if quantity is None:
             errors.append("Quantity must be a number.")
-        elif quantity < 0:
-            errors.append("Quantity must be zero or more.")
+        elif quantity <= 0:
+            errors.append("Quantity must be greater than zero.")
         if unit and unit not in UNIT_LOOKUP:
             errors.append("Choose a valid unit.")
         if expiry_date and not validate_date_format(expiry_date):

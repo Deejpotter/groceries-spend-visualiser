@@ -40,13 +40,15 @@ def get_recipe_with_ingredients(recipe_id):
 def _read_ingredient_rows():
     """Parse the parallel ingredient_ids/quantities/unit_overrides lists.
 
-    Returns ([(ingredient_id, quantity, unit_override|None)], errors). Blank rows are skipped.
+    Returns ([(ingredient_id, quantity, unit_override|None)], errors, skipped).
+    Blank rows are skipped; rows with an ingredient but no quantity count as
+    skipped so the user is told instead of silently losing them.
     """
     ids = request.form.getlist("ingredient_ids")
     quantities = request.form.getlist("quantities")
     units = request.form.getlist("unit_overrides")
     db = get_db()
-    rows, errors = [], []
+    rows, errors, seen, skipped = [], [], set(), 0
     for i, raw_id in enumerate(ids):
         if not raw_id:
             continue
@@ -57,16 +59,22 @@ def _read_ingredient_rows():
             errors.append("Ingredient quantities must be numbers.")
             continue
         if qty <= 0:
+            skipped += 1
             continue
-        if not db.execute("SELECT 1 FROM ingredients WHERE id = ?", (ing_id,)).fetchone():
+        ing = db.execute("SELECT name FROM ingredients WHERE id = ?", (ing_id,)).fetchone()
+        if not ing:
             errors.append("One of the selected ingredients no longer exists.")
             continue
+        if ing_id in seen:
+            errors.append(f"\u201c{ing['name']}\u201d is listed twice \u2014 remove one row.")
+            continue
+        seen.add(ing_id)
         unit = units[i].strip() if i < len(units) else ""
         if unit and unit not in UNIT_LOOKUP:
             errors.append(f"Unknown unit '{unit}'.")
             continue
         rows.append((ing_id, qty, unit or None))
-    return rows, errors
+    return rows, errors, skipped
 
 
 def _submitted_rows():
@@ -143,7 +151,7 @@ def recipe_form(recipe_id=None):
         instructions = request.form.get("instructions", "").strip()
         tags = ", ".join(dict.fromkeys(parse_tags(request.form.get("tags", ""))))
 
-        rows, row_errors = _read_ingredient_rows()
+        rows, row_errors, skipped_rows = _read_ingredient_rows()
         errors = []
         if not name:
             errors.append("Recipe name is required.")
@@ -191,6 +199,9 @@ def recipe_form(recipe_id=None):
             [(recipe_id, ing_id, qty, unit) for ing_id, qty, unit in rows],
         )
         db.commit()
+        if skipped_rows:
+            flash(f"{skipped_rows} ingredient row{'s' if skipped_rows != 1 else ''} with no quantity"
+                  f" {'were' if skipped_rows != 1 else 'was'} skipped.", "warning")
         if not rows and not row_errors:
             flash("Recipe saved without ingredients — it won't add anything to the shopping list until you add some.", "warning")
         return redirect(url_for("recipes.recipe_detail", recipe_id=recipe_id))
