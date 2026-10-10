@@ -132,6 +132,8 @@ def recipe_form(recipe_id=None):
     db = get_db()
     recipe = None
     recipe_ingredients = []
+    form_ingredients = db.execute(
+        "SELECT id, name, display_name, unit FROM ingredients ORDER BY name").fetchall()
 
     if recipe_id:
         recipe, recipe_ingredients = get_recipe_with_ingredients(recipe_id)
@@ -171,7 +173,8 @@ def recipe_form(recipe_id=None):
 
         if errors:
             return render_template("recipes/form.html", recipe={**(recipe or {}), **request.form.to_dict()},
-                                   recipe_ingredients=_submitted_rows(), errors=errors)
+                                   recipe_ingredients=_submitted_rows(), errors=errors,
+                                   form_ingredients=form_ingredients)
 
         if recipe_id:
             db.execute(
@@ -207,6 +210,7 @@ def recipe_form(recipe_id=None):
         return redirect(url_for("recipes.recipe_detail", recipe_id=recipe_id))
 
     return render_template("recipes/form.html", recipe=recipe, recipe_ingredients=recipe_ingredients,
+                           form_ingredients=form_ingredients,
                            default_servings=get_setting("default_servings", "2"))
 
 
