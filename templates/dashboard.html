@@ -16,7 +16,7 @@
     </div>
 </div>
 
-{% if not (ingredient_count and recipe_count and rule_count) %}
+{% if not (ingredient_count and recipe_count and rule_count and plan_start) %}
 <div class="card mb-4 section-card border-left-brand">
     <div class="card-header"><span class="section-title"><i class="fas fa-seedling"></i> Getting started</span></div>
     <div class="card-body">
@@ -77,7 +77,7 @@
         {% if spend and spend.avg_per_shop is not none %}
         <div class="kpi-context">
             {% if spend_delta %}<span class="trend"><i class="fas fa-arrow-{{ 'up' if spend_delta.direction == 'up' else ('down' if spend_delta.direction == 'down' else 'right') }}"></i> {{ spend_delta.pct }}%</span> &middot; {% endif %}
-            last 90 days &middot; {{ spend.shops }} shop{{ '' if spend.shops == 1 else 's' }}
+            last 90 days ending {{ spend_latest|nice_date }} &middot; {{ spend.shops }} shop{{ '' if spend.shops == 1 else 's' }}
         </div>
         {% if spend_spark %}
         <svg class="sparkline" width="84" height="28" viewBox="0 0 84 28" aria-hidden="true">
@@ -115,7 +115,7 @@
                         <div class="small text-muted" style="width: 5.5rem">{{ day|nice_date }}</div>
                         <div class="flex-grow-1 small">
                             {% for r in rows %}
-                            <div>{{ r.recipe_name or 'Unplanned' }}{% if r.is_continuation %} <span class="text-muted">(leftovers)</span>{% endif %}</div>
+                            <div>{{ r.recipe_name or 'Removed recipe' }}{% if r.is_continuation %} <span class="text-muted">(leftovers)</span>{% endif %}</div>
                             {% endfor %}
                         </div>
                     </div>
@@ -144,6 +144,9 @@
                     </li>
                     {% endfor %}
                 </ul>
+                {% if to_buy_total > to_buy|length %}
+                <div class="small text-muted mb-1">+{{ to_buy_total - to_buy|length }} more</div>
+                {% endif %}
                 <a class="small" href="{{ url_for('shopping_list.shopping_list_view') }}">Open shopping list</a>
                 {% else %}
                 <p class="text-muted small mb-2">Nothing on the list.</p>
@@ -167,7 +170,11 @@
                     {% endfor %}
                 </ul>
                 {% if spare_recipes %}
-                <div class="small text-muted">Try: <a href="{{ url_for('recipes.recipe_detail', recipe_id=spare_recipes[0].recipe_id) }}">{{ spare_recipes[0].name }}</a></div>
+                <div class="small text-muted">Try:
+                    {% for s in spare_recipes[:3] %}
+                    <a href="{{ url_for('recipes.recipe_detail', recipe_id=s.recipe_id) }}">{{ s.name }}</a>{{ ', ' if not loop.last }}
+                    {% endfor %}
+                </div>
                 {% endif %}
                 <a class="small d-inline-block mt-1" href="{{ url_for('meal_plan.meal_plan_view') }}">Add a meal</a>
                 {% else %}

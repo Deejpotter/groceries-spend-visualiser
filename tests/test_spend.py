@@ -151,8 +151,10 @@ def test_link_product_updates_ingredient_price(client, db):
     _upload(client)
     db.execute("INSERT INTO ingredients (id, name, category, unit, price) VALUES (1, 'Mince', 'meat', 'kg', 10)")
     db.commit()
-    client.post("/spend/products/link", data={"product_name": "Beef Mince 500g", "ingredient_id": "1", "update_price": "1"})
+    resp = client.post("/spend/products/link", data={"product_name": "Beef Mince 500g", "ingredient_id": "1", "update_price": "1"},
+                       follow_redirects=True)
     assert db.execute("SELECT price FROM ingredients WHERE id = 1").fetchone()[0] == pytest.approx(17.0)
+    assert b"$10.00" in resp.data and b"$17.00" in resp.data  # overwrite states old and new (C4)
     assert db.execute("SELECT COUNT(*) FROM purchases WHERE ingredient_id = 1").fetchone()[0] == 2
     # Category spend now shows the linked category
     assert b"Meat &amp; Seafood" in client.get("/spend?range=all").data
@@ -173,6 +175,17 @@ def test_products_page_filters(client, db):
     _upload(client)
     resp = client.get("/spend/products?q=milk")
     assert b"Milk 2L" in resp.data and b"Bananas" not in resp.data
+
+
+def test_spend_range_and_link_context(client, db):
+    """Dashboard states the range anchor; linked icons open products (C4)."""
+    login(client)
+    _upload(client)
+    assert b"ending" in client.get("/").data
+    db.execute("INSERT INTO ingredients (id, name, category, unit) VALUES (1, 'Mince', 'meat', 'kg')")
+    db.commit()
+    client.post("/spend/products/link", data={"product_name": "Beef Mince 500g", "ingredient_id": "1"})
+    assert b"Open linked products for Beef Mince 500g" in client.get("/spend?range=all").data
 
 
 def test_link_batch_saves_many_at_once(client, db):

@@ -22,6 +22,11 @@
                     <div class="form-group">
                         <label for="password">Password</label>
                         <input type="password" class="form-control" id="password" name="password" required autocomplete="current-password">
+                        <div class="custom-control custom-checkbox mt-1">
+                            <input type="checkbox" class="custom-control-input" id="show-password"
+                                   onclick="document.getElementById('password').type = this.checked ? 'text' : 'password'">
+                            <label class="custom-control-label small" for="show-password">Show password</label>
+                        </div>
                     </div>
                     <button type="submit" class="btn btn-primary btn-block">Login</button>
                 </form>
@@ -30,7 +35,6 @@
         {% if not is_logged_in %}
         <p class="text-center text-muted mt-3">
             Don't have access? Contact your administrator.
-            <a href="{{ url_for('setup') }}">Need to set up an account?</a>
         </p>
         {% endif %}
     </div>

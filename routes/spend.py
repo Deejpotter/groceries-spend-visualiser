@@ -300,7 +300,7 @@ def _apply_link(db, product_name, choice, update_price, new_category="other"):
         db.commit()
         return "success", f"Created ingredient “{product_name}” in {CATEGORY_LOOKUP.get(category, category)}.", False
     if choice:
-        ingredient = db.execute("SELECT id, unit FROM ingredients WHERE id = ?", (choice,)).fetchone()
+        ingredient = db.execute("SELECT id, unit, price FROM ingredients WHERE id = ?", (choice,)).fetchone()
         if not ingredient:
             return "error", "Ingredient not found.", False
         ingredient_id = ingredient["id"]
@@ -308,9 +308,15 @@ def _apply_link(db, product_name, choice, update_price, new_category="other"):
         if update_price and latest:
             price = price_per_unit(latest["cup_price"], latest["unit_price"], ingredient["unit"])
             if price is not None:
+                old_price = ingredient["price"]
                 db.execute("UPDATE ingredients SET price = ? WHERE id = ?", (price, ingredient_id))
                 price_updated = True
-                note, level = f"Linked and updated price to ${price:.2f} per {ingredient['unit']}.", "success"
+                if old_price is None:
+                    note = f"Linked and set price to ${price:.2f} per {ingredient['unit']}."
+                else:
+                    note = (f"Linked and updated price ${old_price:.2f} → ${price:.2f}"
+                            f" per {ingredient['unit']}.")
+                level = "success"
             else:
                 note = "Linked. The purchase price couldn't be converted to the ingredient's unit, so the price wasn't changed."
                 level = "warning"
