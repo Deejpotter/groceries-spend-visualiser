@@ -545,3 +545,38 @@ details[open].pack-others > summary::after {
         animation: none !important;
     }
 }
+
+/* Bootstrap 5 compat shims: pre-upgrade class names keep working so templates
+   didn't need rewriting. Remove a shim only with its templates. */
+.badge-secondary { background-color: #6c757d; color: #fff; }
+.badge-primary { background-color: #007bff; color: #fff; }
+.badge-success { background-color: #28a745; color: #fff; }
+.badge-danger { background-color: #dc3545; color: #fff; }
+.badge-warning { background-color: #ffc107; color: #212529; }
+.badge-info { background-color: #17a2b8; color: #fff; }
+.badge-light { background-color: #f8f9fa; color: #212529; }
+.badge-pill { border-radius: 10rem; }
+thead.thead-light th { background-color: #e9ecef; border-color: #dee2e6; color: #495057; }
+thead.thead-dark th { background-color: #343a40; border-color: #454d55; color: #fff; }
+.form-row { display: flex; flex-wrap: wrap; margin-right: -5px; margin-left: -5px; }
+.form-row > .col, .form-row > [class*="col-"] { padding-right: 5px; padding-left: 5px; }
+.custom-control { position: relative; display: flex; align-items: center; gap: 0.4rem; min-height: 1.5rem; }
+.custom-control-input { width: 1rem; height: 1rem; flex: none; }
+.btn-block { display: block; width: 100%; }
+.mr-0 { margin-right: 0 !important; } .mr-1 { margin-right: 0.25rem !important; }
+.mr-2 { margin-right: 0.5rem !important; } .mr-3 { margin-right: 1rem !important; }
+.ml-0 { margin-left: 0 !important; } .ml-1 { margin-left: 0.25rem !important; }
+.ml-2 { margin-left: 0.5rem !important; } .ml-3 { margin-left: 1rem !important; }
+.ml-auto { margin-left: auto !important; } .mr-auto { margin-right: auto !important; }
+.float-right { float: right !important; } .float-left { float: left !important; }
+.font-weight-normal { font-weight: 400 !important; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+select.form-control {
+    display: block; width: 100%; padding: 0.375rem 2.25rem 0.375rem 0.75rem;
+    font-size: 1rem; line-height: 1.5; color: #212529; background-color: #fff;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+    background-repeat: no-repeat; background-position: right 0.75rem center; background-size: 16px 12px;
+    border: 1px solid #ced4da; border-radius: 0.25rem; appearance: none;
+}
+select.form-control-sm { padding: 0.25rem 2rem 0.25rem 0.5rem; font-size: 0.875rem; border-radius: 0.2rem; }
+.day-toggle.active { color: #fff; background-color: #007bff; border-color: #007bff; }
