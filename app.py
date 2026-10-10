@@ -225,6 +225,7 @@ def create_app(testing=False):
         to_buy = [dict(r) for r in db.execute(
             "SELECT ingredient_name, quantity, unit FROM shopping_list_items"
             " WHERE checked = 0 ORDER BY category, ingredient_name LIMIT 8")]
+        to_buy_total = count("SELECT COUNT(*) FROM shopping_list_items WHERE checked = 0")
 
         pantry = dash.pantry_alerts([dict(r) for r in db.execute(
             "SELECT p.id, p.quantity, p.unit, p.expiry_date, i.name, i.display_name,"
@@ -271,8 +272,10 @@ def create_app(testing=False):
             coverage=coverage,
             shopping=shopping,
             to_buy=to_buy,
+            to_buy_total=to_buy_total,
             pantry=pantry,
             spend=spend,
+            spend_latest=str(latest)[:10] if latest else None,
             spend_delta=spend_delta,
             spend_spark=spend_spark,
             monthly=monthly,

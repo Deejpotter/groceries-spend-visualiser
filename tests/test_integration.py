@@ -21,11 +21,32 @@ class TestAuthentication:
         assert resp.status_code == 200
         assert b"Username" in resp.data
         assert b"Password" in resp.data
+        assert b"Show password" in resp.data
+        assert b"Need to set up an account?" not in resp.data
+
+    def test_dashboard_more_link_and_checklist(self, client, db):
+        """Capped lists link onward; checklist stays until dates exist (B5)."""
+        _login(client, "dashuser", "test123")
+        for i in range(9):
+            db.execute("INSERT INTO shopping_list_items (ingredient_name, quantity, unit, category, checked, is_manual)"
+                       f" VALUES ('Item{i}', 1, 'each', 'other', 0, 1)")
+        db.commit()
+        client.post("/meal-rules/add", data={
+            "day_of_week": "mon",
+            "meal_type": "dinner",
+            "tag_filter": "",
+            "is_active": "1",
+        }, follow_redirects=True)
+        resp = client.get("/")
+        assert resp.status_code == 200
+        assert b"+1 more" in resp.data
+        assert b"Getting started" in resp.data
 
     def test_setup_page_loads(self, client):
         """GET /setup returns the setup page."""
         resp = client.get("/setup")
         assert resp.status_code == 200
+        assert b"Create Admin Account" in resp.data
 
     def test_unauthenticated_access_redirects(self, client):
         """Protected routes redirect to login when not authenticated."""

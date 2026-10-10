@@ -11,7 +11,7 @@
         <tbody>
         {% for p in rows %}
             <tr>
-                <td>{{ p.product_name }}{% if p.ingredient_id %} <i class="fas fa-link text-muted small" title="Linked to an ingredient"></i>{% endif %}</td>
+                <td>{{ p.product_name }}{% if p.ingredient_id %} <a href="{{ url_for('spend.spend_products') }}" aria-label="Open linked products for {{ p.product_name }}"><i class="fas fa-link text-muted small" title="Linked to an ingredient"></i></a>{% endif %}</td>
                 <td class="num">{{ p.orders }}</td>
                 <td class="num">{{ p.total_spend|money }}</td>
             </tr>
