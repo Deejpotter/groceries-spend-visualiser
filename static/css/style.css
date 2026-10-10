@@ -163,6 +163,54 @@ main.container {
     left: 0;
     z-index: 2;
 }
+.table-striped.table-sticky-first tbody td:first-child {
+    position: sticky;
+    left: 0;
+    background-color: #fff;
+    z-index: 1;
+}
+[data-bs-theme="dark"] .table-striped.table-sticky-first tbody td:first-child {
+    background-color: var(--card);
+}
+
+/* Sticky action bars: plan + shopping headers stay put while scrolling. */
+.sticky-actions {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: var(--surface);
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+}
+
+/* Mobile bottom nav: the in-store loop (plan/list/pantry/spend) one thumb away. */
+.bottom-nav {
+    display: none;
+}
+@media (max-width: 575.98px) {
+    .bottom-nav {
+        display: flex;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 100;
+        background: var(--card);
+        border-top: 1px solid var(--line);
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+    .bottom-nav a {
+        flex: 1;
+        text-align: center;
+        padding: 0.55rem 0 0.5rem;
+        font-size: 0.68rem;
+        color: var(--ink-soft);
+        text-decoration: none;
+    }
+    .bottom-nav a i { display: block; font-size: 1.1rem; margin-bottom: 0.1rem; }
+    .bottom-nav a.active { color: var(--brand); font-weight: 700; }
+    body { padding-bottom: 3.4rem; }
+}
 
 /* Shopping list */
 .big-check {
@@ -580,3 +628,46 @@ select.form-control {
 }
 select.form-control-sm { padding: 0.25rem 2rem 0.25rem 0.5rem; font-size: 0.875rem; border-radius: 0.2rem; }
 .day-toggle.active { color: #fff; background-color: #007bff; border-color: #007bff; }
+
+/* Type scale: one page-title size, calm card headers */
+main h1 { font-size: 1.65rem; font-weight: 700; letter-spacing: -0.01em; }
+.card-header h4, .card-header h5 { font-size: 1.05rem; margin-bottom: 0; }
+
+/* Dark mode: warm umber surfaces, lifted brand; Bootstrap components follow
+   data-bs-theme automatically, custom surfaces are overridden below. */
+[data-bs-theme="dark"] {
+    --surface: #211a14;
+    --card: #2c231b;
+    --ink: #f0e6d6;
+    --ink-soft: #b8a88f;
+    --line: #4a3d2c;
+    --brand: #e08a5f;
+    --brand-dark: #f0a87e;
+    --brand-tint: #3d2a1c;
+    --ok: #a3b86b;
+    --ok-tint: #33391f;
+    --warn: #d9a94a;
+    --warn-tint: #3d3016;
+    --danger: #e07a6a;
+    --danger-tint: #40211c;
+    --shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+    --shadow-lg: 0 10px 28px rgba(0, 0, 0, 0.4);
+}
+[data-bs-theme="dark"] .day-card,
+[data-bs-theme="dark"] .rule-card,
+[data-bs-theme="dark"] .stat-tile { background: var(--card); }
+[data-bs-theme="dark"] .day-card.is-today { background: var(--brand-tint); }
+[data-bs-theme="dark"] table.bg-white { background-color: var(--card); }
+[data-bs-theme="dark"] .table-sticky-first tbody td:first-child { background: var(--card); }
+[data-bs-theme="dark"] .ingredient-row { background-color: #241c14; }
+[data-bs-theme="dark"] .ingredient-row .ingredient-select { background-color: var(--card); }
+[data-bs-theme="dark"] thead.thead-light th { background-color: #3a2f22; border-color: var(--line); color: var(--ink); }
+[data-bs-theme="dark"] .day-date, [data-bs-theme="dark"] .slot-meta, [data-bs-theme="dark"] .stat-label,
+[data-bs-theme="dark"] .rule-priority, [data-bs-theme="dark"] .slot-label { color: var(--ink-soft); }
+[data-bs-theme="dark"] .slot { border-color: var(--line); }
+[data-bs-theme="dark"] .pack-badge { color: var(--ink-soft); }
+[data-bs-theme="dark"] .text-warning-dark { color: var(--warn); }
+[data-bs-theme="dark"] select.form-control {
+    color: var(--ink); background-color: var(--card); border-color: var(--line);
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23b8a88f' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+}

@@ -1253,6 +1253,28 @@ class TestShoppingList:
         assert b"jquery" not in html.lower()
         assert b"data-bs-toggle" in client.get("/meal-plan").data
 
+    def test_dark_mode_plumbing(self, client):
+        """Theme toggle, theme attr and dark tokens ship (S2)."""
+        _login(client, "sluser", "test123")
+        html = client.get("/").data
+        assert b'data-bs-theme' in html
+        assert b'id="theme-toggle"' in html
+        assert b"gv-theme" in html
+        css = client.get("/static/css/style.css").data
+        assert b'[data-bs-theme="dark"]' in css
+        assert b"main h1" in css
+
+    def test_mobile_navigation_helpers(self, client, db):
+        """Bottom nav, sticky bars and sticky table columns ship (S3)."""
+        _login(client, "sluser", "test123")
+        html = client.get("/shopping-list").data
+        assert b"bottom-nav" in html
+        assert b"sticky-actions" in html
+        assert b'aria-current="page"' in html
+        css = client.get("/static/css/style.css").data
+        assert b".bottom-nav" in css
+        assert b".sticky-actions" in css
+
     def test_regenerate_summary_states_consequences(self, client, db):
         """Shopping page states what regenerating rebuilds and keeps (A3)."""
         _login(client, "sluser", "test123")
