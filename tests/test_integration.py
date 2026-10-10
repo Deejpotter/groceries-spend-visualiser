@@ -575,6 +575,26 @@ class TestMealPlanGeneration:
         resp = client.get("/meal-plan")
         assert b"Lunch" in resp.data
 
+    def test_generate_inline_dates_update_range(self, client, db):
+        """Posting new dates to generate re-ranges the plan (A2)."""
+        _login(client, "planuser", "test123")
+        client.post("/settings/save", data={
+            "action": "save_dates",
+            "plan_start": "2026-10-05",
+            "plan_end": "2026-10-09",
+            "unit_preference": "metric",
+            "default_servings": "2",
+        }, follow_redirects=True)
+        client.post("/meal-plan/generate", data={
+            "plan_start": "2026-10-13",
+            "plan_end": "2026-10-17",
+        }, follow_redirects=True)
+        assert db.execute("SELECT value FROM settings WHERE key = 'plan_start_date'").fetchone()[0] == "2026-10-13"
+        assert db.execute("SELECT value FROM settings WHERE key = 'plan_end_date'").fetchone()[0] == "2026-10-17"
+        resp = client.get("/meal-plan")
+        assert b'name="plan_start"' in resp.data
+        assert b'value="2026-10-13"' in resp.data
+
     def test_generate_plan_with_rules_and_recipes(self, client, db):
         """Full workflow: add ingredient → recipe → rule → set dates → generate plan."""
         _login(client, "planuser", "test123")

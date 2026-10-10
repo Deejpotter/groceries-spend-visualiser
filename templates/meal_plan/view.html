@@ -21,12 +21,18 @@
             · <a href="{{ url_for('settings.settings') }}">Change dates</a></div>
         {% endif %}
     </div>
-    <div class="mb-2 d-flex">
+    <div class="mb-2 d-flex flex-wrap align-items-end">
         {% if plan_start and plan_end %}
-        <form method="post" action="{{ url_for('meal_plan.meal_plan_generate') }}" class="mr-2"
+        <form method="post" action="{{ url_for('meal_plan.meal_plan_generate') }}" class="mr-2 d-flex flex-wrap align-items-end"
               {% if has_entries %}onsubmit="return confirm('Regenerate? Auto-generated meals will be replaced; meals you picked by hand are kept.')"{% endif %}>
             {{ csrf() }}
-            <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-sync"></i> {{ 'Regenerate' if has_entries else 'Generate' }}</button>
+            <label class="small text-muted mr-2 mb-1">From
+                <input type="date" name="plan_start" value="{{ plan_start }}" class="form-control form-control-sm" required aria-label="Plan start date">
+            </label>
+            <label class="small text-muted mr-2 mb-1">To
+                <input type="date" name="plan_end" value="{{ plan_end }}" class="form-control form-control-sm" required aria-label="Plan end date">
+            </label>
+            <button type="submit" class="btn btn-primary btn-sm mb-1"><i class="fas fa-sync"></i> {{ 'Regenerate' if has_entries else 'Generate' }}</button>
         </form>
         {% endif %}
         <a href="{{ url_for('shopping_list.shopping_list_view') }}" class="btn btn-success btn-sm">
