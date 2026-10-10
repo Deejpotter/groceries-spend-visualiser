@@ -80,9 +80,7 @@ def ingredient_add():
     if request.method == "POST":
         values, errors = _read_form()
         if errors:
-            for err in errors:
-                flash(err, "error")
-            return render_template("ingredients/form.html", ingredient=values)
+            return render_template("ingredients/form.html", ingredient=values, errors=errors)
 
         db = get_db()
         db.execute(
@@ -113,9 +111,8 @@ def ingredient_edit(ingredient_id):
     if request.method == "POST":
         values, errors = _read_form()
         if errors:
-            for err in errors:
-                flash(err, "error")
-            return render_template("ingredients/form.html", ingredient={**dict(ingredient), **values})
+            return render_template("ingredients/form.html",
+                                   ingredient={**dict(ingredient), **values}, errors=errors)
 
         db.execute(
             """UPDATE ingredients SET name=?, display_name=?, category=?, unit=?, price=?, url=?, store=?,

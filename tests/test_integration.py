@@ -117,6 +117,21 @@ class TestIngredients:
         assert row["category"] == "meat"
         assert row["price"] == 12.50
 
+    def test_ingredient_error_shows_inline_and_preserves(self, client, db):
+        """Ingredient errors render inline with submitted values kept (B1a)."""
+        _login(client, "inguser", "test123")
+        resp = client.post("/ingredients/add", data={
+            "name": "",
+            "category": "meat",
+            "unit": "g",
+            "store": "Woolies",
+        })
+        assert resp.status_code == 200
+        assert b"Name is required." in resp.data
+        assert b"Woolies" in resp.data
+        assert b"Add Ingredient" in resp.data
+        assert db.execute("SELECT COUNT(*) FROM ingredients").fetchone()[0] == 0
+
     def test_add_ingredient_with_url_and_store(self, client, db):
         """Ingredient can have URL and store fields."""
         _login(client, "inguser", "test123")
@@ -1252,6 +1267,22 @@ class TestPantry:
         assert row is not None
         assert row["quantity"] == 2000
         assert row["location"] == "Cupboard"
+
+    def test_pantry_add_error_preserves_input(self, client, db):
+        """Pantry errors render inline with typed values kept (B1a)."""
+        _login(client, "panuser", "test123")
+        resp = client.post("/pantry/add", data={
+            "ingredient_id": "",
+            "quantity": "abc",
+            "unit": "g",
+            "location": "fridge",
+        })
+        assert resp.status_code == 200
+        assert b"Ingredient is required." in resp.data
+        assert b"Quantity must be a number." in resp.data
+        assert b'value="abc"' in resp.data
+        assert b"Add Pantry Item" in resp.data
+        assert db.execute("SELECT COUNT(*) FROM pantry_items").fetchone()[0] == 0
 
     def test_consume_pantry_item(self, client, db):
         """POST /pantry/consume/<id> reduces pantry quantity."""

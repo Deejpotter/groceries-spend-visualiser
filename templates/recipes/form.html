@@ -1,17 +1,19 @@
 {% extends "base.html" %}
+{% from "_macros.html" import form_errors %}
 
-{% block title %}{{ 'Edit' if recipe else 'Add' }} Recipe — Grocery Visualiser{% endblock %}
+{% block title %}{{ 'Edit' if recipe and recipe.id else 'Add' }} Recipe — Grocery Visualiser{% endblock %}
 
 {% block content %}
 <div class="row">
     <div class="col-md-8">
         <div class="card">
             <div class="card-header">
-                <h4>{{ 'Edit' if recipe else 'Add' }} Recipe</h4>
+                <h4>{{ 'Edit' if recipe and recipe.id else 'Add' }} Recipe</h4>
             </div>
             <div class="card-body">
                 <form method="post">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    {{ form_errors(errors) }}
 
                     <div class="form-group">
                         <label for="name">Recipe Name <span class="text-danger">*</span></label>
@@ -133,7 +135,7 @@
                     <div class="form-group text-right">
                         <a href="{{ url_for('recipes.recipe_list') }}" class="btn btn-secondary">Cancel</a>
                         <button type="submit" class="btn btn-primary">
-                            {{ 'Update' if recipe else 'Create' }} Recipe
+                            {{ 'Update' if recipe and recipe.id else 'Create' }} Recipe
                         </button>
                     </div>
                 </form>

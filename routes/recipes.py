@@ -162,10 +162,8 @@ def recipe_form(recipe_id=None):
         errors.extend(row_errors)
 
         if errors:
-            for err in errors:
-                flash(err, "error")
             return render_template("recipes/form.html", recipe={**(recipe or {}), **request.form.to_dict()},
-                                   recipe_ingredients=_submitted_rows())
+                                   recipe_ingredients=_submitted_rows(), errors=errors)
 
         if recipe_id:
             db.execute(

@@ -70,7 +70,11 @@ def pantry_form(item_id=None):
 
     if request.method == "POST":
         ingredient_id = request.form.get("ingredient_id", type=int)
-        quantity = request.form.get("quantity", type=float, default=0)
+        raw_quantity = request.form.get("quantity", "").strip()
+        try:
+            quantity = float(raw_quantity) if raw_quantity else 0
+        except ValueError:
+            quantity = None
         unit = request.form.get("unit", "").strip()
         expiry_date = request.form.get("expiry_date", "").strip() or None
         location = request.form.get("location", "pantry").strip()
@@ -79,7 +83,9 @@ def pantry_form(item_id=None):
         errors = []
         if not ingredient:
             errors.append("Ingredient is required.")
-        if quantity is None or quantity < 0:
+        if quantity is None:
+            errors.append("Quantity must be a number.")
+        elif quantity < 0:
             errors.append("Quantity must be zero or more.")
         if unit and unit not in UNIT_LOOKUP:
             errors.append("Choose a valid unit.")
@@ -88,10 +94,18 @@ def pantry_form(item_id=None):
         if not location:
             errors.append("Location is required.")
 
+        submitted = {
+            "id": item_id,
+            "ingredient_id": ingredient_id,
+            "quantity": raw_quantity,
+            "unit": unit,
+            "expiry_date": expiry_date or "",
+            "location": location or "pantry",
+        }
+        if item_id and existing:
+            submitted = {**dict(existing), **submitted}
         if errors:
-            for err in errors:
-                flash(err, "error")
-            return render_template("pantry/form.html", item=existing, ingredients=ingredients)
+            return render_template("pantry/form.html", item=submitted, ingredients=ingredients, errors=errors)
 
         unit = unit or ingredient["unit"]
 

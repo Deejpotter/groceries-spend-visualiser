@@ -1,17 +1,19 @@
 {% extends "base.html" %}
+{% from "_macros.html" import form_errors %}
 
-{% block title %}{{ 'Edit' if item else 'Add' }} Pantry Item — Grocery Visualiser{% endblock %}
+{% block title %}{{ 'Edit' if item and item.id else 'Add' }} Pantry Item — Grocery Visualiser{% endblock %}
 
 {% block content %}
 <div class="row">
     <div class="col-md-6">
         <div class="card">
             <div class="card-header">
-                <h4>{{ 'Edit' if item else 'Add' }} Pantry Item</h4>
+                <h4>{{ 'Edit' if item and item.id else 'Add' }} Pantry Item</h4>
             </div>
             <div class="card-body">
                 <form method="post">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    {{ form_errors(errors) }}
                     <div class="form-group">
                         <label for="ingredient_id">Ingredient <span class="text-danger">*</span></label>
                         <select class="form-control" id="ingredient_id" name="ingredient_id" required>
@@ -44,7 +46,7 @@
                         <div class="form-group col-md-4">
                             <label for="expiry_date">Expiry Date</label>
                             <input type="date" class="form-control" id="expiry_date" name="expiry_date"
-                                   value="{{ item.expiry_date if item else '' }}">
+                                   value="{{ item.expiry_date or '' if item else '' }}">
                         </div>
                     </div>
 
@@ -61,7 +63,7 @@
                     <div class="form-group text-right">
                                             <a href="{{ url_for('pantry.pantry_list') }}" class="btn btn-secondary">Cancel</a>
                         <button type="submit" class="btn btn-primary">
-                            {{ 'Update' if item else 'Add' }} Item
+                            {{ 'Update' if item and item.id else 'Add' }} Item
                         </button>
                     </div>
                 </form>
