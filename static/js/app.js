@@ -7,6 +7,23 @@ document.addEventListener('DOMContentLoaded', function () {
             .forEach(function (el) { el.remove(); });
     }, 5000);
 
+    // Theme toggle: persists in localStorage (pre-paint script in base.html applies it early).
+    (function () {
+        var btn = document.getElementById('theme-toggle');
+        if (!btn) return;
+        function paint() {
+            var dark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+            btn.querySelector('i').className = dark ? 'fas fa-sun' : 'fas fa-moon';
+        }
+        btn.addEventListener('click', function () {
+            var next = document.documentElement.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-bs-theme', next);
+            try { localStorage.setItem('gv-theme', next); } catch (e) {}
+            paint();
+        });
+        paint();
+    })();
+
     // Print: expand every disclosure first so packed/hidden options reach paper.
     window.addEventListener('beforeprint', function () {
         document.querySelectorAll('details:not([open])').forEach(function (d) {
