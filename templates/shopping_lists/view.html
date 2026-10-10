@@ -108,6 +108,7 @@
                 {{ csrf() }}
                 <input type="checkbox" class="big-check" {% if item.checked %}checked{% endif %}
                        aria-label="Mark {{ item|label }} as bought">
+                <noscript><button type="submit" class="btn btn-sm btn-outline-secondary ml-1">Save</button></noscript>
             </form>
             <div class="flex-grow-1">
                 <span class="item-name">{{ item.quantity|amount(item.unit) }} {{ item|label }}</span>

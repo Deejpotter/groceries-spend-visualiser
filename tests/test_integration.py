@@ -1063,6 +1063,16 @@ class TestShoppingList:
         assert b"Minced Beef" in resp.data
         assert b"2.5 kg Minced Beef" in resp.data  # 5 days * 500 g, shown in kg
 
+    def test_toggle_form_has_noscript_fallback(self, client, db):
+        """Tick rows carry a no-JS Save button (A6)."""
+        _login(client, "sluser", "test123")
+        db.execute("INSERT INTO shopping_list_items (ingredient_name, quantity, unit, category, checked, is_manual)"
+                   " VALUES ('Milk', 2, 'L', 'dairy', 0, 0)")
+        db.commit()
+        resp = client.get("/shopping-list")
+        assert resp.status_code == 200
+        assert b"<noscript>" in resp.data
+
     def test_regenerate_summary_states_consequences(self, client, db):
         """Shopping page states what regenerating rebuilds and keeps (A3)."""
         _login(client, "sluser", "test123")
@@ -1334,6 +1344,24 @@ class TestPantry:
         assert row is not None
         assert row["quantity"] == 2000
         assert row["location"] == "Cupboard"
+
+    def test_location_filter_submits_without_js(self, client, db):
+        """Location filter is a plain GET form (A6/B3)."""
+        _login(client, "panuser", "test123")
+        client.post("/ingredients/add", data={
+            "name": "Milk",
+            "category": "dairy",
+            "unit": "L",
+        }, follow_redirects=True)
+        client.post("/pantry/add", data={
+            "ingredient_id": "1",
+            "quantity": "1",
+            "unit": "L",
+            "location": "fridge",
+        }, follow_redirects=True)
+        assert b"Milk" in client.get("/pantry?location=fridge").data
+        assert b"Milk" not in client.get("/pantry?location=freezer").data
+        assert b'name="location"' in client.get("/pantry").data
 
     def test_pantry_add_error_preserves_input(self, client, db):
         """Pantry errors render inline with typed values kept (B1a)."""
