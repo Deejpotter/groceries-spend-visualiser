@@ -443,6 +443,27 @@ def test_plan_list_lines_and_spares():
     assert lines[0]["line_cost"] == pytest.approx(2.81) and lines[1]["pack_choice"] is None
     assert spares(lines) == [{"ingredient_id": 9, "name": "Carrots", "quantity": pytest.approx(1.2), "unit": "kg",
                               "shown": pytest.approx(1.2), "shown_unit": "kg"}]
+
+
+def test_plan_list_lines_honours_stored_pack_pick():
+    """A stored pack pick moves to the front when still offered (A7)."""
+    products = {1: [
+        {"product_name": "Shredded Cheese 250g", "unit_price": 6.75, "url": "b"},
+        {"product_name": "Cheese Block 1kg", "unit_price": 20.0},
+    ]}
+
+    def row(pick):
+        return {"ingredient_id": 1, "ingredient_name": "Cheese", "quantity": 0.2, "unit": "kg",
+                "estimated_cost": 6.0, "ing_name": "Cheese Pizza Blend 225g", "ing_unit": "kg",
+                "ing_pack_size": None, "ing_price": 30.0, "product_url": "a", "pack_pick": pick}
+
+    line = plan_list_lines([row("Cheese Block 1kg")], products)[0]
+    assert line["pack_choice"]["best"]["name"] == "Cheese Block 1kg"
+    assert [o["name"] for o in line["pack_choice"]["others"]] == [
+        "Cheese Pizza Blend 225g", "Shredded Cheese 250g"]
+    # An unknown pick leaves the automatic best alone.
+    line = plan_list_lines([row("No Such Pack")], products)[0]
+    assert line["pack_choice"]["best"]["name"] == "Cheese Pizza Blend 225g"
     # 25 g left of a 225 g pack is under 20% of a pack: not worth planning a meal around
     cheese = [{"ingredient_id": 5, "ingredient_name": "Cheese", "quantity": 0.2, "unit": "kg", "estimated_cost": None,
                "ing_name": "Cheese 225g", "ing_unit": "kg", "ing_pack_size": None, "ing_price": None}]
