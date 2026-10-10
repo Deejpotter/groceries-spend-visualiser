@@ -7,7 +7,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 
 from auth import login_required
 from database import get_db
-from models import label_of, short_name
+from models import CATEGORY_LOOKUP, label_of, short_name
 from services.spend_analysis import analyze_purchases, load_purchases
 from services.spend_import import (
     commit_import_batch, create_import_batch, discard_import_batch, get_import_batch,
@@ -87,26 +87,35 @@ def spend_products():
     db = get_db()
     search = request.args.get("q", "").strip()
     only_unlinked = request.args.get("unlinked") == "1"
-    sql = """
-        SELECT p.product_name,
-               COUNT(DISTINCT p.store || '|' || p.basket_id) AS orders,
-               ROUND(SUM(p.line_total), 2) AS total_spend,
-               MAX(p.order_date) AS last_bought,
-               MAX(p.ingredient_id) AS ingredient_id,
-               (SELECT unit_price FROM purchases x WHERE x.product_name = p.product_name
-                ORDER BY x.order_date DESC LIMIT 1) AS last_price,
-               (SELECT cup_price FROM purchases x WHERE x.product_name = p.product_name
-                ORDER BY x.order_date DESC LIMIT 1) AS last_cup_price
-        FROM purchases p WHERE 1=1"""
-    params = []
+    per_page = 100
+    page = max(1, request.args.get("page", type=int) or 1)
+    where, having, params = "WHERE 1=1", "", []
     if search:
-        sql += " AND p.product_name LIKE ?"
+        where += " AND p.product_name LIKE ?"
         params.append(f"%{search}%")
-    sql += " GROUP BY p.product_name"
     if only_unlinked:
-        sql += " HAVING MAX(p.ingredient_id) IS NULL"
-    sql += " ORDER BY total_spend DESC LIMIT 150"
-    products = db.execute(sql, params).fetchall()
+        having = " HAVING MAX(p.ingredient_id) IS NULL"
+    total_count = db.execute(
+        f"SELECT COUNT(*) FROM (SELECT p.product_name FROM purchases p {where}"
+        f" GROUP BY p.product_name{having})",
+        params,
+    ).fetchone()[0]
+    total_pages = max(1, (total_count + per_page - 1) // per_page)
+    page = min(page, total_pages)
+    products = db.execute(
+        """SELECT p.product_name,
+                COUNT(DISTINCT p.store || '|' || p.basket_id) AS orders,
+                ROUND(SUM(p.line_total), 2) AS total_spend,
+                MAX(p.order_date) AS last_bought,
+                MAX(p.ingredient_id) AS ingredient_id,
+                (SELECT unit_price FROM purchases x WHERE x.product_name = p.product_name
+                 ORDER BY x.order_date DESC LIMIT 1) AS last_price,
+                (SELECT cup_price FROM purchases x WHERE x.product_name = p.product_name
+                 ORDER BY x.order_date DESC LIMIT 1) AS last_cup_price
+         FROM purchases p """ + where + " GROUP BY p.product_name" + having +
+        " ORDER BY total_spend DESC LIMIT ? OFFSET ?",
+        (*params, per_page, (page - 1) * per_page),
+    ).fetchall()
     ingredients = db.execute("SELECT id, name, display_name, unit, price FROM ingredients ORDER BY name").fetchall()
     return render_template(
         "spend/products.html",
@@ -115,6 +124,9 @@ def spend_products():
         ingredient_names={i["id"]: label_of(i) for i in ingredients},
         search=search,
         only_unlinked=only_unlinked,
+        page=page,
+        total_pages=total_pages,
+        total_count=total_count,
     )
 
 
@@ -216,51 +228,98 @@ def _latest_purchase(db, product_name):
 def spend_link_product():
     db = get_db()
     product_name = request.form.get("product_name", "").strip()
-    choice = request.form.get("ingredient_id", "").strip()
-    update_price = bool(request.form.get("update_price"))
     back = redirect(url_for("spend.spend_products", q=request.form.get("q", ""),
-                            unlinked=request.form.get("unlinked", "")))
+                            unlinked=request.form.get("unlinked", ""),
+                            page=request.form.get("page", "1")))
     if not product_name:
         return back
+    level, message, _ = _apply_link(
+        db, product_name, request.form.get("ingredient_id", "").strip(),
+        bool(request.form.get("update_price")),
+        request.form.get("new_category", "other").strip(),
+    )
+    flash(message, level)
+    return back
 
+
+@spend_bp.route("/spend/products/link-batch", methods=["POST"])
+@login_required
+def spend_link_batch():
+    """Save every row on the products page in one request."""
+    db = get_db()
+    names = request.form.getlist("product_name")
+    choices = request.form.getlist("ingredient_id")
+    checked = {v for v in request.form.getlist("update_price") if v.isdigit()}
+    new_category = request.form.get("new_category", "other").strip()
+    back = redirect(url_for("spend.spend_products", q=request.form.get("q", ""),
+                            unlinked=request.form.get("unlinked", ""),
+                            page=request.form.get("page", "1")))
+    if not names:
+        return back
+    saved = prices = 0
+    problems = []
+    for i, raw_name in enumerate(names):
+        name = (raw_name or "").strip()
+        if not name:
+            continue
+        choice = choices[i].strip() if i < len(choices) else ""
+        level, message, price_updated = _apply_link(db, name, choice, str(i) in checked, new_category)
+        if level == "error":
+            problems.append(f"{name}: {message}")
+        else:
+            saved += 1
+            prices += 1 if price_updated else 0
+    summary = f"Saved links for {saved} product{'s' if saved != 1 else ''}."
+    if prices:
+        summary += f" {prices} price{'s' if prices != 1 else ''} updated."
+    flash(summary, "success" if saved else "info")
+    for problem in problems[:3]:
+        flash(problem, "error")
+    return back
+
+
+def _apply_link(db, product_name, choice, update_price, new_category="other"):
+    """Link one product to an ingredient. Returns (level, message, price_updated)."""
     latest = _latest_purchase(db, product_name)
     if latest is None:
-        flash("No purchases found for that product.", "error")
-        return back
+        return "error", "No purchases found for that product.", False
     if choice == "new":
         # Create an ingredient named after the product, priced from the latest purchase.
         cup = parse_cup_price(latest["cup_price"]) if latest else None
         unit = {"g": "kg", "mL": "L"}.get(cup[2], cup[2]) if cup else "each"
         price = price_per_unit(latest["cup_price"], latest["unit_price"], unit) if latest else None
+        category = new_category if new_category in CATEGORY_LOOKUP else "other"
         cur = db.execute(
-            "INSERT INTO ingredients (name, display_name, category, unit, price, store, url) VALUES (?, ?, 'other', ?, ?, ?, ?)",
-            (product_name, short_name(product_name), unit, price, latest["store"] if latest else None,
+            "INSERT INTO ingredients (name, display_name, category, unit, price, store, url) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (product_name, short_name(product_name), category, unit, price, latest["store"] if latest else None,
              product_url(latest["store"], latest["stockcode"]) if latest else None),
         )
-        ingredient_id = cur.lastrowid
-        flash(f"Created ingredient “{product_name}”. Set its category on the Ingredients page.", "success")
-    elif choice:
+        db.execute("UPDATE purchases SET ingredient_id = ? WHERE product_name = ?", (cur.lastrowid, product_name))
+        db.commit()
+        return "success", f"Created ingredient “{product_name}” in {CATEGORY_LOOKUP.get(category, category)}.", False
+    if choice:
         ingredient = db.execute("SELECT id, unit FROM ingredients WHERE id = ?", (choice,)).fetchone()
         if not ingredient:
-            flash("Ingredient not found.", "error")
-            return back
+            return "error", "Ingredient not found.", False
         ingredient_id = ingredient["id"]
+        price_updated = False
         if update_price and latest:
             price = price_per_unit(latest["cup_price"], latest["unit_price"], ingredient["unit"])
             if price is not None:
                 db.execute("UPDATE ingredients SET price = ? WHERE id = ?", (price, ingredient_id))
-                flash(f"Linked and updated price to ${price:.2f} per {ingredient['unit']}.", "success")
+                price_updated = True
+                note, level = f"Linked and updated price to ${price:.2f} per {ingredient['unit']}.", "success"
             else:
-                flash("Linked. The purchase price couldn't be converted to the ingredient's unit, so the price wasn't changed.", "warning")
+                note = "Linked. The purchase price couldn't be converted to the ingredient's unit, so the price wasn't changed."
+                level = "warning"
         else:
-            flash("Product linked.", "success")
-    else:
-        ingredient_id = None
-        flash("Product unlinked.", "info")
-
-    db.execute("UPDATE purchases SET ingredient_id = ? WHERE product_name = ?", (ingredient_id, product_name))
+            note, level = "Product linked.", "success"
+        db.execute("UPDATE purchases SET ingredient_id = ? WHERE product_name = ?", (ingredient_id, product_name))
+        db.commit()
+        return level, note, price_updated
+    db.execute("UPDATE purchases SET ingredient_id = NULL WHERE product_name = ?", (product_name,))
     db.commit()
-    return back
+    return "info", "Product unlinked.", False
 
 
 def register_spend_routes(app):

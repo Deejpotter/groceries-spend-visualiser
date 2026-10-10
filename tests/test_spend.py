@@ -175,6 +175,48 @@ def test_products_page_filters(client, db):
     assert b"Milk 2L" in resp.data and b"Bananas" not in resp.data
 
 
+def test_link_batch_saves_many_at_once(client, db):
+    """One batch request links several products (C3)."""
+    login(client)
+    _upload(client)
+    db.execute("INSERT INTO ingredients (id, name, category, unit, price) VALUES (1, 'Mince', 'meat', 'kg', 10)")
+    db.execute("INSERT INTO ingredients (id, name, category, unit, price) VALUES (2, 'Dairy', 'dairy', 'L', 1)")
+    db.commit()
+    resp = client.post("/spend/products/link-batch", data={
+        "product_name": ["Beef Mince 500g", "Milk 2L"],
+        "ingredient_id": ["1", "2"],
+        "update_price": ["1"],
+        "new_category": "other",
+    }, follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"Saved links for 2 products" in resp.data
+    assert b"1 price updated" in resp.data
+    assert db.execute("SELECT COUNT(*) FROM purchases WHERE ingredient_id IN (1, 2)").fetchone()[0] == 3
+
+
+def test_link_batch_new_uses_chosen_category(client, db):
+    """Batch-created ingredients land in the chosen category (C3)."""
+    login(client)
+    _upload(client)
+    client.post("/spend/products/link-batch", data={
+        "product_name": ["Milk 2L"],
+        "ingredient_id": ["new"],
+        "new_category": "dairy",
+    }, follow_redirects=True)
+    ing = db.execute("SELECT * FROM ingredients WHERE name = 'Milk 2L'").fetchone()
+    assert ing["category"] == "dairy"
+
+
+def test_products_pagination_clamps(client, db):
+    """Out-of-range pages clamp to the last page (C3)."""
+    login(client)
+    _upload(client)
+    resp = client.get("/spend/products?page=9")
+    assert resp.status_code == 200
+    assert b"(page 1 of 1)" in resp.data
+    assert b"Save all links" in resp.data
+
+
 def test_dashboard_and_shopping_list_show_spend(client, db):
     login(client)
     _upload(client)
