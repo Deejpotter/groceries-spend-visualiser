@@ -752,6 +752,24 @@ class TestMealPlanGeneration:
         }, follow_redirects=True)
         assert db.execute("SELECT servings FROM meal_plan_entries WHERE date = '2026-10-06'").fetchone()[0] == 2
 
+    def test_plan_tabs_are_plain_links(self, client, db):
+        """Plan tabs don't fake a tablist pattern (D)."""
+        _login(client, "planuser", "test123")
+        assert b'role="tablist"' not in client.get("/meal-plan").data
+
+    def test_swap_servings_label_names_slot(self, client, db):
+        """Swap servings inputs name their day and meal (D)."""
+        _login(client, "planuser", "test123")
+        client.post("/recipes/add", data={"name": "Toast", "servings": "2"}, follow_redirects=True)
+        client.post("/meal-plan/add", data={
+            "date": "2026-10-05", "meal_type": "dinner", "recipe_id": "1",
+        }, follow_redirects=True)
+        client.post("/settings/save", data={
+            "action": "save_dates", "plan_start": "2026-10-05", "plan_end": "2026-10-09",
+            "unit_preference": "metric", "default_servings": "2",
+        }, follow_redirects=True)
+        assert b"Servings for " in client.get("/meal-plan").data
+
     def test_generate_inline_dates_update_range(self, client, db):
         """Posting new dates to generate re-ranges the plan (A2)."""
         _login(client, "planuser", "test123")
@@ -1217,6 +1235,15 @@ class TestShoppingList:
         resp = client.get("/shopping-list")
         assert b"Remove ticked items" in resp.data
         assert b"Clear ticked" not in resp.data
+
+    def test_static_assets_carry_d_fixes(self, client):
+        """CSS chevrons and print/loading JS ship (D)."""
+        css = client.get("/static/css/style.css").data
+        assert b"details[open].slot-edit" in css
+        assert b".table-sticky-first" in css
+        js = client.get("/static/js/app.js").data
+        assert b"beforeprint" in js
+        assert b"spinner-border" in js
 
     def test_regenerate_summary_states_consequences(self, client, db):
         """Shopping page states what regenerating rebuilds and keeps (A3)."""
