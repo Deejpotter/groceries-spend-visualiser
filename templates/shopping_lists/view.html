@@ -14,7 +14,7 @@
     <div class="mb-2 d-print-none">
         {% if has_plan %}
         <form method="post" action="{{ url_for('shopping_list.shopping_list_generate') }}" class="d-inline"
-              {% if has_generated %}onsubmit="return confirm('Regenerate? Your current list (including removed items) will be replaced; ticked items are kept where the unit matches.')"{% endif %}>
+              {% if has_generated %}onsubmit="return confirm('Regenerate? The list is rebuilt from the plan ({{ item_count }} item{{ '' if item_count == 1 else 's' }} now; deleted plan items return). {{ checked_count }} tick{{ '' if checked_count == 1 else 's' }} kept where units match; manual items stay.')"{% endif %}>
             {{ csrf() }}
             <button type="submit" class="btn btn-primary">
                 <i class="fas fa-sync"></i> {{ 'Regenerate' if has_generated else 'Generate' }} from Plan
@@ -24,6 +24,9 @@
         <button type="button" onclick="window.print()" class="btn btn-secondary"><i class="fas fa-print"></i> Print</button>
     </div>
 </div>
+{% if has_generated %}
+<p class="small text-muted">Regenerating rebuilds the list from the plan — {{ item_count }} item{{ '' if item_count == 1 else 's' }} now, deleted plan items return. {{ checked_count }} ticked {{ 'is' if checked_count == 1 else 'are' }} kept where units match; manual items stay.</p>
+{% endif %}
 
 {% if plan_start and plan_end %}
 <p class="text-muted">Plan period {{ plan_start|nice_date }} to {{ plan_end|nice_date }}.
