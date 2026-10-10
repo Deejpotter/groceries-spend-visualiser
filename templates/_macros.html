@@ -1,7 +1,18 @@
-{# Shared template helpers. Import with: {% from "_macros.html" import csrf, post_button %} #}
+{# Shared template helpers. Import with: {% from "_macros.html" import csrf, post_button, form_errors %} #}
 
 {% macro csrf() -%}
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+{%- endmacro %}
+
+{# Inline validation errors, shown at the top of the form that failed. #}
+{% macro form_errors(errors) -%}
+{% if errors %}
+<div class="alert alert-danger" role="alert">
+    <ul class="mb-0">
+        {% for err in errors %}<li>{{ err }}</li>{% endfor %}
+    </ul>
+</div>
+{% endif %}
 {%- endmacro %}
 
 {# A one-button POST form for destructive/state-changing actions (never a GET link). #}
