@@ -302,6 +302,26 @@ def test_invoice_upload_and_reimport_message(client, db):
     assert b"already imported" in again.data
 
 
+def test_pdf_upload_ignores_store_field(client, db):
+    """A store typed for a PDF is explained, not silently ignored (C2)."""
+    import io
+    login(client)
+    resp = client.post(
+        "/spend/import",
+        data={"file": (io.BytesIO(_minimal_pdf(REVIEW_LINES)), "invoice.pdf"), "store": "Coles"},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert b"always import as Woolworths" in resp.data
+    assert db.execute("SELECT DISTINCT store FROM import_batches").fetchone()[0] == "Woolworths"
+
+
+def test_spend_empty_state_mentions_pdf(client):
+    login(client)
+    assert b"PDF tax invoice or order-history CSV" in client.get("/spend").data
+
+
 def test_invoice_net_suffixed_weight_line():
     """'0.19 kg NET' (variable-weight veg) must parse alone, not fuse into the next row."""
     text = """Sub Total:Sub Total:
