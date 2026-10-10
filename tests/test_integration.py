@@ -327,6 +327,48 @@ class TestRecipes:
         assert ri_rows[0]["quantity"] == 200
         assert ri_rows[0]["unit_override"] == "g"
 
+    def test_zero_quantity_row_warns_but_saves_rest(self, client, db):
+        """A zero-quantity row warns instead of vanishing silently (B2)."""
+        _login(client, "recuser", "test123")
+        client.post("/ingredients/add", data={
+            "name": "Pasta", "category": "pantry", "unit": "g",
+        }, follow_redirects=True)
+        client.post("/ingredients/add", data={
+            "name": "Salt", "category": "pantry", "unit": "g",
+        }, follow_redirects=True)
+        resp = client.post("/recipes/add", data={
+            "name": "Salted Pasta",
+            "servings": "2",
+            "ingredient_ids": ["1", "2"],
+            "quantities": ["200", "0"],
+            "unit_overrides": ["g", "g"],
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+        assert b"with no quantity was skipped" in resp.data
+        ri_rows = db.execute(
+            "SELECT * FROM recipe_ingredients WHERE recipe_id = (SELECT id FROM recipes WHERE name = ?)",
+            ("Salted Pasta",),
+        ).fetchall()
+        assert len(ri_rows) == 1
+        assert ri_rows[0]["quantity"] == 200
+
+    def test_duplicate_ingredient_row_errors(self, client, db):
+        """The same ingredient twice is an error, not a silent double (B2)."""
+        _login(client, "recuser", "test123")
+        client.post("/ingredients/add", data={
+            "name": "Pasta", "category": "pantry", "unit": "g",
+        }, follow_redirects=True)
+        resp = client.post("/recipes/add", data={
+            "name": "Double Pasta",
+            "servings": "2",
+            "ingredient_ids": ["1", "1"],
+            "quantities": ["200", "100"],
+            "unit_overrides": ["g", "g"],
+        })
+        assert resp.status_code == 200
+        assert b"listed twice" in resp.data
+        assert db.execute("SELECT COUNT(*) FROM recipes").fetchone()[0] == 0
+
     def test_recipe_detail_page(self, client, db):
         """GET /recipes/<id> shows recipe detail with ingredients."""
         _login(client, "recuser", "test123")
@@ -1362,6 +1404,22 @@ class TestPantry:
         assert b"Milk" in client.get("/pantry?location=fridge").data
         assert b"Milk" not in client.get("/pantry?location=freezer").data
         assert b'name="location"' in client.get("/pantry").data
+
+    def test_zero_quantity_pantry_rejected(self, client, db):
+        """A zero-quantity pantry row is an error, not an empty row (B2)."""
+        _login(client, "panuser", "test123")
+        client.post("/ingredients/add", data={
+            "name": "Rice", "category": "pantry", "unit": "g",
+        }, follow_redirects=True)
+        resp = client.post("/pantry/add", data={
+            "ingredient_id": "1",
+            "quantity": "0",
+            "unit": "g",
+            "location": "pantry",
+        })
+        assert resp.status_code == 200
+        assert b"Quantity must be greater than zero." in resp.data
+        assert db.execute("SELECT COUNT(*) FROM pantry_items").fetchone()[0] == 0
 
     def test_pantry_add_error_preserves_input(self, client, db):
         """Pantry errors render inline with typed values kept (B1a)."""
