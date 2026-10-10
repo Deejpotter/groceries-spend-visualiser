@@ -62,6 +62,8 @@ def spend_import():
         raw = upload.read()
         name = (upload.filename or "").lower()
         if name.endswith(".pdf") or raw[:5] == b"%PDF-":
+            if store.lower() != "woolworths":
+                flash("PDF invoices always import as Woolworths — the Store field applies to CSV files.", "info")
             return _import_invoice(raw)
         try:
             text = raw.decode("utf-8-sig")
