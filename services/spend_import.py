@@ -132,10 +132,7 @@ def import_purchases(db, rows: Iterable[Dict]) -> Tuple[int, int]:
 
     New lines for a product that's already linked to an ingredient inherit that link.
     """
-    links = {r["product_name"]: r["ingredient_id"] for r in db.execute(
-        "SELECT product_name, MAX(ingredient_id) AS ingredient_id FROM purchases "
-        "WHERE ingredient_id IS NOT NULL GROUP BY product_name"
-    )}
+    links = _linked_ingredients(db)
     added = skipped = 0
     for row in rows:
         cur = db.execute(
@@ -176,7 +173,7 @@ INVOICE_NUMBER_RE = re.compile(r"Invoice/Order Number:\s*(\d+)")
 INVOICE_DATE_RE = re.compile(r"Date:\s*(\d{1,2} [A-Za-z]{3} \d{4})")
 INVOICE_QTY_RE = re.compile(
     r"^(?:(\d+)\s+)?(.*?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)"
-    r"(?:\s+(?:kg|g|ml|l|lb|oz|each))?\s+\$([\d,]+\.\d{2})\s+\$([\d,]+\.\d{2})\s*$",
+    r"(?:\s+(?:kg|g|ml|l|lb|oz|each))?(?:\s+NET)?\s+\$([\d,]+\.\d{2})\s+\$([\d,]+\.\d{2})\s*$",
     re.I,
 )
 INVOICE_MONEY_RE = re.compile(r"^\$[\d,]+\.\d{2}$")
@@ -184,9 +181,8 @@ INVOICE_LEAD_RE = re.compile(r"^\d+\s+")
 INVOICE_SUB_RE = re.compile(r"\(\s*Sub\s*\)", re.I)
 INVOICE_TOTAL_LABELS = [
     (r"Sub Total\s*:", "subtotal"),
-    (r"Reusable bags\s*:", "bags"),
-    (r"Service Fee", "fee"),
-    (r"Delivery Fee", "fee"),
+    (r"(?:Reusable|Paper) bags\s*:", "bags"),
+    (r"(?:Service Fee|Delivery Fee|Collection fee)", "fee"),
     (r"Invoice Total\s*:", "total"),
     (r"includes GST of", "gst"),
     (r"Paid Amount\s*:", "paid"),
@@ -227,6 +223,7 @@ def parse_woolworths_invoice_text(text: str, store: str = "Woolworths") -> Tuple
 
     rows, warnings = [], []
     not_supplied = free = 0
+    skipped: List[Tuple[str, str]] = []
     buffer: List[str] = []
     for raw in (text or "").splitlines():
         line = raw.replace(" ", " ").strip()
@@ -244,9 +241,11 @@ def parse_woolworths_invoice_text(text: str, store: str = "Woolworths") -> Tuple
             continue
         if float(supplied) <= 0:
             not_supplied += 1
+            skipped.append((name, "Not supplied"))
             continue
         if float(amount.replace(",", "")) <= 0:
             free += 1
+            skipped.append((name, "Free item ($0.00)"))
             continue
         rows.append({
             "order_date": order_date,
@@ -265,7 +264,7 @@ def parse_woolworths_invoice_text(text: str, store: str = "Woolworths") -> Tuple
     if free:
         warnings.append(f"{free} free item(s) at $0.00 were skipped.")
 
-    meta: Dict = {"invoice_number": invoice_number, "order_date": order_date}
+    meta: Dict = {"invoice_number": invoice_number, "order_date": order_date, "skipped": skipped}
     totals = _invoice_totals(text)
     meta.update(totals)
     if totals.get("subtotal") is not None:
@@ -305,13 +304,19 @@ def _invoice_totals(text: str) -> Dict:
         return {}
     labelled = []
     for pattern, key in INVOICE_TOTAL_LABELS:
-        at = next((i for i, line in enumerate(lines) if re.search(pattern, line, re.I)), None)
-        if at is not None and key not in {k for _, k in labelled}:
-            labelled.append((at, key))
+        if key == "fee":
+            # An invoice can itemise several fees (collection + service).
+            labelled.extend(
+                (i, key) for i, line in enumerate(lines) if re.search(pattern, line, re.I)
+            )
+        elif not any(k == key for _, k in labelled):
+            at = next((i for i, line in enumerate(lines) if re.search(pattern, line, re.I)), None)
+            if at is not None:
+                labelled.append((at, key))
     labelled.sort()
     if len(labelled) == len(values):
         return {key: values[i] for i, (_, key) in enumerate(labelled)}
-    return {"subtotal": values[0], "invoice_total": values[3] if len(values) > 3 else values[0]}
+    return {"subtotal": values[0], "total": values[3] if len(values) > 3 else values[0]}
 
 
 def parse_woolworths_invoice_pdf(data: bytes, store: str = "Woolworths") -> Tuple[Dict, List[Dict], List[str]]:
@@ -325,3 +330,149 @@ def parse_woolworths_invoice_pdf(data: bytes, store: str = "Woolworths") -> Tupl
     if not text.strip():
         return {}, [], ["No readable text found in that PDF."]
     return parse_woolworths_invoice_text(text, store)
+
+
+# ---------------------------------------------------------------------------
+# Staged imports: review and edit before anything reaches purchases
+# ---------------------------------------------------------------------------
+# A PDF upload first lands in import_batches/import_staged_lines as pending.
+# The review page shows exactly what was read (with a subtotal cross-check);
+# confirming writes the approved lines to purchases. Nothing is imported
+# until the user confirms.
+
+BATCH_TOKEN_BYTES = 18
+STALE_BATCH_DAYS = 7
+
+
+def _linked_ingredients(db) -> Dict[str, int]:
+    """product_name -> ingredient_id for already-linked products."""
+    return {r["product_name"]: r["ingredient_id"] for r in db.execute(
+        "SELECT product_name, MAX(ingredient_id) AS ingredient_id FROM purchases "
+        "WHERE ingredient_id IS NOT NULL GROUP BY product_name"
+    )}
+
+
+def create_import_batch(db, meta: Dict, rows: List[Dict]) -> str:
+    """Stage a parsed invoice for review. Returns the batch token."""
+    import secrets
+    token = secrets.token_urlsafe(BATCH_TOKEN_BYTES)
+    db.execute(
+        "INSERT INTO import_batches (token, store, invoice_number, order_date, subtotal)"
+        " VALUES (?, ?, ?, ?, ?)",
+        (token, "Woolworths", meta.get("invoice_number"), meta.get("order_date"),
+         meta.get("subtotal")),
+    )
+    batch_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+    for row in rows:
+        db.execute(
+            "INSERT INTO import_staged_lines (batch_id, product_name, quantity, unit_price,"
+            " line_total, cup_price, stockcode, channel) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (batch_id, row["product_name"], row["quantity"], row.get("unit_price"),
+             row["line_total"], row.get("cup_price"), row.get("stockcode"), row.get("channel")),
+        )
+    for name, note in meta.get("skipped", []):
+        db.execute(
+            "INSERT INTO import_staged_lines (batch_id, product_name, quantity, unit_price,"
+            " line_total, excluded, note) VALUES (?, ?, 0, NULL, 0, 1, ?)",
+            (batch_id, name, note),
+        )
+    db.execute(
+        "DELETE FROM import_staged_lines WHERE batch_id IN (SELECT id FROM import_batches"
+        " WHERE status = 'pending' AND created_at < datetime('now', ?))",
+        (f"-{STALE_BATCH_DAYS} days",),
+    )
+    db.execute(
+        "DELETE FROM import_batches WHERE status = 'pending' AND created_at < datetime('now', ?)",
+        (f"-{STALE_BATCH_DAYS} days",),
+    )
+    db.commit()
+    return token
+
+
+def get_import_batch(db, token: str) -> Tuple[Optional[Dict], List[Dict]]:
+    """Pending batch + staged lines; each line carries an `already` flag."""
+    batch = db.execute("SELECT * FROM import_batches WHERE token = ? AND status = 'pending'", (token,)).fetchone()
+    if not batch:
+        return None, []
+    batch = dict(batch)
+    lines = []
+    for r in db.execute("SELECT * FROM import_staged_lines WHERE batch_id = ? ORDER BY id", (batch["id"],)):
+        line = dict(r)
+        line["already"] = bool(db.execute(
+            "SELECT 1 FROM purchases WHERE store = ? AND basket_id = ? AND product_name = ?",
+            (batch["store"], batch["invoice_number"], line["product_name"]),
+        ).fetchone()) if batch["invoice_number"] else False
+        lines.append(line)
+    return batch, lines
+
+
+def staged_read_total(lines: List[Dict]) -> float:
+    """Sum of included lines with a usable total (what confirming would add)."""
+    return round(sum(float(l["line_total"] or 0) for l in lines if not l.get("excluded")), 2)
+
+
+def save_staged_edits(db, token: str, edits: List[Dict]) -> List[str]:
+    """Apply review-page edits. Returns per-line error messages (empty when clean)."""
+    batch, _ = get_import_batch(db, token)
+    if not batch:
+        return ["That import batch is no longer available."]
+    errors = []
+    for edit in edits:
+        name = (edit.get("product_name") or "").strip()
+        qty = _num(edit.get("quantity"))
+        price = _num(edit.get("unit_price"))
+        total = _num(edit.get("line_total"))
+        excluded = 1 if edit.get("excluded") else 0
+        if total is None and qty is not None and price is not None:
+            total = round(qty * price, 2)
+        if not excluded:
+            if not name:
+                errors.append("A line is missing its product name.")
+                continue
+            if qty is None or qty <= 0:
+                errors.append(f"“{name}”: quantity must be greater than zero (or exclude the line).")
+                continue
+            if total is None or total <= 0:
+                errors.append(f"“{name}”: line total must be greater than zero (or exclude the line).")
+                continue
+        db.execute(
+            "UPDATE import_staged_lines SET product_name = ?, quantity = ?, unit_price = ?,"
+            " line_total = ?, excluded = ? WHERE id = ? AND batch_id = ?",
+            (name or "(unnamed)", qty or 0, price, total or 0, excluded, edit["id"], batch["id"]),
+        )
+    db.commit()
+    return errors
+
+
+def commit_import_batch(db, token: str) -> Tuple[int, int]:
+    """Write approved staged lines to purchases. Returns (added, skipped)."""
+    batch, lines = get_import_batch(db, token)
+    if not batch:
+        return 0, 0
+    links = _linked_ingredients(db)
+    added = skipped = 0
+    for line in lines:
+        if line["excluded"] or not line["product_name"] or (line["quantity"] or 0) <= 0:
+            continue
+        cur = db.execute(
+            "INSERT OR IGNORE INTO purchases (order_date, basket_id, store, product_name,"
+            " quantity, unit_price, line_total, ingredient_id)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (batch["order_date"], batch["invoice_number"], batch["store"], line["product_name"],
+             line["quantity"], line["unit_price"], line["line_total"],
+             links.get(line["product_name"])),
+        )
+        if cur.rowcount:
+            added += 1
+        else:
+            skipped += 1
+    db.execute("UPDATE import_batches SET status = 'committed' WHERE id = ?", (batch["id"],))
+    db.commit()
+    return added, skipped
+
+
+def discard_import_batch(db, token: str) -> bool:
+    """Drop a pending batch and its staged lines."""
+    cur = db.execute("DELETE FROM import_batches WHERE token = ? AND status = 'pending'", (token,))
+    db.commit()
+    return cur.rowcount > 0

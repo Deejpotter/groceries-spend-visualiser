@@ -187,6 +187,7 @@ def meal_plan_view():
     used_types = {r["meal_type"] for r in db.execute("SELECT meal_type FROM meal_rules WHERE is_active = 1")}
     used_types |= {mt for d in days for mt, e in d["meals"].items() if e}
     shown_types = [mt for mt in MEAL_TYPES if mt in used_types] or ["dinner"]
+    hidden_types = [mt for mt in MEAL_TYPES if mt not in shown_types]
     recipes = db.execute("SELECT id, name FROM recipes ORDER BY name").fetchall()
     rules = [dict(r) for r in db.execute("SELECT * FROM meal_rules ORDER BY is_active DESC, sort_order, id")]
     editing_rule = None
@@ -198,6 +199,7 @@ def meal_plan_view():
         "meal_plan/view.html",
         days=days,
         shown_types=shown_types,
+        hidden_types=hidden_types,
         recipes=recipes,
         plan_start=start_str,
         plan_end=end_str,

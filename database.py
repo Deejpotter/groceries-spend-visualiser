@@ -160,6 +160,34 @@ CREATE TABLE IF NOT EXISTS purchases (
 
 CREATE INDEX IF NOT EXISTS idx_purchases_date ON purchases(order_date);
 CREATE INDEX IF NOT EXISTS idx_plan_date ON meal_plan_entries(date, meal_type);
+
+CREATE TABLE IF NOT EXISTS import_batches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token TEXT UNIQUE NOT NULL,
+    store TEXT NOT NULL DEFAULT 'Woolworths',
+    invoice_number TEXT,
+    order_date TEXT,
+    subtotal REAL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS import_staged_lines (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    batch_id INTEGER NOT NULL,
+    product_name TEXT NOT NULL,
+    quantity REAL NOT NULL,
+    unit_price REAL,
+    line_total REAL NOT NULL,
+    cup_price TEXT,
+    stockcode TEXT,
+    channel TEXT,
+    excluded INTEGER NOT NULL DEFAULT 0,
+    note TEXT,
+    FOREIGN KEY (batch_id) REFERENCES import_batches(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_staged_lines_batch ON import_staged_lines(batch_id);
 """
 
 # Columns added after the first release: (table, column, definition).
@@ -236,6 +264,7 @@ def init_db() -> bool:
 COUNTED_TABLES = (
     "users", "ingredients", "recipes", "recipe_ingredients", "meal_rules",
     "meal_plan_entries", "shopping_list_items", "pantry_items", "purchases",
+    "import_batches", "import_staged_lines",
 )
 
 

@@ -84,7 +84,10 @@ flask --app app import-purchases data/woolworths_order_history.csv
 
 PDF invoices are read directly (order number becomes the basket id, unavailable
 and $0.00 lines skipped, totals cross-checked against the printed subtotal).
-Re-importing an invoice reports it as already imported instead of duplicating.
+Before anything is imported you get a **review page** showing every parsed line
+against the invoice subtotal: fix names, quantities or totals, skip lines, then
+confirm. Re-importing an invoice flags each line as already imported instead of
+duplicating.
 
 CSV columns: `date`, `product_name`, `quantity`, and `unit_price` or `line_total`; optional
 `basket_id`, `channel`, `cup_price`, `stockcode`. Re-importing the same file skips lines that

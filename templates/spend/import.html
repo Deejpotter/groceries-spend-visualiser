@@ -37,8 +37,9 @@
                     <li><code>unit_price</code> or <code>line_total</code></li>
                     <li>Optional: <code>basket_id</code>, <code>channel</code>, <code>cup_price</code> (e.g. <code>$1.51 / 100G</code>), <code>stockcode</code></li>
                 </ul>
-                <p class="mb-0">Re-importing the same invoice or file is safe: you'll be told it was
-                    already imported and nothing is duplicated.
+                <p class="mb-0">A PDF invoice goes to a <strong>review page first</strong>: check every parsed line
+                    against the subtotal, fix mistakes, then confirm. Re-importing the same invoice or file
+                    is safe: lines are flagged as already imported and nothing is duplicated.
                     Unavailable items (not supplied) and $0.00 freebies are skipped.</p>
             </div>
         </div>

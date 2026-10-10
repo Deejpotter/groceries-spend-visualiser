@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf %}
+
+{% block title %}Review Invoice — Grocery Visualiser{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+    <div class="mb-2">
+        <h1 class="mb-0">Review invoice #{{ batch.invoice_number }}</h1>
+        <p class="text-muted mb-0">{{ batch.order_date|nice_date }} · {{ batch.store }} · nothing is imported until you confirm</p>
+    </div>
+</div>
+
+{% if batch.subtotal is not none %}
+{% set diff = (read_total - batch.subtotal)|round(2) %}
+<div class="alert {{ 'alert-success' if diff == 0 else 'alert-warning' }}">
+    Read <strong>{{ lines|rejectattr('excluded')|list|length }} of {{ lines|length }} lines</strong>
+    totalling <strong>{{ read_total|money }}</strong>
+    vs invoice subtotal <strong>{{ batch.subtotal|money }}</strong>
+    {% if diff != 0 %}— off by <strong>{{ diff|money }}</strong>. Fix a line below or exclude it.{% else %}— matches.{% endif %}
+    {% if already_count %}<br>{{ already_count }} line{{ '' if already_count == 1 else 's' }} {{ 'is' if already_count == 1 else 'are' }} already in your purchases (marked below).{% endif %}
+</div>
+{% endif %}
+
+<form method="post">
+    {{ csrf() }}
+    <div class="table-responsive">
+    <table class="table table-sm bg-white">
+        <thead class="thead-light">
+            <tr><th>Product</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Line total</th><th>Skip?</th></tr>
+        </thead>
+        <tbody>
+        {% for line in lines %}
+            <tr class="{{ 'table-light text-muted' if line.excluded }}">
+                <td>
+                    <input type="hidden" name="line_id" value="{{ line.id }}">
+                    <input type="text" name="product_name" value="{{ line.product_name }}" class="form-control form-control-sm"
+                           aria-label="Product name row {{ loop.index }}" {% if line.excluded %}readonly{% endif %}>
+                    {% if line.note %}<div class="small text-muted">{{ line.note }}</div>{% endif %}
+                    {% if line.already and not line.excluded %}<span class="badge badge-info">already imported</span>{% endif %}
+                </td>
+                <td><input type="number" name="quantity" value="{{ line.quantity|qty }}" step="any" min="0" class="form-control form-control-sm num"
+                           aria-label="Quantity row {{ loop.index }}" {% if line.excluded %}readonly{% endif %}></td>
+                <td><input type="number" name="unit_price" value="{{ line.unit_price if line.unit_price is not none else '' }}" step="any" min="0" class="form-control form-control-sm num"
+                           aria-label="Unit price row {{ loop.index }}" {% if line.excluded %}readonly{% endif %}></td>
+                <td><input type="number" name="line_total" value="{{ line.line_total|qty }}" step="any" min="0" class="form-control form-control-sm num"
+                           aria-label="Line total row {{ loop.index }}" {% if line.excluded %}readonly{% endif %}></td>
+                <td class="text-center">
+                    <input type="checkbox" name="excluded" value="{{ line.id }}" {% if line.excluded %}checked{% endif %}
+                           aria-label="Skip {{ line.product_name }}">
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    <p class="small text-muted">Skipped lines (not supplied, freebies) are shown greyed out. Fix names, quantities or totals — a blank line total is filled in from quantity × unit price. Tick Skip to leave a line out.</p>
+    <div class="d-flex flex-wrap">
+        <button type="submit" name="action" value="confirm" class="btn btn-primary mr-2 mb-2"><i class="fas fa-check"></i> Confirm import</button>
+        <button type="submit" name="action" value="save" class="btn btn-outline-secondary mr-2 mb-2">Save edits</button>
+        <button type="submit" name="action" value="discard" class="btn btn-link text-danger mb-2"
+                onclick="return confirm('Discard this import? Nothing will be added.')">Discard</button>
+    </div>
+</form>
+{% endblock %}

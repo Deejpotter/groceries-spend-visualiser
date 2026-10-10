@@ -10,8 +10,10 @@ from database import get_db
 from models import label_of, short_name
 from services.spend_analysis import analyze_purchases, load_purchases
 from services.spend_import import (
+    commit_import_batch, create_import_batch, discard_import_batch, get_import_batch,
     import_csv_file, import_purchases, parse_cup_price, parse_purchase_csv,
-    parse_woolworths_invoice_pdf, price_per_unit, product_url,
+    parse_woolworths_invoice_pdf, price_per_unit, product_url, save_staged_edits,
+    staged_read_total,
 )
 
 spend_bp = Blueprint("spend", __name__)
@@ -117,30 +119,79 @@ def spend_products():
 
 
 def _import_invoice(raw: bytes):
-    """Import one Woolworths PDF tax invoice, recognising re-imports.
+    """Stage one Woolworths PDF tax invoice for review before importing.
 
     Invoices are Woolworths-issued, so the store label is fixed rather than
-    taken from the form. Lines dedupe on (store, basket_id, product_name),
-    where basket_id is the invoice/order number.
+    taken from the form. Nothing reaches purchases until the review is confirmed.
     """
     meta, rows, warnings = parse_woolworths_invoice_pdf(raw)
     if not meta:
         flash(warnings[0] if warnings else "That PDF couldn't be read as a Woolworths invoice.", "error")
         return redirect(url_for("spend.spend_import"))
-    db = get_db()
-    known = db.execute(
-        "SELECT COUNT(*) FROM purchases WHERE store = 'Woolworths' AND basket_id = ?",
-        (meta["invoice_number"],),
-    ).fetchone()[0]
-    added, skipped = import_purchases(db, rows)
-    label = f"Woolworths invoice #{meta['invoice_number']} ({meta['order_date']})"
-    if added == 0 and (skipped or known):
-        flash(f"{label} was already imported — no new lines.", "info")
-    else:
-        flash(f"Imported {label}: {added} items.", "success")
+    token = create_import_batch(get_db(), meta, rows)
     for warning in warnings[:3]:
         flash(warning, "warning")
-    return redirect(url_for("spend.spend_dashboard", range="all"))
+    return redirect(url_for("spend.import_review", token=token))
+
+
+def _read_review_form():
+    """Parallel line_id/product_name/quantity/unit_price/line_total/excluded lists."""
+    ids = request.form.getlist("line_id")
+    names = request.form.getlist("product_name")
+    quantities = request.form.getlist("quantity")
+    prices = request.form.getlist("unit_price")
+    totals = request.form.getlist("line_total")
+    excluded = set(request.form.getlist("excluded"))
+    edits = []
+    for i, raw_id in enumerate(ids):
+        if not raw_id.isdigit():
+            continue
+        edits.append({
+            "id": int(raw_id),
+            "product_name": names[i] if i < len(names) else "",
+            "quantity": quantities[i] if i < len(quantities) else "",
+            "unit_price": prices[i] if i < len(prices) else "",
+            "line_total": totals[i] if i < len(totals) else "",
+            "excluded": raw_id in excluded,
+        })
+    return edits
+
+
+@spend_bp.route("/spend/import/review/<token>", methods=["GET", "POST"])
+@login_required
+def import_review(token):
+    db = get_db()
+    batch, lines = get_import_batch(db, token)
+    if not batch:
+        flash("That import review is no longer available — upload the invoice again.", "error")
+        return redirect(url_for("spend.spend_import"))
+    action = request.form.get("action", "").strip() if request.method == "POST" else ""
+    if action == "discard":
+        discard_import_batch(db, token)
+        flash("Import discarded — nothing was added.", "info")
+        return redirect(url_for("spend.spend_import"))
+    if action in ("save", "confirm"):
+        errors = save_staged_edits(db, token, _read_review_form())
+        for err in errors:
+            flash(err, "error")
+        batch, lines = get_import_batch(db, token)
+        if not errors and action == "confirm":
+            added, _ = commit_import_batch(db, token)
+            label = f"Woolworths invoice #{batch['invoice_number']} ({batch['order_date']})"
+            if added == 0:
+                flash(f"{label} was already imported — no new lines.", "info")
+            else:
+                flash(f"Imported {label}: {added} items.", "success")
+            return redirect(url_for("spend.spend_dashboard", range="all"))
+        if not errors:
+            flash("Review saved.", "success")
+    return render_template(
+        "spend/import_review.html",
+        batch=batch,
+        lines=lines,
+        read_total=staged_read_total(lines),
+        already_count=sum(1 for line in lines if line["already"] and not line["excluded"]),
+    )
 
 
 def _latest_purchase(db, product_name):
