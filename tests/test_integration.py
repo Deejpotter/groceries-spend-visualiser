@@ -710,6 +710,27 @@ class TestMealPlanGeneration:
         resp = client.get("/meal-plan")
         assert b"Lunch" in resp.data
 
+    def test_add_meal_accepts_servings(self, client, db):
+        """Manual adds can set servings like swaps (A8)."""
+        _login(client, "planuser", "test123")
+        client.post("/recipes/add", data={
+            "name": "Toast",
+            "servings": "2",
+        }, follow_redirects=True)
+        client.post("/meal-plan/add", data={
+            "date": "2026-10-05",
+            "meal_type": "lunch",
+            "recipe_id": "1",
+            "servings": "6",
+        }, follow_redirects=True)
+        assert db.execute("SELECT servings FROM meal_plan_entries").fetchone()[0] == 6
+        client.post("/meal-plan/add", data={
+            "date": "2026-10-06",
+            "meal_type": "lunch",
+            "recipe_id": "1",
+        }, follow_redirects=True)
+        assert db.execute("SELECT servings FROM meal_plan_entries WHERE date = '2026-10-06'").fetchone()[0] == 2
+
     def test_generate_inline_dates_update_range(self, client, db):
         """Posting new dates to generate re-ranges the plan (A2)."""
         _login(client, "planuser", "test123")
@@ -1125,6 +1146,56 @@ class TestShoppingList:
         resp = client.get("/shopping-list")
         assert resp.status_code == 200
         assert b"<noscript>" in resp.data
+
+    def test_pack_pick_persists_and_resets(self, client, db):
+        """Choosing a pack offer sticks; unknown packs are rejected (A7)."""
+        _login(client, "sluser", "test123")
+        db.execute("INSERT INTO ingredients (id, name, category, unit)"
+                   " VALUES (1, 'Cheese Pizza Blend 225g', 'dairy', 'kg')")
+        db.execute("INSERT INTO purchases (order_date, basket_id, store, product_name, quantity,"
+                   " unit_price, line_total, ingredient_id)"
+                   " VALUES ('2026-10-01', 'b1', 'Woolworths', 'Cheese Block 1kg', 1, 20.0, 20.0, 1)")
+        db.execute("INSERT INTO shopping_list_items (ingredient_id, ingredient_name, quantity, unit,"
+                   " category, checked, is_manual)"
+                   " VALUES (1, 'Cheese', 0.2, 'kg', 'dairy', 0, 0)")
+        db.commit()
+        item_id = db.execute("SELECT id FROM shopping_list_items").fetchone()[0]
+        resp = client.post(f"/shopping-list/pack/{item_id}",
+                           data={"product_name": "Cheese Block 1kg"}, follow_redirects=True)
+        assert resp.status_code == 200
+        assert db.execute("SELECT pack_pick FROM shopping_list_items WHERE id = ?",
+                          (item_id,)).fetchone()[0] == "Cheese Block 1kg"
+        assert b"back to automatic (Cheese Block 1kg)" in resp.data
+        resp = client.post(f"/shopping-list/pack/{item_id}",
+                           data={"product_name": "No Such Pack"}, follow_redirects=True)
+        assert b"no longer offered" in resp.data
+        assert db.execute("SELECT pack_pick FROM shopping_list_items WHERE id = ?",
+                          (item_id,)).fetchone()[0] == "Cheese Block 1kg"
+
+    def test_preferences_indicator_renders(self, client, db):
+        """List states its unit preference and pantry handling (A7)."""
+        _login(client, "sluser", "test123")
+        client.post("/settings/save", data={
+            "action": "save_dates",
+            "plan_start": "2026-10-05",
+            "plan_end": "2026-10-09",
+            "unit_preference": "metric",
+            "default_servings": "2",
+        }, follow_redirects=True)
+        resp = client.get("/shopping-list")
+        assert resp.status_code == 200
+        assert b"Quantities in metric" in resp.data
+        assert b"pantry stock" in resp.data
+
+    def test_remove_ticked_label(self, client, db):
+        """The destructive clear action is labelled Remove (A8)."""
+        _login(client, "sluser", "test123")
+        db.execute("INSERT INTO shopping_list_items (ingredient_name, quantity, unit, category, checked, is_manual)"
+                   " VALUES ('Milk', 2, 'L', 'dairy', 1, 0)")
+        db.commit()
+        resp = client.get("/shopping-list")
+        assert b"Remove ticked items" in resp.data
+        assert b"Clear ticked" not in resp.data
 
     def test_regenerate_summary_states_consequences(self, client, db):
         """Shopping page states what regenerating rebuilds and keeps (A3)."""

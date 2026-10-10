@@ -145,6 +145,8 @@
                         <input type="hidden" name="date" value="{{ day.date }}">
                         <input type="hidden" name="meal_type" value="{{ mt }}">
                         {{ recipe_select(label="Recipe for " ~ day.label ~ " " ~ meal_type_label(mt)) }}
+                        <input type="number" name="servings" min="1" class="form-control form-control-sm mt-1"
+                               placeholder="Serves (recipe default)" aria-label="Servings for {{ day.label }} {{ meal_type_label(mt) }}">
                         <button class="btn btn-sm btn-outline-primary btn-block mt-1" type="submit">Add to {{ day.weekday }}</button>
                     </form>
                 </details>

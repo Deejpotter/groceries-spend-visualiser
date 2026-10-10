@@ -45,6 +45,7 @@ def shopping_list_view():
 
     totals = list_totals(rows)
     spare_items = spares(rows)
+    unit_pref, subtract = shopping_preferences()
     _, recipes, recipe_ingredients, ingredients = load_shopping_inputs(start_str, end_str)
     has_plan = bool(start_str and end_str and db.execute(
         "SELECT 1 FROM meal_plan_entries WHERE date BETWEEN ? AND ? LIMIT 1", (start_str, end_str)
@@ -63,6 +64,8 @@ def shopping_list_view():
         spare_items=spare_items,
         spare_recipes=recipes_using_spares(spare_items, recipes, recipe_ingredients, ingredients),
         avg_shop_spend=average_spend_per_shop(db),
+        unit_preference=unit_pref,
+        subtract_pantry=subtract,
     )
 
 
@@ -148,6 +151,32 @@ def shopping_list_add_manual():
     return _back()
 
 
+@shopping_bp.route("/shopping-list/pack/<int:item_id>", methods=["POST"])
+@login_required
+def shopping_list_pack(item_id):
+    """Remember which pack offer to buy for a row (blank resets to automatic)."""
+    from services.shopping_list_generator import pack_candidates
+    db = get_db()
+    rows = {r["id"]: r for r in load_list_rows()}
+    row = rows.get(item_id)
+    if not row:
+        flash("Item not found.", "error")
+        return _back()
+    name = request.form.get("product_name", "").strip()
+    if name:
+        ingredient = {"name": row["ing_name"], "unit": row["ing_unit"],
+                      "pack_size": row.get("ing_pack_size"), "price": row.get("ing_price")}
+        offered = {o["name"] for o in pack_candidates(
+            ingredient, load_linked_products().get(row.get("ingredient_id"), []))}
+        if name not in offered:
+            flash("That pack is no longer offered for this item.", "error")
+            return _back()
+    db.execute("UPDATE shopping_list_items SET pack_pick = ? WHERE id = ?", (name or None, item_id))
+    db.commit()
+    flash(f"You'll buy {name} for this item." if name else "Back to the automatic pick.", "success")
+    return _back()
+
+
 @shopping_bp.route("/shopping-list/delete/<int:item_id>", methods=["POST"])
 @login_required
 def shopping_list_delete(item_id):
@@ -164,7 +193,7 @@ def shopping_list_clear_checked():
     db = get_db()
     db.execute("DELETE FROM shopping_list_items WHERE checked = 1")
     db.commit()
-    flash("Checked items cleared.", "success")
+    flash("Ticked items removed.", "success")
     return _back()
 
 

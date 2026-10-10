@@ -33,6 +33,8 @@
     {% if has_plan and not has_generated %}Click <strong>Generate from Plan</strong> to build the list from your meal plan.{% endif %}
     {% if not has_plan %}<a href="{{ url_for('meal_plan.meal_plan_view') }}">Generate a meal plan</a> first.{% endif %}
 </p>
+<p class="small text-muted">Quantities in {{ unit_preference }} · pantry stock {{ 'subtracted' if subtract_pantry else 'not subtracted' }}.
+    <a href="{{ url_for('settings.settings') }}">Preferences</a></p>
 {% else %}
 <div class="alert alert-warning">Set your plan dates in <a href="{{ url_for('settings.settings') }}">Settings</a>, then generate a meal plan.</div>
 {% endif %}
@@ -129,9 +131,21 @@
                     <ul class="list-unstyled small mb-0">
                         {% for o in choice.others %}
                         <li>{{ pack_label(o) }} {{ o.name }} — {{ o.cost|money if o.cost else 'no price' }},
-                            {{ o.spare_shown|amount(o.spare_shown_unit) ~ ' spare' if o.spare > 0 else 'nothing spare' }}</li>
+                            {{ o.spare_shown|amount(o.spare_shown_unit) ~ ' spare' if o.spare > 0 else 'nothing spare' }}
+                            <form method="post" action="{{ url_for('shopping_list.shopping_list_pack', item_id=item.id) }}" class="d-inline">
+                                {{ csrf() }}
+                                <input type="hidden" name="product_name" value="{{ o.name }}">
+                                <button type="submit" class="btn btn-link btn-sm p-0">buy this instead</button>
+                            </form>
+                        </li>
                         {% endfor %}
                     </ul>
+                    {% if item.pack_pick %}
+                    <form method="post" action="{{ url_for('shopping_list.shopping_list_pack', item_id=item.id) }}" class="d-inline">
+                        {{ csrf() }}
+                        <button type="submit" class="btn btn-link btn-sm p-0">back to automatic ({{ item.pack_pick }})</button>
+                    </form>
+                    {% endif %}
                 </details>
                 {% endif %}
                 {% endif %}
@@ -148,7 +162,7 @@
 {% endfor %}
 {% if checked_count %}
 <div class="d-print-none mb-4">
-    {{ post_button(url_for('shopping_list.shopping_list_clear_checked'), 'Clear ticked items', class='btn btn-outline-secondary',
+    {{ post_button(url_for('shopping_list.shopping_list_clear_checked'), 'Remove ticked items', class='btn btn-outline-secondary',
                    confirm='Remove all ticked items from the list?') }}
 </div>
 {% endif %}

@@ -287,6 +287,10 @@ def plan_list_lines(rows: List[Dict], products: Dict[int, List[Dict]]) -> List[D
             options = pack_options(line["quantity"], line["unit"],
                                    pack_candidates(ingredient, products.get(line.get("ingredient_id"), [])))
             if options:
+                pick = (line.get("pack_pick") or "").strip()
+                if pick:
+                    # A stored pick moves to the front when still offered; otherwise best stands.
+                    options = sorted(options, key=lambda o: o["name"] != pick)
                 choice = {"best": options[0], "others": options[1:]}
         line["pack_choice"] = choice
         line["line_cost"] = (choice["best"]["cost"] if choice else None) or line.get("estimated_cost")

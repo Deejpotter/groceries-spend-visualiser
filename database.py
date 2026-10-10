@@ -126,6 +126,7 @@ CREATE TABLE IF NOT EXISTS shopping_list_items (
     recipe_ref TEXT,
     ingredient_id INTEGER,
     estimated_cost REAL,
+    pack_pick TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -199,6 +200,7 @@ MIGRATIONS = [
     ("recipes", "covers_days", "INTEGER NOT NULL DEFAULT 1"),
     ("ingredients", "pack_size", "REAL"),
     ("ingredients", "display_name", "TEXT"),
+    ("shopping_list_items", "pack_pick", "TEXT"),
 ]
 
 
