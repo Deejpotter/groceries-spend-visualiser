@@ -54,12 +54,27 @@ class TestAuthentication:
         assert b"Dashboard" in resp.data or b"Quick Actions" in resp.data
 
     def test_login_wrong_password(self, client):
-        """Login with wrong password returns to login page with flash."""
+        """Login with wrong password re-shows the form with the username kept."""
+        _create_user(client, "testadmin", "testpass123")
         resp = client.post("/login", data={
             "username": "testadmin",
             "password": "wrongpassword",
         })
-        assert resp.status_code == 302  # redirect back to login
+        assert resp.status_code == 200
+        assert b"Invalid username or password." in resp.data
+        assert b'value="testadmin"' in resp.data
+
+    def test_setup_error_preserves_username(self, client, db):
+        """Setup errors re-show the form with the username kept (B1b)."""
+        resp = client.post("/setup", data={
+            "username": "newadmin",
+            "password": "testpass123",
+            "confirm_password": "different123",
+        })
+        assert resp.status_code == 200
+        assert b"Passwords do not match." in resp.data
+        assert b'value="newadmin"' in resp.data
+        assert db.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0
 
     def test_logout_clears_session(self, client):
         """POST /logout clears the session."""
@@ -446,6 +461,21 @@ class TestMealRules:
         ).fetchone()
         assert row["tag_filter"] == "quick"
         assert row["servings_override"] == 2
+
+    def test_rule_error_preserves_input(self, client, db):
+        """Rule errors re-show the rules tab with typed values kept (B1b)."""
+        _login(client, "ruleuser", "test123")
+        resp = client.post("/meal-rules/add", data={
+            "day_of_week": "",
+            "meal_type": "lunch",
+            "tag_filter": "quick",
+            "is_active": "1",
+        })
+        assert resp.status_code == 200
+        assert b"Choose which day(s) the rule applies to." in resp.data
+        assert b"quick" in resp.data
+        assert b"Add Rule" in resp.data
+        assert db.execute("SELECT COUNT(*) FROM meal_rules").fetchone()[0] == 0
 
     def test_add_meal_rule_weekday(self, client, db):
         """Meal rule with day_of_week='weekday' matches Mon-Fri."""
@@ -1448,6 +1478,32 @@ class TestSettings:
                           ("unit_preference",)).fetchone()
         assert unit["value"] == "metric"
 
+    def test_settings_dates_error_preserves_input(self, client, db):
+        """Bad dates re-show settings with typed values kept (B1b)."""
+        _login(client, "setuser", "test123")
+        resp = client.post("/settings/save", data={
+            "action": "save_dates",
+            "plan_start": "2026-10-20",
+            "plan_end": "2026-10-05",
+        })
+        assert resp.status_code == 200
+        assert b"The end date must be on or after the start date." in resp.data
+        assert b'value="2026-10-20"' in resp.data
+        assert db.execute("SELECT COUNT(*) FROM settings").fetchone()[0] == 0
+
+    def test_settings_prefs_error_preserves_input(self, client, db):
+        """Bad prefs re-show settings with typed values kept (B1b)."""
+        _login(client, "setuser", "test123")
+        resp = client.post("/settings/save", data={
+            "action": "save_prefs",
+            "unit_preference": "imperial",
+            "default_servings": "0",
+        })
+        assert resp.status_code == 200
+        assert b"Default servings must be at least 1." in resp.data
+        assert b'value="imperial" selected' in resp.data
+        assert b'value="0"' in resp.data
+
     def test_change_password(self, client, db):
         """POST /settings/change-password updates the admin password."""
         _login(client, "setuser", "test123")
@@ -1464,7 +1520,8 @@ class TestSettings:
             "username": "setuser",
             "password": "test123",
         })
-        assert resp.status_code == 302  # rejected
+        assert resp.status_code == 200  # re-shown with an error, not redirected
+        assert b"Invalid username or password." in resp.data
 
         # New password works
         resp = client.post("/login", data={

@@ -70,9 +70,18 @@ def meal_rule_form(rule_id=None):
     if servings_override is not None and servings_override < 1:
         errors.append("Servings override must be at least 1.")
     if errors:
-        for err in errors:
-            flash(err, "error")
-        return _back_to_rules(edit=rule_id)
+        submitted = {
+            "id": rule_id,
+            "day_of_week": day_of_week,
+            "meal_type": meal_type,
+            "tag_filter": tag_filter,
+            "servings_override": servings_override,
+            "is_active": is_active,
+            "sort_order": sort_order,
+        }
+        ctx = _plan_context(editing_rule=submitted)
+        ctx["rule_errors"] = errors
+        return render_template("meal_plan/view.html", **ctx)
 
     if sort_order is None:
         if rule:
@@ -173,6 +182,15 @@ def _spare_uses(start, end):
 @meal_bp.route("/meal-plan")
 @login_required
 def meal_plan_view():
+    edit_id = request.args.get("edit", type=int)
+    editing_rule = None
+    if edit_id:
+        editing_rule = get_db().execute("SELECT * FROM meal_rules WHERE id = ?", (edit_id,)).fetchone()
+    return render_template("meal_plan/view.html", **_plan_context(editing_rule))
+
+
+def _plan_context(editing_rule=None):
+    """Shared template values for the plan page (also used to re-show rule errors)."""
     db = get_db()
     start_str, end_str = get_plan_dates()
     days = []
@@ -190,32 +208,27 @@ def meal_plan_view():
     hidden_types = [mt for mt in MEAL_TYPES if mt not in shown_types]
     recipes = db.execute("SELECT id, name FROM recipes ORDER BY name").fetchall()
     rules = [dict(r) for r in db.execute("SELECT * FROM meal_rules ORDER BY is_active DESC, sort_order, id")]
-    editing_rule = None
-    edit_id = request.args.get("edit", type=int)
-    if edit_id:
-        editing_rule = db.execute("SELECT * FROM meal_rules WHERE id = ?", (edit_id,)).fetchone()
     tab = "rules" if editing_rule or request.args.get("tab") == "rules" else "week"
     slot_entries = [e for d in days for e in d["meals"].values() if e]
-    regen = {
-        "manual": sum(1 for e in slot_entries if not e["is_auto_generated"]),
-        "auto": sum(1 for e in slot_entries if e["is_auto_generated"]),
+    return {
+        "days": days,
+        "shown_types": shown_types,
+        "hidden_types": hidden_types,
+        "recipes": recipes,
+        "plan_start": start_str,
+        "plan_end": end_str,
+        "has_entries": bool(slot_entries),
+        "regen": {
+            "manual": sum(1 for e in slot_entries if not e["is_auto_generated"]),
+            "auto": sum(1 for e in slot_entries if e["is_auto_generated"]),
+        },
+        "rules": rules,
+        "editing_rule": editing_rule,
+        "tab": tab,
+        "summary": plan_summary(days, shown_types),
+        "spare_uses": _spare_uses(start_str, end_str),
+        "rule_errors": None,
     }
-    return render_template(
-        "meal_plan/view.html",
-        days=days,
-        shown_types=shown_types,
-        hidden_types=hidden_types,
-        recipes=recipes,
-        plan_start=start_str,
-        plan_end=end_str,
-        has_entries=any(e for d in days for e in d["meals"].values()),
-        regen=regen,
-        rules=rules,
-        editing_rule=editing_rule,
-        tab=tab,
-        summary=plan_summary(days, shown_types),
-        spare_uses=_spare_uses(start_str, end_str),
-    )
 
 
 @meal_bp.route("/meal-plan/generate", methods=["POST"])

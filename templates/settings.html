@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import form_errors %}
 
 {% block title %}Settings — Grocery Visualiser{% endblock %}
 
@@ -15,6 +16,7 @@
             <div class="card-body">
                 <form method="post" action="{{ url_for('settings.save') }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    {% if error_form == 'dates' %}{{ form_errors(errors) }}{% endif %}
                     <div class="form-row">
                         <div class="form-group col-md-6">
                             <label for="plan_start">Plan Start Date</label>
@@ -31,6 +33,7 @@
                         <small class="text-muted">
                             The meal plan and shopping list are generated for this date range.
                             Set dates that work for your shopping cycle (e.g., 2 weeks).
+                            Plans cover up to about 3 months.
                             Changing the dates hides entries outside the new range (nothing is deleted).
                         </small>
                     </div>
@@ -47,6 +50,7 @@
             <div class="card-body">
                 <form method="post" action="{{ url_for('settings.save') }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    {% if error_form == 'prefs' %}{{ form_errors(errors) }}{% endif %}
                     <div class="form-group">
                         <label for="unit_preference">Unit Preference</label>
                         <select class="form-control" id="unit_preference" name="unit_preference">

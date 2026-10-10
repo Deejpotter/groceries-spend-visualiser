@@ -143,8 +143,8 @@ def create_app(testing=False):
             username = request.form.get("username", "").strip()
             password = request.form.get("password", "")
             if not username or not password:
-                flash("Please enter both username and password.", "error")
-                return redirect(url_for("login"))
+                return render_template("login.html", username=username,
+                                       errors=["Please enter both username and password."])
             row = get_db().execute(
                 "SELECT password_hash FROM users WHERE username = ?", (username,),
             ).fetchone()
@@ -152,9 +152,9 @@ def create_app(testing=False):
                 login_user(username)
                 flash("Logged in successfully.", "success")
                 return redirect(safe_next_url(request.args.get("next")))
-            flash("Invalid username or password.", "error")
-            return redirect(url_for("login"))
-        return render_template("login.html")
+            return render_template("login.html", username=username,
+                                   errors=["Invalid username or password."])
+        return render_template("login.html", username="", errors=None)
 
     @application.route("/logout", methods=["POST"])
     @login_required
@@ -183,8 +183,7 @@ def create_app(testing=False):
             elif len(password) < 8:
                 error = "Password must be at least 8 characters."
             if error:
-                flash(error, "error")
-                return redirect(url_for("setup"))
+                return render_template("setup.html", username=username, errors=[error])
             db = get_db()
             db.execute(
                 "INSERT INTO users (username, password_hash) VALUES (?, ?)",
@@ -193,7 +192,7 @@ def create_app(testing=False):
             db.commit()
             flash("Admin account created. Please log in.", "success")
             return redirect(url_for("login"))
-        return render_template("setup.html")
+        return render_template("setup.html", username=None, errors=None)
 
     @application.route("/")
     @login_required
