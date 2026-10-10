@@ -53,6 +53,10 @@ def meal_rule_form(rule_id=None):
         return _back_to_rules()
 
     day_of_week = request.form.get("day_of_week", "").strip()
+    toggles = [d for d in request.form.getlist("day_toggle") if d in DAYS_OF_WEEK]
+    if toggles:
+        # The day checkboxes post natively, so the form works without JavaScript.
+        day_of_week = ",".join(toggles)
     meal_type = request.form.get("meal_type", "").strip()
     tag_filter = request.form.get("tag_filter", "").strip()
     servings_override = request.form.get("servings_override", type=int) or None
@@ -104,6 +108,31 @@ def meal_rule_form(rule_id=None):
         )
         flash("Rule created.", "success")
     db.commit()
+    return _back_to_rules()
+
+
+@meal_bp.route("/meal-rules/move/<int:rule_id>/<direction>", methods=["POST"])
+@login_required
+def meal_rule_move(rule_id, direction):
+    """Move a rule up or down in evaluation order (renumbers afterwards)."""
+    if direction not in ("up", "down"):
+        flash("Unknown direction.", "error")
+        return _back_to_rules()
+    db = get_db()
+    ordered = [dict(r) for r in db.execute("SELECT * FROM meal_rules ORDER BY sort_order, id")]
+    ids = [r["id"] for r in ordered]
+    if rule_id not in ids:
+        flash("Rule not found.", "error")
+        return _back_to_rules()
+    i = ids.index(rule_id)
+    j = i - 1 if direction == "up" else i + 1
+    if j < 0 or j >= len(ids):
+        return _back_to_rules()
+    ids.insert(j, ids.pop(i))
+    for position, rid in enumerate(ids):
+        db.execute("UPDATE meal_rules SET sort_order = ? WHERE id = ?", (position, rid))
+    db.commit()
+    flash("Rule order updated.", "success")
     return _back_to_rules()
 
 
@@ -207,7 +236,7 @@ def _plan_context(editing_rule=None):
     shown_types = [mt for mt in MEAL_TYPES if mt in used_types] or ["dinner"]
     hidden_types = [mt for mt in MEAL_TYPES if mt not in shown_types]
     recipes = db.execute("SELECT id, name FROM recipes ORDER BY name").fetchall()
-    rules = [dict(r) for r in db.execute("SELECT * FROM meal_rules ORDER BY is_active DESC, sort_order, id")]
+    rules = [dict(r) for r in db.execute("SELECT * FROM meal_rules ORDER BY sort_order, id")]
     tab = "rules" if editing_rule or request.args.get("tab") == "rules" else "week"
     slot_entries = [e for d in days for e in d["meals"].values() if e]
     return {
