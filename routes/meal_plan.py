@@ -296,38 +296,22 @@ def meal_plan_generate():
 @login_required
 def meal_plan_add():
     """Manually place a recipe in an empty slot."""
-    date = request.form.get("date", "").strip()
-    meal_type = request.form.get("meal_type", "").strip()
-    recipe_id = request.form.get("recipe_id", type=int)
+    from services.mutations import place_meal
     db = get_db()
-    recipe = db.execute("SELECT servings FROM recipes WHERE id = ?", (recipe_id,)).fetchone() if recipe_id else None
-    if not validate_date_format(date) or meal_type not in MEAL_TYPES or not recipe:
-        flash("Choose a recipe to add.", "error")
-        return _back_to_plan()
-    servings = request.form.get("servings", type=int)
-    if servings is None:
-        servings = recipe["servings"] or int(get_setting("default_servings", "2"))
-    if servings < 1:
-        flash("Servings must be at least 1.", "error")
-        return _back_to_plan()
-    existing = db.execute(
-        "SELECT id, is_continuation FROM meal_plan_entries WHERE date = ? AND meal_type = ?",
-        (date, meal_type),
-    ).fetchone()
-    if existing and not existing["is_continuation"]:
-        db.execute(
-            "UPDATE meal_plan_entries SET is_continuation = 0, continuation_of = NULL "
-            "WHERE continuation_of = ?",
-            (existing["id"],),
+    try:
+        result = place_meal(
+            db,
+            request.form.get("date", "").strip(),
+            request.form.get("meal_type", "").strip(),
+            request.form.get("recipe_id", type=int),
+            servings=request.form.get("servings", type=int),
+            default_servings=int(get_setting("default_servings", "2")),
         )
-    elif existing:
+    except ValueError as exc:
+        flash(str(exc), "error")
+        return _back_to_plan()
+    if result["replaced_continuation"]:
         flash("This slot is a continuation of an earlier meal. Replacing it.", "info")
-    db.execute("DELETE FROM meal_plan_entries WHERE date = ? AND meal_type = ?", (date, meal_type))
-    db.execute(
-        "INSERT INTO meal_plan_entries (date, meal_type, recipe_id, servings, is_auto_generated) VALUES (?, ?, ?, ?, 0)",
-        (date, meal_type, recipe_id, servings),
-    )
-    db.commit()
     flash("Meal added.", "success")
     return _back_to_plan()
 
@@ -336,35 +320,17 @@ def meal_plan_add():
 @login_required
 def meal_plan_swap(entry_id):
     """Replace a meal plan entry with a different recipe (marks it manual)."""
-    db = get_db()
-    entry = db.execute("SELECT * FROM meal_plan_entries WHERE id = ?", (entry_id,)).fetchone()
-    if not entry:
-        flash("Entry not found.", "error")
-        return _back_to_plan()
-
-    new_recipe_id = request.form.get("recipe_id", type=int) or request.form.get("new_recipe_id", type=int)
-    if not new_recipe_id or not db.execute("SELECT 1 FROM recipes WHERE id = ?", (new_recipe_id,)).fetchone():
-        flash("No recipe selected.", "error")
-        return _back_to_plan()
-
-    servings = request.form.get("servings", type=int)
-    if servings is None:
-        servings = entry["servings"]
-    if servings < 1:
-        flash("Servings must be at least 1.", "error")
-        return _back_to_plan()
-    if not entry["is_continuation"]:
-        db.execute(
-            "UPDATE meal_plan_entries SET is_continuation = 0, continuation_of = NULL "
-            "WHERE continuation_of = ?",
-            (entry_id,),
+    from services.mutations import swap_meal
+    try:
+        swap_meal(
+            get_db(),
+            entry_id,
+            request.form.get("recipe_id", type=int) or request.form.get("new_recipe_id", type=int),
+            servings=request.form.get("servings", type=int),
         )
-    db.execute(
-        "UPDATE meal_plan_entries SET recipe_id = ?, servings = ?, is_auto_generated = 0, "
-        "is_continuation = 0, continuation_of = NULL WHERE id = ?",
-        (new_recipe_id, servings, entry_id),
-    )
-    db.commit()
+    except ValueError as exc:
+        flash(str(exc), "error")
+        return _back_to_plan()
     flash("Meal swapped.", "success")
     return _back_to_plan()
 
@@ -372,16 +338,8 @@ def meal_plan_swap(entry_id):
 @meal_bp.route("/meal-plan/remove/<int:entry_id>", methods=["POST"])
 @login_required
 def meal_plan_remove(entry_id):
-    db = get_db()
-    entry = db.execute("SELECT * FROM meal_plan_entries WHERE id = ?", (entry_id,)).fetchone()
-    if entry and not entry["is_continuation"]:
-        db.execute(
-            "UPDATE meal_plan_entries SET is_continuation = 0, continuation_of = NULL "
-            "WHERE continuation_of = ?",
-            (entry_id,),
-        )
-    db.execute("DELETE FROM meal_plan_entries WHERE id = ?", (entry_id,))
-    db.commit()
+    from services.mutations import remove_meal
+    remove_meal(get_db(), entry_id)
     flash("Meal removed.", "success")
     return _back_to_plan()
 

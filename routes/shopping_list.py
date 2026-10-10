@@ -112,41 +112,35 @@ def shopping_list_generate():
 @shopping_bp.route("/shopping-list/toggle/<int:item_id>", methods=["POST"])
 @login_required
 def shopping_list_toggle(item_id):
+    from services.mutations import set_tick
     db = get_db()
-    db.execute("UPDATE shopping_list_items SET checked = 1 - checked WHERE id = ?", (item_id,))
-    db.commit()
+    row = db.execute("SELECT checked FROM shopping_list_items WHERE id = ?", (item_id,)).fetchone()
+    if row is None:
+        if request.accept_mimetypes.best == "application/json":
+            return jsonify({"checked": False})
+        flash("Item not found.", "error")
+        return _back()
+    state = set_tick(db, item_id, not row["checked"])
     if request.accept_mimetypes.best == "application/json":
-        row = db.execute("SELECT checked FROM shopping_list_items WHERE id = ?", (item_id,)).fetchone()
-        return jsonify({"checked": bool(row and row["checked"])})
+        return jsonify({"checked": state["checked"]})
     return _back()
 
 
 @shopping_bp.route("/shopping-list/add-manual", methods=["POST"])
 @login_required
 def shopping_list_add_manual():
-    name = request.form.get("name", "").strip() or request.form.get("ingredient_name", "").strip()
-    quantity = request.form.get("quantity", type=float)
-    unit = request.form.get("unit", "each").strip()
-    category = request.form.get("category", "other").strip()
-
-    if not name:
-        flash("Item name is required.", "error")
+    from services.mutations import add_manual_item
+    try:
+        add_manual_item(
+            get_db(),
+            request.form.get("name", "").strip() or request.form.get("ingredient_name", "").strip(),
+            request.form.get("quantity", type=float),
+            unit=request.form.get("unit", "each").strip(),
+            category=request.form.get("category", "other").strip(),
+        )
+    except ValueError as exc:
+        flash(str(exc), "error")
         return _back()
-    if quantity is None or quantity <= 0:
-        flash("Quantity must be a number greater than zero.", "error")
-        return _back()
-    if unit not in UNIT_LOOKUP:
-        unit = "each"
-    if category not in CATEGORY_LOOKUP:
-        category = "other"
-
-    db = get_db()
-    db.execute(
-        """INSERT INTO shopping_list_items (ingredient_name, quantity, unit, category, checked, is_manual, recipe_ref)
-           VALUES (?, ?, ?, ?, 0, 1, '')""",
-        (name, quantity, unit, category),
-    )
-    db.commit()
     flash("Item added to shopping list.", "success")
     return _back()
 
