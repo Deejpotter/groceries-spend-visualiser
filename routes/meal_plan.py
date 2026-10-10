@@ -195,6 +195,11 @@ def meal_plan_view():
     if edit_id:
         editing_rule = db.execute("SELECT * FROM meal_rules WHERE id = ?", (edit_id,)).fetchone()
     tab = "rules" if editing_rule or request.args.get("tab") == "rules" else "week"
+    slot_entries = [e for d in days for e in d["meals"].values() if e]
+    regen = {
+        "manual": sum(1 for e in slot_entries if not e["is_auto_generated"]),
+        "auto": sum(1 for e in slot_entries if e["is_auto_generated"]),
+    }
     return render_template(
         "meal_plan/view.html",
         days=days,
@@ -204,6 +209,7 @@ def meal_plan_view():
         plan_start=start_str,
         plan_end=end_str,
         has_entries=any(e for d in days for e in d["meals"].values()),
+        regen=regen,
         rules=rules,
         editing_rule=editing_rule,
         tab=tab,

@@ -595,6 +595,42 @@ class TestMealPlanGeneration:
         assert b'name="plan_start"' in resp.data
         assert b'value="2026-10-13"' in resp.data
 
+    def test_regenerate_summary_counts(self, client, db):
+        """Plan page states what regenerating will replace and keep (A3)."""
+        _login(client, "planuser", "test123")
+        client.post("/recipes/add", data={
+            "name": "Toast",
+            "servings": "2",
+            "tags": "breakfast",
+        }, follow_redirects=True)
+        client.post("/meal-rules/add", data={
+            "day_of_week": "weekday",
+            "meal_type": "dinner",
+            "tag_filter": "",
+            "servings_override": "",
+            "is_active": "1",
+            "sort_order": "0",
+        }, follow_redirects=True)
+        client.post("/settings/save", data={
+            "action": "save_dates",
+            "plan_start": "2026-10-05",
+            "plan_end": "2026-10-09",
+            "unit_preference": "metric",
+            "default_servings": "2",
+        }, follow_redirects=True)
+        client.post("/meal-plan/generate", data={
+            "plan_start": "2026-10-05",
+            "plan_end": "2026-10-09",
+        }, follow_redirects=True)
+        client.post("/meal-plan/add", data={
+            "date": "2026-10-05",
+            "meal_type": "lunch",
+            "recipe_id": "1",
+        }, follow_redirects=True)
+        resp = client.get("/meal-plan")
+        assert b"Regenerating replaces" in resp.data
+        assert b"manual meal" in resp.data
+
     def test_generate_plan_with_rules_and_recipes(self, client, db):
         """Full workflow: add ingredient → recipe → rule → set dates → generate plan."""
         _login(client, "planuser", "test123")
@@ -944,6 +980,19 @@ class TestShoppingList:
         assert resp.status_code == 200
         assert b"Minced Beef" in resp.data
         assert b"2.5 kg Minced Beef" in resp.data  # 5 days * 500 g, shown in kg
+
+    def test_regenerate_summary_states_consequences(self, client, db):
+        """Shopping page states what regenerating rebuilds and keeps (A3)."""
+        _login(client, "sluser", "test123")
+        db.execute("INSERT INTO shopping_list_items (ingredient_id, ingredient_name, quantity, unit,"
+                   " category, checked, is_manual) VALUES (1, 'Milk', 2, 'L', 'dairy', 1, 0)")
+        db.execute("INSERT INTO shopping_list_items (ingredient_name, quantity, unit, category,"
+                   " checked, is_manual) VALUES ('Notes', 1, 'each', 'other', 0, 1)")
+        db.commit()
+        resp = client.get("/shopping-list")
+        assert resp.status_code == 200
+        assert b"deleted plan items return" in resp.data
+        assert b"manual items stay" in resp.data
 
     def test_shopping_list_toggle_check(self, client, db):
         """POST /shopping-list/toggle/<id> toggles the checked flag."""

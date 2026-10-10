@@ -24,7 +24,7 @@
     <div class="mb-2 d-flex flex-wrap align-items-end">
         {% if plan_start and plan_end %}
         <form method="post" action="{{ url_for('meal_plan.meal_plan_generate') }}" class="mr-2 d-flex flex-wrap align-items-end"
-              {% if has_entries %}onsubmit="return confirm('Regenerate? Auto-generated meals will be replaced; meals you picked by hand are kept.')"{% endif %}>
+              {% if has_entries %}onsubmit="return confirm('Regenerate? {{ regen.auto }} auto meal{{ '' if regen.auto == 1 else 's' }} will be replaced; {{ regen.manual }} manual meal{{ '' if regen.manual == 1 else 's' }} {{ 'is' if regen.manual == 1 else 'are' }} kept.')"{% endif %}>
             {{ csrf() }}
             <label class="small text-muted mr-2 mb-1">From
                 <input type="date" name="plan_start" value="{{ plan_start }}" class="form-control form-control-sm" required aria-label="Plan start date">
@@ -41,6 +41,9 @@
         <button type="button" onclick="window.print()" class="btn btn-outline-secondary btn-sm ml-2 d-print-none"><i class="fas fa-print"></i> Print</button>
     </div>
 </div>
+{% if has_entries %}
+<p class="small text-muted">Regenerating replaces {{ regen.auto }} auto meal{{ '' if regen.auto == 1 else 's' }} and keeps {{ regen.manual }} manual meal{{ '' if regen.manual == 1 else 's' }}. Multi-day meals are re-placed from their originals.</p>
+{% endif %}
 
 {% if not (plan_start and plan_end) %}
 <div class="alert alert-warning">
