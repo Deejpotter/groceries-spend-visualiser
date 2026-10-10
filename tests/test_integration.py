@@ -544,6 +544,43 @@ class TestMealRules:
         deleted = db.execute("SELECT * FROM meal_rules WHERE id = ?", (rule_id,)).fetchone()
         assert deleted is None
 
+    def test_rule_move_reorders(self, client, db):
+        """Up/down buttons reorder rules in evaluation order (A4)."""
+        _login(client, "ruleuser", "test123")
+        for day in ("mon", "tue", "wed"):
+            client.post("/meal-rules/add", data={
+                "day_of_week": day,
+                "meal_type": "dinner",
+                "tag_filter": "",
+                "is_active": "1",
+            }, follow_redirects=True)
+        ids = [r["id"] for r in db.execute("SELECT id FROM meal_rules ORDER BY sort_order, id")]
+        assert len(ids) == 3
+        client.post(f"/meal-rules/move/{ids[1]}/up", follow_redirects=True)
+        assert [r["id"] for r in db.execute("SELECT id FROM meal_rules ORDER BY sort_order, id")] == [ids[1], ids[0], ids[2]]
+        # Boundary: moving the first rule up is a harmless no-op.
+        assert client.post(f"/meal-rules/move/{ids[1]}/up").status_code == 302
+        assert [r["id"] for r in db.execute("SELECT id FROM meal_rules ORDER BY sort_order, id")] == [ids[1], ids[0], ids[2]]
+
+    def test_rule_add_accepts_day_checkboxes(self, client, db):
+        """Day checkboxes post natively without the hidden field (A5)."""
+        _login(client, "ruleuser", "test123")
+        client.post("/meal-rules/add", data={
+            "meal_type": "dinner",
+            "tag_filter": "",
+            "is_active": "1",
+        }, follow_redirects=True)
+        assert db.execute("SELECT COUNT(*) FROM meal_rules").fetchone()[0] == 0
+        resp = client.post("/meal-rules/add", data={
+            "day_toggle": ["mon", "wed"],
+            "meal_type": "dinner",
+            "tag_filter": "",
+            "is_active": "1",
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+        row = db.execute("SELECT * FROM meal_rules").fetchone()
+        assert row["day_of_week"] == "mon,wed"
+
 
 # ============================================================================
 # Meal Plan Generation

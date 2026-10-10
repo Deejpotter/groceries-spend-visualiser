@@ -221,6 +221,8 @@
         </div>
         <div class="rule-actions">
             <a href="{{ url_for('meal_plan.meal_plan_view', tab='rules', edit=rule.id) }}#rule-form" class="btn btn-sm btn-link px-0 mr-2">Edit</a>
+            {% if not loop.first %}{{ post_button(url_for('meal_plan.meal_rule_move', rule_id=rule.id, direction='up'), '↑', class='btn btn-sm btn-link px-0 mr-2', title='Move up (tried earlier)') }}{% endif %}
+            {% if not loop.last %}{{ post_button(url_for('meal_plan.meal_rule_move', rule_id=rule.id, direction='down'), '↓', class='btn btn-sm btn-link px-0 mr-2', title='Move down (tried later)') }}{% endif %}
             {{ post_button(url_for('meal_plan.meal_rule_delete', rule_id=rule.id), 'Delete', class='btn btn-sm btn-link text-danger px-0', confirm='Delete this rule?') }}
         </div>
     </div>
@@ -290,11 +292,7 @@
                         <small class="text-muted">Override the recipe's default servings for this rule.</small>
                     </div>
                     <div class="form-group">
-                        <label for="sort_order">Priority</label>
-                        <input type="number" class="form-control" id="sort_order" name="sort_order"
-                               value="{{ editing_rule.sort_order if editing_rule and editing_rule.sort_order is not none else '' }}"
-                               placeholder="Leave blank to add at the end">
-                        <small class="text-muted">Lower numbers are tried first when several rules match the same meal.</small>
+                        <small class="text-muted d-block">New rules go last. Reorder with the ↑ ↓ buttons on each rule — rules higher up are tried first.</small>
                     </div>
                     <div class="form-group">
                         <div class="custom-control custom-checkbox">
