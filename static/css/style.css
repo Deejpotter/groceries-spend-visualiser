@@ -594,6 +594,9 @@ details[open].pack-others > summary::after {
     }
 }
 
+/* Icons: inline SVG sprite (see _icons.html); sized like text. */
+.ic { width: 1em; height: 1em; vertical-align: -0.125em; flex: none; }
+
 /* Bootstrap 5 compat shims: pre-upgrade class names keep working so templates
    didn't need rewriting. Remove a shim only with its templates. */
 .badge-secondary { background-color: #6c757d; color: #fff; }
@@ -667,6 +670,7 @@ main h1 { font-size: 1.65rem; font-weight: 700; letter-spacing: -0.01em; }
 [data-bs-theme="dark"] .slot { border-color: var(--line); }
 [data-bs-theme="dark"] .pack-badge { color: var(--ink-soft); }
 [data-bs-theme="dark"] .text-warning-dark { color: var(--warn); }
+[data-bs-theme="dark"] footer.bg-light { background-color: var(--card) !important; }
 [data-bs-theme="dark"] select.form-control {
     color: var(--ink); background-color: var(--card); border-color: var(--line);
     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23b8a88f' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");

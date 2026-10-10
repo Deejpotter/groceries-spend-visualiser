@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import csrf, post_button, form_errors %}
+{% from "_macros.html" import csrf, post_button, form_errors, icon %}
 
 {% block title %}Meal Plan — Grocery Visualiser{% endblock %}
 
@@ -32,13 +32,13 @@
             <label class="small text-muted mr-2 mb-1">To
                 <input type="date" name="plan_end" value="{{ plan_end }}" class="form-control form-control-sm" required aria-label="Plan end date">
             </label>
-            <button type="submit" class="btn btn-primary btn-sm mb-1"><i class="fas fa-sync"></i> {{ 'Regenerate' if has_entries else 'Generate' }}</button>
+            <button type="submit" class="btn btn-primary btn-sm mb-1">{{ icon('refresh-cw') }} {{ 'Regenerate' if has_entries else 'Generate' }}</button>
         </form>
         {% endif %}
         <a href="{{ url_for('shopping_list.shopping_list_view') }}" class="btn btn-success btn-sm">
-            <i class="fas fa-shopping-cart"></i> Shopping list
+            {{ icon('shopping-cart') }} Shopping list
         </a>
-        <button type="button" onclick="window.print()" class="btn btn-outline-secondary btn-sm ml-2 d-print-none"><i class="fas fa-print"></i> Print</button>
+        <button type="button" onclick="window.print()" class="btn btn-outline-secondary btn-sm ml-2 d-print-none">{{ icon('printer') }} Print</button>
     </div>
 </div>
 {% if has_entries %}
@@ -87,11 +87,11 @@
 <ul class="nav nav-tabs mb-3">
     <li class="nav-item">
         <a class="nav-link {{ 'active' if tab == 'week' }}" href="{{ url_for('meal_plan.meal_plan_view') }}"
-           {% if tab == 'week' %}aria-current="page"{% endif %}><i class="far fa-calendar"></i> Plan{% if plan_start and plan_end %} <span class="small text-muted">{{ plan_start[5:] }}–{{ plan_end[5:] }}</span>{% endif %}</a>
+           {% if tab == 'week' %}aria-current="page"{% endif %}>{{ icon('calendar') }} Plan{% if plan_start and plan_end %} <span class="small text-muted">{{ plan_start[5:] }}–{{ plan_end[5:] }}</span>{% endif %}</a>
     </li>
     <li class="nav-item">
         <a class="nav-link {{ 'active' if tab == 'rules' }}" href="{{ url_for('meal_plan.meal_plan_view', tab='rules') }}"
-           {% if tab == 'rules' %}aria-current="page"{% endif %}><i class="fas fa-sliders-h"></i> Rules
+           {% if tab == 'rules' %}aria-current="page"{% endif %}>{{ icon('sliders-horizontal') }} Rules
            <span class="badge badge-pill badge-secondary">{{ rules|selectattr('is_active')|list|length }}</span></a>
     </li>
 </ul>
@@ -118,7 +118,7 @@
                 <div class="d-flex justify-content-between align-items-start">
                     <div class="slot-recipe">{{ entry.recipe_name }}</div>
                     {{ post_button(url_for('meal_plan.meal_plan_remove', entry_id=entry.id), '', class='btn btn-sm btn-link text-muted p-0 ml-1 slot-remove',
-                                   icon='times', title='Remove ' ~ entry.recipe_name, confirm='Remove ' ~ entry.recipe_name ~ ' from the plan?') }}
+                                   glyph='times', title='Remove ' ~ entry.recipe_name, confirm='Remove ' ~ entry.recipe_name ~ ' from the plan?') }}
                 </div>
                 <div class="slot-meta">
                     Serves {{ entry.servings }}
@@ -139,7 +139,7 @@
                 </details>
                 {% elif recipes %}
                 <details class="slot-edit">
-                    <summary><i class="fas fa-plus"></i> Add</summary>
+                    <summary>{{ icon('plus') }} Add</summary>
                     <form method="post" action="{{ url_for('meal_plan.meal_plan_add') }}" class="mt-1">
                         {{ csrf() }}
                         <input type="hidden" name="date" value="{{ day.date }}">
@@ -157,7 +157,7 @@
             {% endfor %}
             {% if hidden_types and recipes %}
             <details class="slot-edit slot-add-type">
-                <summary><i class="fas fa-plus"></i> Meal</summary>
+                <summary>{{ icon('plus') }} Meal</summary>
                 <form method="post" action="{{ url_for('meal_plan.meal_plan_add') }}" class="mt-1">
                     {{ csrf() }}
                     <input type="hidden" name="date" value="{{ day.date }}">
@@ -213,7 +213,7 @@
             <span class="rule-priority" title="Priority: lower numbers are tried first">#{{ rule.sort_order }}</span>
         </div>
         <div class="rule-what">
-            <i class="fas fa-arrow-right text-muted small"></i>
+            {{ icon('arrow-right', 'text-muted small') }}
             {% if rule.tag_filter %}{% for t in rule.tag_filter.split(',') %}<span class="badge badge-secondary mr-1">{{ t.strip() }}</span>{% endfor %}
             {% else %}<span class="text-muted">any recipe</span>{% endif %}
         </div>

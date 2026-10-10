@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import csrf, post_button %}
+{% from "_macros.html" import csrf, post_button, icon %}
 
 {% block title %}Shopping List — Grocery Visualiser{% endblock %}
 
@@ -17,11 +17,11 @@
               {% if has_generated %}onsubmit="return confirm('Regenerate? The list is rebuilt from the plan ({{ item_count }} item{{ '' if item_count == 1 else 's' }} now; deleted plan items return). {{ checked_count }} tick{{ '' if checked_count == 1 else 's' }} kept where units match; manual items stay.')"{% endif %}>
             {{ csrf() }}
             <button type="submit" class="btn btn-primary">
-                <i class="fas fa-sync"></i> {{ 'Regenerate' if has_generated else 'Generate' }} from Plan
+                {{ icon('refresh-cw') }} {{ 'Regenerate' if has_generated else 'Generate' }} from Plan
             </button>
         </form>
         {% endif %}
-        <button type="button" onclick="window.print()" class="btn btn-secondary"><i class="fas fa-print"></i> Print</button>
+        <button type="button" onclick="window.print()" class="btn btn-secondary">{{ icon('printer') }} Print</button>
     </div>
 </div>
 {% if has_generated %}
@@ -65,7 +65,7 @@
 
 {% if spare_items %}
 <div class="card mb-3 border-left-brand d-print-none">
-    <div class="card-header py-2"><strong><i class="fas fa-box-open"></i> Spare after this shop</strong>
+    <div class="card-header py-2"><strong>{{ icon('package-open') }} Spare after this shop</strong>
         <span class="text-muted small">— plan a meal to use it before the plan ends</span></div>
     <div class="card-body py-2">
         <ul class="list-inline mb-2">
@@ -118,11 +118,11 @@
                 {% if choice %}<span class="badge badge-light border pack-badge" title="Packs to buy">{{ pack_label(choice.best) }}</span>{% endif %}
                 {% if item.is_manual %}<span class="badge badge-secondary">manual</span>{% endif %}
                 {% if item.product_url|http_url %}<a href="{{ item.product_url }}" target="_blank" rel="noopener noreferrer"
-                   class="small ml-1 d-print-none" title="Open product page" aria-label="Open product page for {{ item|label }}"><i class="fas fa-external-link-alt"></i></a>{% endif %}
+                   class="small ml-1 d-print-none" title="Open product page" aria-label="Open product page for {{ item|label }}">{{ icon('external-link') }}</a>{% endif %}
                 {% if item.recipe_ref %}<div class="small text-muted">{{ item.recipe_ref }}</div>{% endif %}
                 {% if choice %}
                 <div class="small text-muted">
-                    {% if choice.best.spare > 0 %}<span class="text-warning-dark"><i class="fas fa-box-open"></i> {{ choice.best.spare_shown|amount(choice.best.spare_shown_unit) }} spare</span>{% else %}<span class="text-success"><i class="fas fa-check"></i> right size</span>{% endif %}
+                    {% if choice.best.spare > 0 %}<span class="text-warning-dark">{{ icon('package-open') }} {{ choice.best.spare_shown|amount(choice.best.spare_shown_unit) }} spare</span>{% else %}<span class="text-success">{{ icon('check') }} right size</span>{% endif %}
                     {% if choice.best.name != item.ing_name %}· buy <em>{{ choice.best.name }}</em>{% endif %}
                 </div>
                 {% if choice.others %}
@@ -153,7 +153,7 @@
             {% if item.line_cost %}<span class="text-muted small mr-3 num">{{ item.line_cost|money }}</span>{% endif %}
             <div class="d-print-none">
             {{ post_button(url_for('shopping_list.shopping_list_delete', item_id=item.id), '', class='btn btn-sm btn-link text-danger px-3 py-2',
-                           icon='times', title='Remove item', confirm='Remove ' ~ (item|label) ~ ' from the list?') }}
+                           glyph='times', title='Remove item', confirm='Remove ' ~ (item|label) ~ ' from the list?') }}
             </div>
         </li>
         {% endfor %}

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import icon %}
 
 {% block title %}Dashboard - Grocery Visualiser{% endblock %}
 
@@ -9,16 +10,16 @@
         <p class="page-sub">{{ today|nice_date }}{% if current_user %} &middot; {{ current_user }}{% endif %}</p>
     </div>
     <div class="d-flex flex-wrap">
-        <a href="{{ url_for('meal_plan.meal_plan_view') }}" class="btn btn-primary mr-2 mb-2"><i class="fas fa-calendar-alt"></i> Meal plan</a>
-        <a href="{{ url_for('shopping_list.shopping_list_view') }}" class="btn btn-outline-primary mr-2 mb-2"><i class="fas fa-shopping-basket"></i> Shopping list</a>
-        <a href="{{ url_for('spend.spend_import') }}" class="btn btn-outline-secondary mr-2 mb-2"><i class="fas fa-file-import"></i> Import spend</a>
-        <a href="{{ url_for('recipes.recipe_form') }}" class="btn btn-outline-secondary mb-2"><i class="fas fa-plus"></i> Add recipe</a>
+        <a href="{{ url_for('meal_plan.meal_plan_view') }}" class="btn btn-primary mr-2 mb-2">{{ icon('calendar-days') }} Meal plan</a>
+        <a href="{{ url_for('shopping_list.shopping_list_view') }}" class="btn btn-outline-primary mr-2 mb-2">{{ icon('shopping-basket') }} Shopping list</a>
+        <a href="{{ url_for('spend.spend_import') }}" class="btn btn-outline-secondary mr-2 mb-2">{{ icon('import') }} Import spend</a>
+        <a href="{{ url_for('recipes.recipe_form') }}" class="btn btn-outline-secondary mb-2">{{ icon('plus') }} Add recipe</a>
     </div>
 </div>
 
 {% if not (ingredient_count and recipe_count and rule_count and plan_start) %}
 <div class="card mb-4 section-card border-left-brand">
-    <div class="card-header"><span class="section-title"><i class="fas fa-seedling"></i> Getting started</span></div>
+    <div class="card-header"><span class="section-title">{{ icon('sprout') }} Getting started</span></div>
     <div class="card-body">
         <ol class="mb-0">
             <li class="{{ 'text-muted' if ingredient_count }}"><a href="{{ url_for('ingredients.ingredient_add') }}">Add ingredients</a> with prices and units
@@ -34,7 +35,7 @@
 
 <div class="kpi-row mb-4">
     <div class="kpi-tile" data-tone="{{ 'ok' if coverage and coverage.pct == 100 else ('warn' if coverage and coverage.days_planned else 'neutral') }}">
-        <div class="kpi-label"><i class="fas fa-calendar-check"></i> Meals planned</div>
+        <div class="kpi-label">{{ icon('calendar-check') }} Meals planned</div>
         <div class="kpi-value">
             {% if coverage %}{{ coverage.days_planned }}<span class="kpi-unit">/ {{ coverage.days_total }} days</span>{% else %}&mdash;{% endif %}
         </div>
@@ -50,7 +51,7 @@
     </div>
 
     <div class="kpi-tile" data-tone="{{ 'ok' if shopping.item_count == 0 else 'neutral' }}">
-        <div class="kpi-label"><i class="fas fa-shopping-basket"></i> Shopping list</div>
+        <div class="kpi-label">{{ icon('shopping-basket') }} Shopping list</div>
         <div class="kpi-value">{{ shopping.item_count }}<span class="kpi-unit">to buy</span></div>
         <div class="kpi-context">
             {% if shopping.item_count %}{{ shopping.cost|money }} est &middot; {{ shopping.checked }} ticked{% else %}Nothing to buy yet{% endif %}
@@ -59,7 +60,7 @@
     </div>
 
     <div class="kpi-tile" data-tone="{{ pantry.tone }}">
-        <div class="kpi-label"><i class="fas fa-box-open"></i> Pantry</div>
+        <div class="kpi-label">{{ icon('package-open') }} Pantry</div>
         <div class="kpi-value">{{ pantry.expired_count + pantry.expiring_count + pantry.low_count }}<span class="kpi-unit">alerts</span></div>
         <div class="kpi-context">
             {% if pantry.expired_count or pantry.expiring_count or pantry.low_count %}
@@ -70,13 +71,13 @@
     </div>
 
     <div class="kpi-tile" data-tone="neutral">
-        <div class="kpi-label"><i class="fas fa-receipt"></i> Avg shop</div>
+        <div class="kpi-label">{{ icon('receipt') }} Avg shop</div>
         <div class="kpi-value">
             {% if spend and spend.avg_per_shop is not none %}{{ spend.avg_per_shop|money }}<span class="kpi-unit">/ shop</span>{% else %}&mdash;{% endif %}
         </div>
         {% if spend and spend.avg_per_shop is not none %}
         <div class="kpi-context">
-            {% if spend_delta %}<span class="trend"><i class="fas fa-arrow-{{ 'up' if spend_delta.direction == 'up' else ('down' if spend_delta.direction == 'down' else 'right') }}"></i> {{ spend_delta.pct }}%</span> &middot; {% endif %}
+            {% if spend_delta %}<span class="trend">{{ icon('arrow-' ~ ('up' if spend_delta.direction == 'up' else ('down' if spend_delta.direction == 'down' else 'right'))) }} {{ spend_delta.pct }}%</span> &middot; {% endif %}
             last 90 days ending {{ spend_latest|nice_date }} &middot; {{ spend.shops }} shop{{ '' if spend.shops == 1 else 's' }}
         </div>
         {% if spend_spark %}
@@ -93,7 +94,7 @@
 <div class="row">
     <div class="col-lg-8 mb-4">
         <div class="card h-100 section-card">
-            <div class="card-header"><span class="section-title"><i class="fas fa-chart-line"></i> Recent spend</span>
+            <div class="card-header"><span class="section-title">{{ icon('chart-line') }} Recent spend</span>
                 <span class="small text-muted ml-2">per month</span></div>
             <div class="card-body">
                 {% if monthly %}
@@ -107,7 +108,7 @@
     </div>
     <div class="col-lg-4 mb-4">
         <div class="card h-100 section-card">
-            <div class="card-header"><span class="section-title"><i class="fas fa-utensils"></i> This week</span></div>
+            <div class="card-header"><span class="section-title">{{ icon('utensils') }} This week</span></div>
             <div class="card-body py-2">
                 {% if upcoming %}
                     {% for day, rows in upcoming|groupby('date') %}
@@ -133,7 +134,7 @@
 <div class="row">
     <div class="col-md-4 mb-4">
         <div class="card h-100 section-card">
-            <div class="card-header"><span class="section-title"><i class="fas fa-shopping-basket"></i> To buy</span></div>
+            <div class="card-header"><span class="section-title">{{ icon('shopping-basket') }} To buy</span></div>
             <div class="card-body py-2">
                 {% if to_buy %}
                 <ul class="list-unstyled mb-2">
@@ -158,7 +159,7 @@
 
     <div class="col-md-4 mb-4">
         <div class="card h-100 section-card">
-            <div class="card-header"><span class="section-title"><i class="fas fa-leaf"></i> Use these up</span></div>
+            <div class="card-header"><span class="section-title">{{ icon('leaf') }} Use these up</span></div>
             <div class="card-body py-2">
                 {% if spare_items %}
                 <ul class="list-unstyled mb-2">
@@ -186,7 +187,7 @@
 
     <div class="col-md-4 mb-4">
         <div class="card h-100 section-card">
-            <div class="card-header"><span class="section-title"><i class="fas fa-clock"></i> Expiring soon</span></div>
+            <div class="card-header"><span class="section-title">{{ icon('clock') }} Expiring soon</span></div>
             <div class="card-body py-2">
                 {% if pantry.expired or pantry.expiring %}
                 <ul class="list-unstyled mb-2">
@@ -194,7 +195,7 @@
                     <li class="d-flex justify-content-between align-items-center py-1 {{ 'border-top' if not loop.first }}">
                         <span class="small">{{ item|label }}</span>
                         <span class="status-badge {{ 'danger' if item.status == 'expired' else 'warn' }}">
-                            <i class="fas fa-{{ 'exclamation-circle' if item.status == 'expired' else 'hourglass-half' }}"></i>
+                            {{ icon('circle-alert' if item.status == 'expired' else 'hourglass') }}
                             {{ 'Expired' if item.status == 'expired' else (item.days_left ~ 'd left') }}
                         </span>
                     </li>

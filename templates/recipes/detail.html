@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import post_button, csrf %}
+{% from "_macros.html" import post_button, csrf, icon %}
 
 {% block title %}{{ recipe.name }} — Grocery Visualiser{% endblock %}
 
@@ -7,7 +7,7 @@
 <div class="row">
     <div class="col-12 mb-3">
         <a href="{{ url_for('recipes.recipe_list') }}" class="btn btn-secondary btn-sm">
-            <i class="fas fa-arrow-left"></i> Back to Recipes
+            {{ icon('arrow-left') }} Back to Recipes
         </a>
     </div>
 </div>

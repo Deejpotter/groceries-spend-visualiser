@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import form_errors %}
+{% from "_macros.html" import form_errors, icon %}
 
 {% block title %}{{ 'Edit' if recipe and recipe.id else 'Add' }} Recipe — Grocery Visualiser{% endblock %}
 
@@ -117,14 +117,14 @@
                                 </div>
                                 <div class="col-md-1">
                                     <button type="button" class="btn btn-outline-danger remove-ingredient" title="Remove ingredient" aria-label="Remove ingredient row">
-                                        <i class="fas fa-times"></i>
+                                        {{ icon('x') }}
                                     </button>
                                 </div>
                             </div>
                             {% endfor %}
                         </div>
                         <button type="button" id="add-ingredient" class="btn btn-outline-secondary btn-sm">
-                            <i class="fas fa-plus"></i> Add Ingredient
+                            {{ icon('plus') }} Add Ingredient
                         </button>
                         <small class="form-text text-muted">
                             Quantities are for the recipe's default servings. Missing an ingredient?
@@ -188,7 +188,7 @@
         </div>
         <div class="col-md-1">
             <button type="button" class="btn btn-outline-danger remove-ingredient" title="Remove ingredient">
-                <i class="fas fa-times"></i>
+                {{ icon('x') }}
             </button>
         </div>
     </div>
