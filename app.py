@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
 from flask_wtf.csrf import CSRFProtect
 
-from database import init_db, get_db, close_db, get_plan_dates, get_database_path, backup_database, database_stats
+from database import init_db, get_db, close_db, get_plan_dates, get_database_path, backup_database, database_stats, set_setting
 from auth import login_user, logout_user, get_current_user, is_logged_in, login_required, hash_password, verify_password
 from models import (
     CATEGORIES, UNITS, MEAL_TYPES, DAYS_OF_WEEK,
@@ -295,6 +295,15 @@ def create_app(testing=False):
         """Copy the database to a timestamped backup file (safe while the app runs)."""
         dest = backup_database()
         print(f"Backup written to {dest}")
+
+    @application.cli.command("set-api-key")
+    def set_api_key_command():
+        """Create or rotate the MCP API key (printed once — store it safely)."""
+        import secrets as _secrets
+        key = "gx_" + _secrets.token_urlsafe(32)
+        set_setting("mcp_api_key", key)
+        get_db().commit()
+        print(key)
 
     @application.cli.command("db-status")
     def db_status_command():

@@ -123,6 +123,8 @@ mount on `/app/data` configured in the Coolify UI.
 - `flask --app app db-status` — path, size, row counts. Fastest way to confirm data survived.
 - `flask --app app backup-db` — timestamped copy via SQLite's online backup API (safe live).
 - `SECRET_KEY` must be set in each environment, or sessions reset every deploy.
+- `mcp_server/` — MCP server (stdio) exposing the same services to agents. Read-only tools;
+  key via `flask --app app set-api-key`. See `mcp_server/README.md`.
 
 ## Reference docs
 
