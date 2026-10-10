@@ -13,37 +13,49 @@
 
 {% if batch.subtotal is not none %}
 {% set diff = (read_total - batch.subtotal)|round(2) %}
-<div class="alert {{ 'alert-success' if diff == 0 else 'alert-warning' }}">
+<div class="alert {{ 'alert-success' if diff == 0 else 'alert-warning' }}" id="totals-banner">
     Read <strong>{{ lines|rejectattr('excluded')|list|length }} of {{ lines|length }} lines</strong>
-    totalling <strong>{{ read_total|money }}</strong>
+    totalling <strong id="live-total" data-subtotal="{{ batch.subtotal }}"> {{ read_total|money }}</strong>
     vs invoice subtotal <strong>{{ batch.subtotal|money }}</strong>
     {% if diff != 0 %}— off by <strong>{{ diff|money }}</strong>. Fix a line below or exclude it.{% else %}— matches.{% endif %}
     {% if already_count %}<br>{{ already_count }} line{{ '' if already_count == 1 else 's' }} {{ 'is' if already_count == 1 else 'are' }} already in your purchases (marked below).{% endif %}
 </div>
 {% endif %}
 
+{% if review_errors %}
+<div class="alert alert-danger" role="alert">
+    Fix {{ review_errors|length }} line{{ '' if review_errors|length == 1 else 's' }} before confirming:
+    <ul class="mb-0">
+        {% for err in review_errors %}
+        <li>{% if err.id %}<a href="#line-{{ err.id }}">{{ err.message }}</a>{% else %}{{ err.message }}{% endif %}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
 <form method="post">
     {{ csrf() }}
     <div class="table-responsive">
-    <table class="table table-sm bg-white">
+    <table class="table table-sm bg-white table-sticky-first">
         <thead class="thead-light">
             <tr><th>Product</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Line total</th><th>Skip?</th></tr>
         </thead>
         <tbody>
         {% for line in lines %}
-            <tr class="{{ 'table-light text-muted' if line.excluded }}">
+        {% set efields = error_map.get(line.id, []) if error_map else [] %}
+            <tr id="line-{{ line.id }}" class="{{ 'table-light text-muted' if line.excluded }} {{ 'table-danger' if efields }}">
                 <td>
                     <input type="hidden" name="line_id" value="{{ line.id }}">
-                    <input type="text" name="product_name" value="{{ line.product_name }}" class="form-control form-control-sm"
+                    <input type="text" name="product_name" value="{{ line.product_name }}" class="form-control form-control-sm {{ 'is-invalid' if 'product_name' in efields }}"
                            aria-label="Product name row {{ loop.index }}" {% if line.excluded %}readonly{% endif %}>
                     {% if line.note %}<div class="small text-muted">{{ line.note }}</div>{% endif %}
                     {% if line.already and not line.excluded %}<span class="badge badge-info">already imported</span>{% endif %}
                 </td>
-                <td><input type="number" name="quantity" value="{{ line.quantity|qty }}" step="any" min="0" class="form-control form-control-sm num"
+                <td><input type="number" name="quantity" value="{{ line.quantity|qty }}" step="any" min="0" class="form-control form-control-sm num {{ 'is-invalid' if 'quantity' in efields }}"
                            aria-label="Quantity row {{ loop.index }}" {% if line.excluded %}readonly{% endif %}></td>
                 <td><input type="number" name="unit_price" value="{{ line.unit_price if line.unit_price is not none else '' }}" step="any" min="0" class="form-control form-control-sm num"
                            aria-label="Unit price row {{ loop.index }}" {% if line.excluded %}readonly{% endif %}></td>
-                <td><input type="number" name="line_total" value="{{ line.line_total|qty }}" step="any" min="0" class="form-control form-control-sm num"
+                <td><input type="number" name="line_total" value="{{ line.line_total|qty }}" step="any" min="0" class="form-control form-control-sm num {{ 'is-invalid' if 'line_total' in efields }}"
                            aria-label="Line total row {{ loop.index }}" {% if line.excluded %}readonly{% endif %}></td>
                 <td class="text-center">
                     <input type="checkbox" name="excluded" value="{{ line.id }}" {% if line.excluded %}checked{% endif %}
@@ -62,4 +74,28 @@
                 onclick="return confirm('Discard this import? Nothing will be added.')">Discard</button>
     </div>
 </form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    var totalEl = document.getElementById('live-total');
+    if (!totalEl) return;
+    function recalc() {
+        var sum = 0;
+        document.querySelectorAll('table tbody tr').forEach(function (tr) {
+            var skip = tr.querySelector('input[name="excluded"]');
+            if (skip && skip.checked) return;
+            var input = tr.querySelector('input[name="line_total"]');
+            var v = input ? parseFloat(input.value) : NaN;
+            if (!isNaN(v)) sum += v;
+        });
+        totalEl.textContent = ' $' + (Math.round(sum * 100) / 100).toFixed(2);
+    }
+    document.querySelectorAll('input[name="line_total"], input[name="excluded"]').forEach(function (el) {
+        el.addEventListener('input', recalc);
+        el.addEventListener('change', recalc);
+    });
+})();
+</script>
 {% endblock %}

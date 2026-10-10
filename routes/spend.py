@@ -172,9 +172,14 @@ def import_review(token):
         return redirect(url_for("spend.spend_import"))
     if action in ("save", "confirm"):
         errors = save_staged_edits(db, token, _read_review_form())
+        error_map: dict = {}
         for err in errors:
-            flash(err, "error")
+            if err["id"] is not None:
+                error_map.setdefault(err["id"], []).append(err["field"])
         batch, lines = get_import_batch(db, token)
+        if not batch:
+            flash("That import review is no longer available — upload the invoice again.", "error")
+            return redirect(url_for("spend.spend_import"))
         if not errors and action == "confirm":
             added, _ = commit_import_batch(db, token)
             label = f"Woolworths invoice #{batch['invoice_number']} ({batch['order_date']})"
@@ -185,12 +190,17 @@ def import_review(token):
             return redirect(url_for("spend.spend_dashboard", range="all"))
         if not errors:
             flash("Review saved.", "success")
+    else:
+        error_map = {}
+        errors = []
     return render_template(
         "spend/import_review.html",
         batch=batch,
         lines=lines,
         read_total=staged_read_total(lines),
         already_count=sum(1 for line in lines if line["already"] and not line["excluded"]),
+        review_errors=errors,
+        error_map=error_map,
     )
 
 

@@ -411,11 +411,11 @@ def staged_read_total(lines: List[Dict]) -> float:
     return round(sum(float(l["line_total"] or 0) for l in lines if not l.get("excluded")), 2)
 
 
-def save_staged_edits(db, token: str, edits: List[Dict]) -> List[str]:
-    """Apply review-page edits. Returns per-line error messages (empty when clean)."""
+def save_staged_edits(db, token: str, edits: List[Dict]) -> List[Dict]:
+    """Apply review-page edits. Returns [{"id", "field", "message"}] (empty when clean)."""
     batch, _ = get_import_batch(db, token)
     if not batch:
-        return ["That import batch is no longer available."]
+        return [{"id": None, "field": None, "message": "That import batch is no longer available."}]
     errors = []
     for edit in edits:
         name = (edit.get("product_name") or "").strip()
@@ -427,13 +427,16 @@ def save_staged_edits(db, token: str, edits: List[Dict]) -> List[str]:
             total = round(qty * price, 2)
         if not excluded:
             if not name:
-                errors.append("A line is missing its product name.")
+                errors.append({"id": edit["id"], "field": "product_name",
+                               "message": "A line is missing its product name."})
                 continue
             if qty is None or qty <= 0:
-                errors.append(f"“{name}”: quantity must be greater than zero (or exclude the line).")
+                errors.append({"id": edit["id"], "field": "quantity",
+                               "message": f"“{name}”: quantity must be greater than zero (or exclude the line)."})
                 continue
             if total is None or total <= 0:
-                errors.append(f"“{name}”: line total must be greater than zero (or exclude the line).")
+                errors.append({"id": edit["id"], "field": "line_total",
+                               "message": f"“{name}”: line total must be greater than zero (or exclude the line)."})
                 continue
         db.execute(
             "UPDATE import_staged_lines SET product_name = ?, quantity = ?, unit_price = ?,"

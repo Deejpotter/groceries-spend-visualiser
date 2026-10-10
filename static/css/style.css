@@ -151,6 +151,19 @@ main.container {
     flex: 1;
 }
 
+/* Wide editable tables: keep the first (name) column visible while scrolling. */
+.table-sticky-first tbody td:first-child {
+    position: sticky;
+    left: 0;
+    background: #fff;
+    z-index: 1;
+}
+.table-sticky-first thead th:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+}
+
 /* Shopping list */
 .big-check {
     width: 1.5rem;

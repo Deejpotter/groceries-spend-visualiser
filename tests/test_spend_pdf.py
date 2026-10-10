@@ -209,6 +209,52 @@ def test_staged_edits_validate_and_autofill_total(db):
     }]) == []
 
 
+def test_staged_errors_carry_line_and_field(db):
+    """Staged errors identify the row and field for anchored display (C1)."""
+    from services.spend_import import (
+        create_import_batch, get_import_batch, save_staged_edits,
+    )
+    meta = {"invoice_number": "779", "order_date": "2023-07-07", "subtotal": 2.0,
+            "skipped": []}
+    rows = [{"order_date": "2023-07-07", "basket_id": "779", "store": "Woolworths",
+             "channel": None, "product_name": "Toast", "quantity": 1,
+             "unit_price": 2.0, "line_total": 2.0, "cup_price": None, "stockcode": None}]
+    token = create_import_batch(db, meta, rows)
+    _, lines = get_import_batch(db, token)
+    errs = save_staged_edits(db, token, [{
+        "id": lines[0]["id"], "product_name": "Toast",
+        "quantity": "0", "unit_price": "2.0", "line_total": "2.0", "excluded": False,
+    }])
+    assert len(errs) == 1
+    assert errs[0]["id"] == lines[0]["id"]
+    assert errs[0]["field"] == "quantity"
+    assert "quantity must be greater than zero" in errs[0]["message"]
+
+
+def test_review_errors_anchor_to_rows(client, db):
+    """Review errors link to rows, highlight the field, and show a live total (C1)."""
+    login(client)
+    token = _upload_pdf(client, REVIEW_LINES).headers["Location"].rsplit("/", 1)[-1]
+    staged = db.execute("SELECT id FROM import_staged_lines ORDER BY id").fetchall()
+    ids = [str(r["id"]) for r in staged]
+    resp = client.post(f"/spend/import/review/{token}", data={
+        "action": "save",
+        "line_id": ids,
+        "product_name": ["Golden crumpets round 6 pack", "Tip top toast 600g"],
+        "quantity": ["0", "1"],
+        "unit_price": ["2.20", "4.40"],
+        "line_total": ["2.20", "0.00"],
+        "excluded": [ids[1]],
+    })
+    assert resp.status_code == 200
+    assert b"quantity must be greater than zero" in resp.data
+    assert f'href="#line-{ids[0]}"'.encode() in resp.data
+    assert b"is-invalid" in resp.data
+    assert b'id="live-total"' in resp.data
+    assert b"table-sticky-first" in resp.data
+    assert db.execute("SELECT COUNT(*) FROM purchases").fetchone()[0] == 0
+
+
 def test_commit_inherits_ingredient_links(db):
     from services.spend_import import commit_import_batch, create_import_batch
     db.execute("INSERT INTO ingredients (name, category, unit) VALUES ('Toast', 'bakery', 'each')")
