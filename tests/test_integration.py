@@ -369,6 +369,17 @@ class TestRecipes:
         assert b"listed twice" in resp.data
         assert db.execute("SELECT COUNT(*) FROM recipes").fetchone()[0] == 0
 
+    def test_picker_lists_ingredients_without_javascript(self, client, db):
+        """The ingredient picker is fully server-rendered (B3)."""
+        _login(client, "recuser", "test123")
+        client.post("/ingredients/add", data={
+            "name": "Pasta", "category": "pantry", "unit": "g",
+        }, follow_redirects=True)
+        resp = client.get("/recipes/add")
+        assert resp.status_code == 200
+        assert b'<option value="1"' in resp.data
+        assert b"Pasta (g)" in resp.data
+
     def test_recipe_detail_page(self, client, db):
         """GET /recipes/<id> shows recipe detail with ingredients."""
         _login(client, "recuser", "test123")

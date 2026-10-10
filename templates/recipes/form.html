@@ -95,28 +95,30 @@
                     <div class="form-group">
                         <label>Ingredients</label>
                         <div id="ingredients-container">
-                            {% for ri in recipe_ingredients or [] %}
+                            {% for ri in (recipe_ingredients or []) + [None] %}
                             <div class="ingredient-row form-row mb-2">
                                 <div class="col-md-6">
-                                    <select class="form-control ingredient-select" name="ingredient_ids"
-                                            data-selected="{{ ri.ingredient_id }}">
-                                        <option value="{{ ri.ingredient_id }}" selected>{{ ri|label }} ({{ ri.unit }})</option>
+                                    <select class="form-control ingredient-select" name="ingredient_ids" aria-label="Ingredient">
+                                        <option value="">Select ingredient...</option>
+                                        {% for ing in form_ingredients %}
+                                        <option value="{{ ing.id }}" {% if ri and ing.id == ri.ingredient_id %}selected{% endif %}>{{ ing|label }} ({{ ing.unit }})</option>
+                                        {% endfor %}
                                     </select>
                                 </div>
                                 <div class="col-md-2">
                                     <input type="number" class="form-control" name="quantities"
-                                           step="any" min="0" value="{{ ri.quantity }}" placeholder="Qty" aria-label="Quantity">
+                                           step="any" min="0" value="{{ ri.quantity if ri else '' }}" placeholder="Qty" aria-label="Quantity">
                                 </div>
                                 <div class="col-md-3">
                                     <select class="form-control" name="unit_overrides" aria-label="Unit">
                                         <option value="">Ingredient's unit</option>
                                         {% for code, label in units %}
-                                        <option value="{{ code }}" {% if ri.unit_override == code %}selected{% endif %}>{{ label }}</option>
+                                        <option value="{{ code }}" {% if ri and ri.unit_override == code %}selected{% endif %}>{{ label }}</option>
                                         {% endfor %}
                                     </select>
                                 </div>
                                 <div class="col-md-1">
-                                    <button type="button" class="btn btn-outline-danger remove-ingredient" title="Remove ingredient">
+                                    <button type="button" class="btn btn-outline-danger remove-ingredient" title="Remove ingredient" aria-label="Remove ingredient row">
                                         <i class="fas fa-times"></i>
                                     </button>
                                 </div>
