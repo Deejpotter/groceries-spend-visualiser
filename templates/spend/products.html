@@ -10,8 +10,7 @@
 </div>
 <p class="text-muted">Linking a product you've bought to one of your ingredients groups its spend by category and lets you
     pull the latest price into the ingredient, so shopping list estimates stay realistic.
-    New ingredients start in the Other category — set the right one under <a href="{{ url_for('ingredients.ingredient_list') }}">Ingredients</a>.
-    Showing up to 150 products by spend.</p>
+    Showing {{ products|length }} of {{ total_count }} products by spend (page {{ page }} of {{ total_pages }}).</p>
 
 <form method="get" class="form-row mb-3">
     <div class="col-md-6 mb-2"><input type="search" name="q" value="{{ search }}" class="form-control" placeholder="Search products…" aria-label="Search products"></div>
@@ -27,10 +26,26 @@
 {% if not products %}
 <div class="alert alert-secondary">No products found. <a href="{{ url_for('spend.spend_import') }}">Import purchases</a> first.</div>
 {% else %}
+<form method="post" action="{{ url_for('spend.spend_link_batch') }}">
+    {{ csrf() }}
+    <input type="hidden" name="q" value="{{ search }}">
+    <input type="hidden" name="unlinked" value="{{ '1' if only_unlinked }}">
+    <input type="hidden" name="page" value="{{ page }}">
+    <div class="form-row align-items-end mb-2">
+        <div class="col-md-4 mb-2">
+            <label for="new_category" class="small text-muted mb-0">New ingredients go in</label>
+            <select name="new_category" id="new_category" class="form-control form-control-sm">
+                {% for code, label in categories %}
+                <option value="{{ code }}">{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-auto mb-2"><button type="submit" class="btn btn-primary btn-sm">Save all links</button></div>
+    </div>
 <div class="table-responsive">
-<table class="table table-sm bg-white">
+<table class="table table-sm bg-white table-sticky-first">
     <thead class="thead-light">
-        <tr><th>Product</th><th class="num">Orders</th><th class="num">Spend</th><th class="num">Last price</th><th style="min-width: 22rem">Ingredient</th></tr>
+        <tr><th>Product</th><th class="num">Orders</th><th class="num">Spend</th><th class="num">Last price</th><th>Ingredient</th></tr>
     </thead>
     <tbody>
     {% for p in products %}
@@ -40,31 +55,37 @@
             <td class="num">{{ p.total_spend|money }}</td>
             <td class="num">{{ p.last_price|money }}{% if p.last_cup_price %}<div class="small text-muted">{{ p.last_cup_price }}</div>{% endif %}</td>
             <td>
-                <form method="post" action="{{ url_for('spend.spend_link_product') }}" class="form-row align-items-center">
-                    {{ csrf() }}
-                    <input type="hidden" name="product_name" value="{{ p.product_name }}">
-                    <input type="hidden" name="q" value="{{ search }}">
-                    <input type="hidden" name="unlinked" value="{{ '1' if only_unlinked }}">
-                    <div class="col">
-                        <select name="ingredient_id" class="form-control form-control-sm" aria-label="Ingredient for {{ p.product_name }}">
-                            <option value="">— Not linked —</option>
-                            <option value="new">+ Create new ingredient</option>
-                            {% for i in ingredients %}
-                            <option value="{{ i.id }}" {% if i.id == p.ingredient_id %}selected{% endif %}>{{ i|label }} ({{ i.unit }})</option>
-                            {% endfor %}
-                        </select>
-                        <div class="custom-control custom-checkbox small mt-1">
-                            <input type="checkbox" class="custom-control-input" id="price-{{ loop.index }}" name="update_price" value="1" checked>
-                            <label class="custom-control-label" for="price-{{ loop.index }}">Update ingredient price</label>
-                        </div>
-                    </div>
-                    <div class="col-auto"><button type="submit" class="btn btn-sm btn-outline-primary">Save</button></div>
-                </form>
+                <input type="hidden" name="product_name" value="{{ p.product_name }}">
+                <select name="ingredient_id" class="form-control form-control-sm" aria-label="Ingredient for {{ p.product_name }}">
+                    <option value="">— Not linked —</option>
+                    <option value="new">+ Create new ingredient</option>
+                    {% for i in ingredients %}
+                    <option value="{{ i.id }}" {% if i.id == p.ingredient_id %}selected{% endif %}>{{ i|label }} ({{ i.unit }})</option>
+                    {% endfor %}
+                </select>
+                <div class="custom-control custom-checkbox small mt-1">
+                    <input type="checkbox" class="custom-control-input" id="price-{{ loop.index }}" name="update_price" value="{{ loop.index0 }}" checked>
+                    <label class="custom-control-label" for="price-{{ loop.index }}">Update ingredient price</label>
+                </div>
             </td>
         </tr>
     {% endfor %}
     </tbody>
 </table>
 </div>
+</form>
+{% if total_pages > 1 %}
+<nav aria-label="Product pages">
+    <ul class="pagination pagination-sm">
+        <li class="page-item {{ 'disabled' if page <= 1 }}">
+            <a class="page-link" href="{{ url_for('spend.spend_products', q=search, page=page - 1, **({'unlinked': '1'} if only_unlinked else {})) }}">Previous</a>
+        </li>
+        <li class="page-item disabled"><span class="page-link">Page {{ page }} of {{ total_pages }}</span></li>
+        <li class="page-item {{ 'disabled' if page >= total_pages }}">
+            <a class="page-link" href="{{ url_for('spend.spend_products', q=search, page=page + 1, **({'unlinked': '1'} if only_unlinked else {})) }}">Next</a>
+        </li>
+    </ul>
+</nav>
+{% endif %}
 {% endif %}
 {% endblock %}
