@@ -8,7 +8,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }, 5000);
 
     // Shopping list: tick items in place so the page (and your scroll position) doesn't reload.
-    // Without JS the checkbox still sits in a normal POST form with a CSRF token.
+    // Without JS each row has a Save button (noscript) submitting the same POST form.
     document.querySelectorAll('.js-toggle-form').forEach(function (form) {
         var box = form.querySelector('input[type=checkbox]');
         box.addEventListener('change', function () {
