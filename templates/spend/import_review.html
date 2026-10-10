@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import csrf %}
+{% from "_macros.html" import csrf, icon %}
 
 {% block title %}Review Invoice — Grocery Visualiser{% endblock %}
 
@@ -68,7 +68,7 @@
     </div>
     <p class="small text-muted">Skipped lines (not supplied, freebies) are shown greyed out. Fix names, quantities or totals — a blank line total is filled in from quantity × unit price. Tick Skip to leave a line out.</p>
     <div class="d-flex flex-wrap">
-        <button type="submit" name="action" value="confirm" class="btn btn-primary mr-2 mb-2"><i class="fas fa-check"></i> Confirm import</button>
+        <button type="submit" name="action" value="confirm" class="btn btn-primary mr-2 mb-2">{{ icon('check') }} Confirm import</button>
         <button type="submit" name="action" value="save" class="btn btn-outline-secondary mr-2 mb-2">Save edits</button>
         <button type="submit" name="action" value="discard" class="btn btn-link text-danger mb-2"
                 onclick="return confirm('Discard this import? Nothing will be added.')">Discard</button>

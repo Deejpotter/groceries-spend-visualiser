@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import csrf %}
+{% from "_macros.html" import csrf, icon %}
 
 {% block title %}Import Purchases — Grocery Visualiser{% endblock %}
 
@@ -21,7 +21,7 @@
                         <input type="text" class="form-control" id="store" name="store" value="Woolworths">
                         <small class="text-muted">PDF invoices always import as Woolworths.</small>
                     </div>
-                    <button type="submit" class="btn btn-primary"><i class="fas fa-file-import"></i> Import</button>
+                    <button type="submit" class="btn btn-primary">{{ icon('import') }} Import</button>
                     <a href="{{ url_for('spend.spend_dashboard') }}" class="btn btn-secondary">Cancel</a>
                 </form>
             </div>

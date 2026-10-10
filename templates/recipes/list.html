@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import post_button %}
+{% from "_macros.html" import post_button, icon %}
 
 {% block title %}Recipes — Grocery Visualiser{% endblock %}
 
@@ -8,7 +8,7 @@
     <h1>Recipes</h1>
     <div>
         <a href="{{ url_for('recipes.recipe_form') }}" class="btn btn-primary">
-            <i class="fas fa-plus"></i> Add Recipe
+            {{ icon('plus') }} Add Recipe
         </a>
     </div>
 </div>
@@ -49,7 +49,7 @@
                 <p class="card-text text-muted small">{{ recipe.description[:100] }}{% if recipe.description|length > 100 %}...{% endif %}</p>
                 {% endif %}
                 <p class="text-muted small mb-1">
-                    <i class="far fa-clock"></i> Prep: {{ recipe.prep_time or '—' }} min
+                    {{ icon('clock') }} Prep: {{ recipe.prep_time or '—' }} min
                     &middot; Cook: {{ recipe.cook_time or '—' }} min
                     &middot; Serves: {{ recipe.servings }}
                 </p>

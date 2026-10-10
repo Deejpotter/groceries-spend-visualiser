@@ -13,7 +13,8 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!btn) return;
         function paint() {
             var dark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
-            btn.querySelector('i').className = dark ? 'fas fa-sun' : 'fas fa-moon';
+            var use = btn.querySelector('use');
+            if (use) use.setAttribute('href', dark ? '#i-sun' : '#i-moon');
         }
         btn.addEventListener('click', function () {
             var next = document.documentElement.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark';

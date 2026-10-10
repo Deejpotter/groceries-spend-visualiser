@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import post_button %}
+{% from "_macros.html" import post_button, icon %}
 
 {% block title %}Ingredients — Grocery Visualiser{% endblock %}
 
@@ -7,7 +7,7 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1>Ingredients</h1>
     <a href="{{ url_for('ingredients.ingredient_add') }}" class="btn btn-primary">
-        <i class="fas fa-plus"></i> Add Ingredient
+        {{ icon('plus') }} Add Ingredient
     </a>
 </div>
 
@@ -56,7 +56,7 @@
             <td>{{ category_lookup.get(ing.category, ing.category) }}</td>
             <td>{{ unit_label(ing.unit) }}</td>
             <td>{% if ing.price %}{{ ing.price|unit_price }}/{{ ing.unit|replace('_', ' ') }}{% else %}—{% endif %}</td>
-            <td>{% if ing.url|http_url %}<a href="{{ ing.url }}" target="_blank" rel="noopener noreferrer">{{ ing.store or 'Product page' }} <i class="fas fa-external-link-alt small"></i></a>{% else %}{{ ing.store or '—' }}{% endif %}</td>
+            <td>{% if ing.url|http_url %}<a href="{{ ing.url }}" target="_blank" rel="noopener noreferrer">{{ ing.store or 'Product page' }} {{ icon('external-link', 'small') }}</a>{% else %}{{ ing.store or '—' }}{% endif %}</td>
             <td>{{ ing.minimum_stock or 0 }}</td>
             <td>
                 <div class="btn-group btn-group-sm">

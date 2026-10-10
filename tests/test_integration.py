@@ -1275,6 +1275,14 @@ class TestShoppingList:
         assert b".bottom-nav" in css
         assert b".sticky-actions" in css
 
+    def test_inline_svg_icons_no_font_awesome(self, client, db):
+        """Icons come from the inline sprite, not the FA CDN (S4)."""
+        _login(client, "sluser", "test123")
+        html = client.get("/").data
+        assert b"font-awesome" not in html.lower()
+        assert b"<symbol" in html
+        assert b'<use href="#i-' in html
+
     def test_regenerate_summary_states_consequences(self, client, db):
         """Shopping page states what regenerating rebuilds and keeps (A3)."""
         _login(client, "sluser", "test123")

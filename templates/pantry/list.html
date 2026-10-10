@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import post_button, csrf %}
+{% from "_macros.html" import post_button, csrf, icon %}
 
 {% block title %}Pantry — Grocery Visualiser{% endblock %}
 
@@ -7,7 +7,7 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1>Pantry</h1>
     <a href="{{ url_for('pantry.pantry_form', item_id=None) }}" class="btn btn-primary">
-            <i class="fas fa-plus"></i> Add Item
+            {{ icon('plus') }} Add Item
         </a>
 </div>
 
@@ -66,13 +66,13 @@
             </td>
             <td>
                 {% if item.expiry_status == 'expired' %}
-                <span class="status-badge danger"><i class="fas fa-exclamation-circle"></i> Expired</span>
+                <span class="status-badge danger">{{ icon('circle-alert') }} Expired</span>
                 {% elif item.expiry_status == 'soon' %}
-                <span class="status-badge warn"><i class="fas fa-hourglass-half"></i> Use soon</span>
+                <span class="status-badge warn">{{ icon('hourglass') }} Use soon</span>
                 {% elif item.expiry_status == 'no_date' %}
                 <span class="status-badge neutral">No date</span>
                 {% else %}
-                <span class="status-badge fresh"><i class="fas fa-check"></i> Fresh</span>
+                <span class="status-badge fresh">{{ icon('check') }} Fresh</span>
                 {% endif %}
             </td>
             <td>

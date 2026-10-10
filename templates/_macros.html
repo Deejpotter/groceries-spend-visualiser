@@ -1,7 +1,12 @@
-{# Shared template helpers. Import with: {% from "_macros.html" import csrf, post_button, form_errors %} #}
+{# Shared template helpers. Import with: {% from "_macros.html" import csrf, post_button, form_errors, icon %} #}
 
 {% macro csrf() -%}
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+{%- endmacro %}
+
+{# Inline SVG icon from the sprite in _icons.html (Lucide glyphs). #}
+{% macro icon(name, cls="") -%}
+<svg class="ic {{ cls }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-{{ name }}"></use></svg>
 {%- endmacro %}
 
 {# Inline validation errors, shown at the top of the form that failed. #}
@@ -15,13 +20,14 @@
 {% endif %}
 {%- endmacro %}
 
-{# A one-button POST form for destructive/state-changing actions (never a GET link). #}
-{% macro post_button(action, label, class="btn btn-sm btn-outline-danger", confirm=None, icon=None, title=None) -%}
+{# A one-button POST form for destructive/state-changing actions (never a GET link).
+   glyph takes a Lucide sprite name ('x' for the remove cross). #}
+{% macro post_button(action, label, class="btn btn-sm btn-outline-danger", confirm=None, glyph=None, title=None) -%}
 <form method="post" action="{{ action }}" class="d-inline"
       {% if confirm %}onsubmit="return confirm({{ confirm|tojson|forceescape }})"{% endif %}>
     {{ csrf() }}
     <button type="submit" class="{{ class }}"{% if title %} title="{{ title }}"{% if not label %} aria-label="{{ title }}"{% endif %}{% endif %}>
-        {%- if icon %}<i class="fas fa-{{ icon }}"></i>{% if label %} {% endif %}{% endif %}{{ label -}}
+        {%- if glyph %}{{ icon('x' if glyph == 'times' else glyph) }}{% if label %} {% endif %}{% endif %}{{ label -}}
     </button>
 </form>
 {%- endmacro %}
