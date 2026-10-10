@@ -11,15 +11,21 @@ settings_bp = Blueprint("settings", __name__)
 @settings_bp.route("/settings")
 @login_required
 def settings():
+    return render_template("settings.html", **_settings_values())
+
+
+def _settings_values():
+    """Current settings as template values (overridable with submitted input)."""
     plan_start, plan_end = get_plan_dates()
-    return render_template(
-        "settings.html",
-        plan_start=plan_start,
-        plan_end=plan_end,
-        unit_preference=get_setting("unit_preference", "metric"),
-        default_servings=get_setting("default_servings", "2"),
-        subtract_pantry=get_setting("subtract_pantry_from_list", "0") == "1",
-    )
+    return {
+        "plan_start": plan_start,
+        "plan_end": plan_end,
+        "unit_preference": get_setting("unit_preference", "metric"),
+        "default_servings": get_setting("default_servings", "2"),
+        "subtract_pantry": get_setting("subtract_pantry_from_list", "0") == "1",
+        "errors": None,
+        "error_form": None,
+    }
 
 
 @settings_bp.route("/settings/save", methods=["POST"])
@@ -33,17 +39,22 @@ def save():
         plan_start = request.form.get("plan_start", "").strip()
         plan_end = request.form.get("plan_end", "").strip()
         start, end = parse_date(plan_start), parse_date(plan_end)
+        errors = []
         if not start or not end:
-            flash("Both dates are required.", "error")
+            errors.append("Both dates are required.")
         elif end < start:
-            flash("The end date must be on or after the start date.", "error")
+            errors.append("The end date must be on or after the start date.")
         elif (end - start).days > MAX_PLAN_DAYS:
-            flash("Plans are limited to about three months.", "error")
-        else:
-            set_setting("plan_start_date", plan_start)
-            set_setting("plan_end_date", plan_end)
-            db.commit()
-            flash("Plan dates saved.", "success")
+            errors.append("Plans are limited to about three months.")
+        if errors:
+            values = _settings_values()
+            values.update({"plan_start": plan_start, "plan_end": plan_end,
+                           "errors": errors, "error_form": "dates"})
+            return render_template("settings.html", **values)
+        set_setting("plan_start_date", plan_start)
+        set_setting("plan_end_date", plan_end)
+        db.commit()
+        flash("Plan dates saved.", "success")
 
     elif action == "save_prefs":
         unit_preference = request.form.get("unit_preference", "metric")
@@ -51,8 +62,15 @@ def save():
         if unit_preference not in ("metric", "imperial"):
             unit_preference = "metric"
         if not default_servings or default_servings < 1:
-            flash("Default servings must be at least 1.", "error")
-            return redirect(url_for("settings.settings"))
+            values = _settings_values()
+            values.update({
+                "unit_preference": unit_preference,
+                "default_servings": request.form.get("default_servings", ""),
+                "subtract_pantry": bool(request.form.get("subtract_pantry")),
+                "errors": ["Default servings must be at least 1."],
+                "error_form": "prefs",
+            })
+            return render_template("settings.html", **values)
         set_setting("unit_preference", unit_preference)
         set_setting("default_servings", default_servings)
         set_setting("subtract_pantry_from_list", 1 if request.form.get("subtract_pantry") else 0)

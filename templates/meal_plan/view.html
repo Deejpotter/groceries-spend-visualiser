@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import csrf, post_button %}
+{% from "_macros.html" import csrf, post_button, form_errors %}
 
 {% block title %}Meal Plan — Grocery Visualiser{% endblock %}
 
@@ -232,11 +232,12 @@
 
 <div class="card mt-3" id="rule-form">
     <div class="card-header">
-        <h5 class="mb-0">{{ 'Edit Rule' if editing_rule else 'Add Rule' }}</h5>
+        <h5 class="mb-0">{{ 'Edit Rule' if editing_rule and editing_rule.id else 'Add Rule' }}</h5>
     </div>
     <div class="card-body">
-        <form method="post" action="{{ url_for('meal_plan.meal_rule_form', rule_id=editing_rule.id) if editing_rule else url_for('meal_plan.meal_rule_form') }}">
+        <form method="post" action="{{ url_for('meal_plan.meal_rule_form', rule_id=editing_rule.id) if editing_rule and editing_rule.id else url_for('meal_plan.meal_rule_form') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {{ form_errors(rule_errors) }}
             <div class="row">
                 <div class="col-md-6">
                     <div class="form-group">

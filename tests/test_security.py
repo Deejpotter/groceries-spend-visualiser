@@ -18,7 +18,9 @@ def test_setup_cannot_reset_existing_admin(client, db):
     assert "/login" in resp.headers["Location"]
     # Original password still works; the attacker's doesn't.
     bad = client.post("/login", data={"username": "admin", "password": "hijacked-pass"})
-    assert "/login" in bad.headers["Location"]
+    assert bad.status_code == 200
+    assert b"Invalid username or password." in bad.data
+    assert b'value="admin"' in bad.data
     good = client.post("/login", data={"username": "admin", "password": "original-pass"})
     assert good.headers["Location"].endswith("/")
 
