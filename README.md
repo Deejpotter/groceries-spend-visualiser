@@ -33,7 +33,10 @@ items and ticks survive a regenerate. Print-friendly.
 order — there is no CSV export, so the PDF is the source), a transaction CSV
 exported from NetBank, or sync automatically from BankSync (API key in
 Settings → Bank Imports; pulls new transactions from every connected account,
-CommBank included, via Open Banking). Bank rows import as one purchase per shop
+CommBank included, via Open Banking). The spend dashboard syncs in the
+background at most once every 24 hours; schedule
+`flask --app app banksync-sync` (Task Scheduler/cron) for more frequent syncs.
+Bank rows import as one purchase per shop
 and are classified by editable merchant patterns; rows that look like a
 duplicate of a purchase you already have (same store, date and total — from any
 source) are listed for review rather than silently imported. The spend dashboard

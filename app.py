@@ -318,6 +318,26 @@ def create_app(testing=False):
         for table, count in stats["counts"].items():
             print(f"{table:24} {count}")
 
+    @application.cli.command("banksync-sync")
+    def banksync_sync_command():
+        """Pull new BankSync transactions (for Task Scheduler/cron)."""
+        from datetime import datetime as _dt
+        from services.banksync_client import (
+            BankSyncError, run_sync,
+        )
+        from database import get_setting
+        if not get_setting("banksync_api_key"):
+            print("No BankSync API key set — add one under "
+                  "Settings → Bank Imports.")
+            return
+        try:
+            result = run_sync(get_db())
+            print(f"Imported {result['added']} purchase(s); "
+                  f"{len(result['duplicates'])} duplicate(s) skipped; "
+                  f"{len(result['unclassified'])} unclassified row(s).")
+        except BankSyncError as exc:
+            print(f"BankSync sync failed: {exc}")
+
     return application
 
 

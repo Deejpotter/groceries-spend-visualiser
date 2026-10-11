@@ -2,8 +2,10 @@
 
 import io
 import json
+import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 
 import pytest
 
@@ -198,3 +200,79 @@ def test_banksync_sync_route_api_error(client, db, monkeypatch):
     resp = client.post("/spend/banksync/sync")
     assert resp.status_code == 302  # error flash, nothing imported
     assert db.execute("SELECT COUNT(*) FROM purchases").fetchone()[0] == 0
+
+
+def test_auto_sync_due():
+    from routes.spend import _auto_sync_due
+    now = datetime(2026, 10, 11, 12, 0)
+    assert _auto_sync_due(None, now) is True
+    assert _auto_sync_due("garbage", now) is True
+    assert _auto_sync_due("2026-10-11T11:00:00", now) is False
+    assert _auto_sync_due("2026-10-10T11:00:00", now) is True
+
+
+def _set_key(db):
+    db.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+        ("banksync_api_key", "bsk_test"))
+    db.commit()
+
+
+def test_dashboard_auto_syncs_in_background(client, db, monkeypatch):
+    login(client)
+    _set_key(db)
+    monkeypatch.setattr(
+        "services.banksync_client.BankSyncClient",
+        lambda api_key: FakeBankSync([TXN_WOOLWORTHS]))
+    client.get("/spend")
+    for _ in range(50):  # the sync runs on a background thread
+        if db.execute(
+            "SELECT COUNT(*) FROM purchases WHERE origin = 'banksync'"
+        ).fetchone()[0]:
+            break
+        time.sleep(0.1)
+    assert db.execute(
+        "SELECT COUNT(*) FROM purchases WHERE origin = 'banksync'"
+    ).fetchone()[0] == 1
+
+
+def test_dashboard_skips_auto_sync_when_fresh(client, db, monkeypatch):
+    login(client)
+    _set_key(db)
+    db.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+        ("banksync_last_sync",
+         datetime.now(timezone.utc).replace(tzinfo=None).isoformat()))
+    db.commit()
+    monkeypatch.setattr(
+        "services.banksync_client.BankSyncClient",
+        lambda api_key: FakeBankSync([TXN_WOOLWORTHS]))
+    client.get("/spend")
+    time.sleep(0.5)
+    assert db.execute(
+        "SELECT COUNT(*) FROM purchases WHERE origin = 'banksync'"
+    ).fetchone()[0] == 0
+
+
+def test_dashboard_skips_auto_sync_without_key(client, db, monkeypatch):
+    login(client)
+    monkeypatch.setattr(
+        "services.banksync_client.BankSyncClient",
+        lambda api_key: FakeBankSync([TXN_WOOLWORTHS]))
+    client.get("/spend")
+    time.sleep(0.5)
+    assert db.execute(
+        "SELECT COUNT(*) FROM purchases WHERE origin = 'banksync'"
+    ).fetchone()[0] == 0
+
+
+def test_sync_stamps_last_sync(client, db, monkeypatch):
+    login(client)
+    _set_key(db)
+    monkeypatch.setattr(
+        "services.banksync_client.BankSyncClient",
+        lambda api_key: FakeBankSync([TXN_WOOLWORTHS]))
+    client.post("/spend/banksync/sync")
+    assert db.execute(
+        "SELECT value FROM settings WHERE key = 'banksync_last_sync'"
+    ).fetchone() is not None
