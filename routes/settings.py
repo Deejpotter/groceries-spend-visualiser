@@ -26,6 +26,7 @@ def _settings_values():
         "default_servings": get_setting("default_servings", "2"),
         "subtract_pantry": get_setting("subtract_pantry_from_list", "0") == "1",
         "bank_merchant_patterns": get_setting("bank_merchant_patterns") or default_patterns,
+        "monthly_budget": get_setting("monthly_budget", ""),
         "errors": None,
         "error_form": None,
     }
@@ -103,6 +104,27 @@ def save():
         set_setting("bank_merchant_patterns", patterns.strip())
         db.commit()
         flash("Bank import settings saved.", "success")
+
+    elif action == "save_budget":
+        raw = request.form.get("monthly_budget", "").strip()
+        if not raw:
+            set_setting("monthly_budget", "")
+            db.commit()
+            flash("Budget target cleared.", "success")
+            return redirect(url_for("settings.settings"))
+        try:
+            target = float(raw.replace("$", "").replace(",", ""))
+        except ValueError:
+            target = None
+        if target is None or target <= 0:
+            values = _settings_values()
+            values.update({"monthly_budget": raw,
+                           "errors": ["Enter a dollar amount above zero."],
+                           "error_form": "budget"})
+            return render_template("settings.html", **values)
+        set_setting("monthly_budget", f"{target:.2f}")
+        db.commit()
+        flash("Budget target saved.", "success")
 
     elif action == "test_banksync":
         from services.banksync_client import BankSyncClient, BankSyncError
