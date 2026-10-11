@@ -3,8 +3,8 @@
 import pytest
 
 from services.mutations import (
-    add_manual_item, add_stock, consume_stock, place_meal, remove_meal, set_tick, set_ticks,
-    swap_meal, update_stock,
+    AgentError, add_manual_item, add_stock, consume_stock, place_meal, remove_meal, set_tick,
+    set_ticks, swap_meal, update_stock,
 )
 
 
@@ -31,9 +31,20 @@ def test_place_meal_replaces_and_promotes(db):
     _seed(db)
     first = place_meal(db, "2026-10-05", "dinner", 1)
     assert first["servings"] == 4  # recipe default
+    assert db.execute("SELECT origin FROM meal_plan_entries").fetchone()[0] == "ui"
     second = place_meal(db, "2026-10-05", "dinner", 2, servings=3)
     assert second["servings"] == 3
     assert db.execute("SELECT COUNT(*) FROM meal_plan_entries").fetchone()[0] == 1
+
+
+def test_agent_error_codes(db):
+    _seed(db)
+    with pytest.raises(AgentError) as excinfo:
+        swap_meal(db, 999, 1)
+    assert excinfo.value.code == "not_found"
+    with pytest.raises(AgentError) as excinfo:
+        place_meal(db, "2026-10-05", "dinner", 1, servings=0)
+    assert excinfo.value.code == "validation"
 
 
 def test_swap_and_remove_meal(db):

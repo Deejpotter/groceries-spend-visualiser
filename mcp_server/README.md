@@ -32,6 +32,11 @@ Writes share `services/mutations.py` with the web routes, so both faces
 stay consistent. Imports stay review-gated: there is no tool for them —
 stage in the UI and confirm there.
 
+Failures return `{"error": {"code", "message"}}` with codes `not_found`,
+`validation`, `no_plan_dates` and `internal`. Every mutation stamps an
+`origin` (`ui` from the web, `mcp` from here); reads surface it so you can
+see who changed what.
+
 ## Run it
 
 ```bash

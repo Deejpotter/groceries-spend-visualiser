@@ -138,9 +138,9 @@ def import_purchases(db, rows: Iterable[Dict]) -> Tuple[int, int]:
         cur = db.execute(
             """INSERT OR IGNORE INTO purchases
                (order_date, basket_id, store, channel, product_name, quantity, unit_price,
-                line_total, cup_price, stockcode, ingredient_id)
+                line_total, cup_price, stockcode, ingredient_id, origin)
                VALUES (:order_date, :basket_id, :store, :channel, :product_name, :quantity, :unit_price,
-                       :line_total, :cup_price, :stockcode, :ingredient_id)""",
+                       :line_total, :cup_price, :stockcode, :ingredient_id, 'ui')""",
             {**row, "ingredient_id": links.get(row["product_name"])},
         )
         if cur.rowcount:
@@ -459,8 +459,8 @@ def commit_import_batch(db, token: str) -> Tuple[int, int]:
             continue
         cur = db.execute(
             "INSERT OR IGNORE INTO purchases (order_date, basket_id, store, product_name,"
-            " quantity, unit_price, line_total, ingredient_id)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            " quantity, unit_price, line_total, ingredient_id, origin)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ui')",
             (batch["order_date"], batch["invoice_number"], batch["store"], line["product_name"],
              line["quantity"], line["unit_price"], line["line_total"],
              links.get(line["product_name"])),

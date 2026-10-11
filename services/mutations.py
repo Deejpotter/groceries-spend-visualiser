@@ -1,9 +1,8 @@
 """Shared write operations for plans, lists and pantry stock.
 
 Pure-ish helpers over an explicit db handle: routes and the MCP server are
-thin wrappers that add flashes / structured errors. Validation failures
-raise ValueError with the user-facing message (pantry validators raise
-ValidationError carrying every problem at once).
+thin wrappers that add flashes / structured errors. Failures raise AgentError
+(code + user-facing message); pantry validators report every problem at once.
 """
 
 from typing import Dict, List, Optional, Tuple
@@ -11,11 +10,17 @@ from typing import Dict, List, Optional, Tuple
 from models import CATEGORY_LOOKUP, MEAL_TYPES, UNIT_LOOKUP, short_name, validate_date_format
 
 
-class ValidationError(ValueError):
-    """Validation failure carrying every problem (pantry forms show them all)."""
+class AgentError(ValueError):
+    """Machine-readable failure: code + user-facing message(s).
 
-    def __init__(self, messages):
-        self.messages = list(messages)
+    Codes: "not_found" (missing row/reference), "validation" (bad input),
+    "no_plan_dates" (plan tools without a range). Routes catch ValueError
+    and flash the message; the MCP server maps code/message structurally.
+    """
+
+    def __init__(self, code: str, message):
+        self.code = code
+        self.messages = [message] if isinstance(message, str) else list(message)
         super().__init__("; ".join(self.messages))
 
 
@@ -23,20 +28,21 @@ def _recipe_or_raise(db, recipe_id) -> Dict:
     recipe = db.execute(
         "SELECT id, name, servings FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
     if not recipe:
-        raise ValueError("Choose a recipe to add.")
+        raise AgentError("validation", "Choose a recipe to add.")
     return recipe
 
 
 def place_meal(db, date: str, meal_type: str, recipe_id: Optional[int],
-               servings: Optional[int] = None, default_servings: int = 2) -> Dict:
+               servings: Optional[int] = None, default_servings: int = 2,
+               origin: str = "ui") -> Dict:
     """Manually place a recipe in a slot (replaces whatever is there)."""
     if not validate_date_format(date or "") or (meal_type or "") not in MEAL_TYPES or not recipe_id:
-        raise ValueError("Choose a recipe to add.")
+        raise AgentError("validation", "Choose a recipe to add.")
     recipe = _recipe_or_raise(db, recipe_id)
     if servings is None:
         servings = recipe["servings"] or default_servings
     if servings < 1:
-        raise ValueError("Servings must be at least 1.")
+        raise AgentError("validation", "Servings must be at least 1.")
     existing = db.execute(
         "SELECT id, is_continuation FROM meal_plan_entries WHERE date = ? AND meal_type = ?",
         (date, meal_type),
@@ -52,9 +58,9 @@ def place_meal(db, date: str, meal_type: str, recipe_id: Optional[int],
         replaced_continuation = True
     db.execute("DELETE FROM meal_plan_entries WHERE date = ? AND meal_type = ?", (date, meal_type))
     cur = db.execute(
-        "INSERT INTO meal_plan_entries (date, meal_type, recipe_id, servings, is_auto_generated)"
-        " VALUES (?, ?, ?, ?, 0)",
-        (date, meal_type, recipe_id, servings),
+        "INSERT INTO meal_plan_entries (date, meal_type, recipe_id, servings, is_auto_generated, origin)"
+        " VALUES (?, ?, ?, ?, 0, ?)",
+        (date, meal_type, recipe_id, servings, origin),
     )
     db.commit()
     return {"entry_id": cur.lastrowid, "recipe": recipe["name"], "servings": servings,
@@ -62,19 +68,19 @@ def place_meal(db, date: str, meal_type: str, recipe_id: Optional[int],
 
 
 def swap_meal(db, entry_id: int, new_recipe_id: Optional[int],
-              servings: Optional[int] = None) -> Dict:
+              servings: Optional[int] = None, origin: str = "ui") -> Dict:
     """Replace a plan entry's recipe (marks it manual)."""
     entry = db.execute("SELECT * FROM meal_plan_entries WHERE id = ?", (entry_id,)).fetchone()
     if not entry:
-        raise ValueError("Entry not found.")
+        raise AgentError("not_found", "Entry not found.")
     recipe = db.execute(
         "SELECT id, name FROM recipes WHERE id = ?", (new_recipe_id,)).fetchone()
     if not new_recipe_id or not recipe:
-        raise ValueError("No recipe selected.")
+        raise AgentError("validation", "No recipe selected.")
     if servings is None:
         servings = entry["servings"]
     if servings < 1:
-        raise ValueError("Servings must be at least 1.")
+        raise AgentError("validation", "Servings must be at least 1.")
     if not entry["is_continuation"]:
         db.execute(
             "UPDATE meal_plan_entries SET is_continuation = 0, continuation_of = NULL "
@@ -83,8 +89,8 @@ def swap_meal(db, entry_id: int, new_recipe_id: Optional[int],
         )
     db.execute(
         "UPDATE meal_plan_entries SET recipe_id = ?, servings = ?, is_auto_generated = 0, "
-        "is_continuation = 0, continuation_of = NULL WHERE id = ?",
-        (new_recipe_id, servings, entry_id),
+        "is_continuation = 0, continuation_of = NULL, origin = ? WHERE id = ?",
+        (new_recipe_id, servings, origin, entry_id),
     )
     db.commit()
     return {"entry_id": entry_id, "recipe": recipe["name"], "servings": servings}
@@ -104,47 +110,47 @@ def remove_meal(db, entry_id: int) -> Dict:
     return {"removed": entry_id}
 
 
-def set_tick(db, item_id: int, checked: bool) -> Dict:
+def set_tick(db, item_id: int, checked: bool, origin: str = "ui") -> Dict:
     """Set a shopping-list row's ticked state explicitly."""
     if not db.execute("SELECT 1 FROM shopping_list_items WHERE id = ?", (item_id,)).fetchone():
-        raise ValueError("Item not found.")
-    db.execute("UPDATE shopping_list_items SET checked = ? WHERE id = ?",
-               (1 if checked else 0, item_id))
+        raise AgentError("not_found", "Item not found.")
+    db.execute("UPDATE shopping_list_items SET checked = ?, origin = ? WHERE id = ?",
+               (1 if checked else 0, origin, item_id))
     db.commit()
     return {"item_id": item_id, "checked": bool(checked)}
 
 
 def add_manual_item(db, name: str, quantity: Optional[float],
-                    unit: str = "each", category: str = "other") -> Dict:
+                    unit: str = "each", category: str = "other", origin: str = "ui") -> Dict:
     """Add a free-text row to the shopping list."""
     name = (name or "").strip()
     if not name:
-        raise ValueError("Item name is required.")
+        raise AgentError("validation", "Item name is required.")
     if quantity is None or quantity <= 0:
-        raise ValueError("Quantity must be a number greater than zero.")
+        raise AgentError("validation", "Quantity must be a number greater than zero.")
     unit = unit if unit in UNIT_LOOKUP else "each"
     category = category if category in CATEGORY_LOOKUP else "other"
     cur = db.execute(
-        """INSERT INTO shopping_list_items (ingredient_name, quantity, unit, category, checked, is_manual, recipe_ref)
-           VALUES (?, ?, ?, ?, 0, 1, '')""",
-        (name, quantity, unit, category),
+        """INSERT INTO shopping_list_items (ingredient_name, quantity, unit, category, checked, is_manual, recipe_ref, origin)
+           VALUES (?, ?, ?, ?, 0, 1, '', ?)""",
+        (name, quantity, unit, category, origin),
     )
     db.commit()
     return {"item_id": cur.lastrowid, "name": name, "quantity": quantity, "unit": unit,
             "category": category}
 
 
-def consume_stock(db, item_id: int, amount: float) -> Dict:
+def consume_stock(db, item_id: int, amount: float, origin: str = "ui") -> Dict:
     """Reduce pantry stock; returns what was used and what remains."""
     entry = db.execute("SELECT * FROM pantry_items WHERE id = ?", (item_id,)).fetchone()
     if not entry:
-        raise ValueError("Item not found.")
+        raise AgentError("not_found", "Item not found.")
     if amount is None or amount <= 0:
-        raise ValueError("Amount must be positive.")
+        raise AgentError("validation", "Amount must be positive.")
     new_qty = max(0, entry["quantity"] - amount)
     db.execute(
-        "UPDATE pantry_items SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-        (new_qty, item_id),
+        "UPDATE pantry_items SET quantity = ?, origin = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (new_qty, origin, item_id),
     )
     db.commit()
     return {"used": amount, "unit": entry["unit"], "remaining": new_qty,
@@ -172,41 +178,41 @@ def _validated_stock(db, ingredient_id, quantity, unit, expiry_date, location) -
     if not location:
         errors.append("Location is required.")
     if errors:
-        raise ValidationError(errors)
+        raise AgentError("validation", errors)
     return {"ingredient_id": ingredient["id"], "quantity": quantity, "unit": unit,
             "expiry_date": expiry_date, "location": location}
 
 
 def add_stock(db, ingredient_id, quantity, unit=None, expiry_date=None,
-              location="pantry") -> Dict:
+              location="pantry", origin: str = "ui") -> Dict:
     """Add a pantry stock row."""
     row = _validated_stock(db, ingredient_id, quantity, unit, expiry_date, location)
     cur = db.execute(
-        "INSERT INTO pantry_items (ingredient_id, quantity, unit, expiry_date, location)"
-        " VALUES (?, ?, ?, ?, ?)",
-        (row["ingredient_id"], row["quantity"], row["unit"], row["expiry_date"], row["location"]),
+        "INSERT INTO pantry_items (ingredient_id, quantity, unit, expiry_date, location, origin)"
+        " VALUES (?, ?, ?, ?, ?, ?)",
+        (row["ingredient_id"], row["quantity"], row["unit"], row["expiry_date"], row["location"], origin),
     )
     db.commit()
     return {"item_id": cur.lastrowid, **row}
 
 
 def update_stock(db, item_id: int, ingredient_id, quantity, unit=None,
-                 expiry_date=None, location="pantry") -> Dict:
+                 expiry_date=None, location="pantry", origin: str = "ui") -> Dict:
     """Replace a pantry stock row."""
     if not db.execute("SELECT 1 FROM pantry_items WHERE id = ?", (item_id,)).fetchone():
-        raise ValueError("Item not found.")
+        raise AgentError("not_found", "Item not found.")
     row = _validated_stock(db, ingredient_id, quantity, unit, expiry_date, location)
     db.execute(
         """UPDATE pantry_items SET ingredient_id=?, quantity=?, unit=?,
-           expiry_date=?, location=?, updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+           expiry_date=?, location=?, origin=?, updated_at=CURRENT_TIMESTAMP WHERE id=?""",
         (row["ingredient_id"], row["quantity"], row["unit"], row["expiry_date"],
-         row["location"], item_id),
+         row["location"], origin, item_id),
     )
     db.commit()
     return {"item_id": item_id, **row}
 
 
-def set_ticks(db, item_ids: List[int], checked: bool) -> Dict:
+def set_ticks(db, item_ids: List[int], checked: bool, origin: str = "ui") -> Dict:
     """Set the ticked state on many shopping-list rows at once."""
     ids = [int(i) for i in (item_ids or [])]
     if not ids:
@@ -216,8 +222,8 @@ def set_ticks(db, item_ids: List[int], checked: bool) -> Dict:
     missing = [i for i in ids if i not in found]
     if found:
         db.execute(
-            f"UPDATE shopping_list_items SET checked = ? WHERE id IN ({','.join('?' * len(found))})",
-            [1 if checked else 0, *sorted(found)],
+            f"UPDATE shopping_list_items SET checked = ?, origin = ? WHERE id IN ({','.join('?' * len(found))})",
+            [1 if checked else 0, origin, *sorted(found)],
         )
         db.commit()
     return {"updated": len(found), "missing": missing}
@@ -232,7 +238,7 @@ def _latest_purchase(db, product_name):
 
 
 def link_product(db, product_name: str, choice: str, update_price: bool = True,
-                 new_category: str = "other") -> Tuple[str, str, bool]:
+                 new_category: str = "other", origin: str = "ui") -> Tuple[str, str, bool]:
     """Link one product to an ingredient. Returns (level, message, price_updated)."""
     from services.spend_import import parse_cup_price, price_per_unit, product_url
     latest = _latest_purchase(db, product_name)
@@ -245,11 +251,11 @@ def link_product(db, product_name: str, choice: str, update_price: bool = True,
         price = price_per_unit(latest["cup_price"], latest["unit_price"], unit) if latest else None
         category = new_category if new_category in CATEGORY_LOOKUP else "other"
         cur = db.execute(
-            "INSERT INTO ingredients (name, display_name, category, unit, price, store, url) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO ingredients (name, display_name, category, unit, price, store, url, origin) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (product_name, short_name(product_name), category, unit, price, latest["store"] if latest else None,
-             product_url(latest["store"], latest["stockcode"]) if latest else None),
+             product_url(latest["store"], latest["stockcode"]) if latest else None, origin),
         )
-        db.execute("UPDATE purchases SET ingredient_id = ? WHERE product_name = ?", (cur.lastrowid, product_name))
+        db.execute("UPDATE purchases SET ingredient_id = ?, origin = ? WHERE product_name = ?", (cur.lastrowid, origin, product_name))
         db.commit()
         return "success", f"Created ingredient “{product_name}” in {CATEGORY_LOOKUP.get(category, category)}.", False
     if choice:
@@ -275,9 +281,9 @@ def link_product(db, product_name: str, choice: str, update_price: bool = True,
                 level = "warning"
         else:
             note, level = "Product linked.", "success"
-        db.execute("UPDATE purchases SET ingredient_id = ? WHERE product_name = ?", (ingredient_id, product_name))
+        db.execute("UPDATE purchases SET ingredient_id = ?, origin = ? WHERE product_name = ?", (ingredient_id, origin, product_name))
         db.commit()
         return level, note, price_updated
-    db.execute("UPDATE purchases SET ingredient_id = NULL WHERE product_name = ?", (product_name,))
+    db.execute("UPDATE purchases SET ingredient_id = NULL, origin = ? WHERE product_name = ?", (origin, product_name,))
     db.commit()
     return "info", "Product unlinked.", False

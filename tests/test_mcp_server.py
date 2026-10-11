@@ -3,6 +3,7 @@
 import pytest
 
 from database import get_db, set_setting
+from services.mutations import AgentError
 from mcp_server.server import (
     add_list_item, add_meal, add_stock, generate_plan, get_recipe, import_status, link_product,
     list_ingredients, list_rules, pantry_status, remove_meal, server_info, set_item_ticked,
@@ -42,7 +43,8 @@ def test_week_plan_lists_meals(db):
     monday = plan["days"][0]
     assert monday["date"] == "2026-10-05"
     assert monday["meals"]["dinner"] == {
-        "recipe": "Bolognese", "servings": 4, "manual": True, "leftovers": False}
+        "recipe": "Bolognese", "servings": 4, "manual": True, "leftovers": False,
+        "origin": "ui"}
     assert plan["days"][1]["meals"] == {}
 
 
@@ -91,7 +93,9 @@ def test_search_ingredients_and_read_recipe(db):
     assert by_id["name"] == "Bolognese"
     assert by_id["recipe_ingredients"][0]["quantity"] == 500
     assert get_recipe("Bolognese")["name"] == "Bolognese"
-    assert "error" in get_recipe("Nope")
+    with pytest.raises(AgentError) as excinfo:
+        get_recipe("Nope")
+    assert excinfo.value.code == "not_found"
 
 
 def test_require_api_key_gate(db, monkeypatch):
@@ -112,16 +116,30 @@ def test_mcp_meal_writes_round_trip(db):
     _set_dates(db)
     placed = add_meal("2026-10-05", "dinner", "Bolognese")
     assert placed["servings"] == 4
+    assert db.execute("SELECT origin FROM meal_plan_entries").fetchone()[0] == "mcp"
     swapped = swap_meal(placed["entry_id"], "Bolognese", servings=6)
     assert swapped["servings"] == 6
     assert remove_meal(placed["entry_id"])["removed"] == placed["entry_id"]
-    with pytest.raises(ValueError, match="No recipe found"):
+    with pytest.raises(AgentError, match="No recipe found"):
         add_meal("2026-10-05", "dinner", "Nope")
+
+
+def test_error_codes_and_safe_shape(db):
+    from mcp_server.server import _safe
+    assert _safe(get_recipe, ref="Nope") == {
+        "error": {"code": "not_found", "message": "No recipe found for 'Nope'."}}
+    assert week_plan()["days"] == []
+    _seed(db)
+    _set_dates(db)
+    add_meal("2026-10-05", "dinner", "Bolognese")
+    assert week_plan()["days"][0]["meals"]["dinner"]["origin"] == "mcp"
 
 
 def test_mcp_generate_preview_then_confirm(db):
     _seed(db)
-    assert generate_plan()["error"] == "No plan dates set."
+    with pytest.raises(AgentError) as excinfo:
+        generate_plan()
+    assert excinfo.value.code == "no_plan_dates"
     _set_dates(db)
     db.execute("INSERT INTO meal_rules (day_of_week, meal_type, is_active, sort_order)"
                " VALUES ('mon', 'dinner', 1, 0)")
@@ -200,5 +218,9 @@ def test_mcp_stage_and_status_invoice(db):
     status = import_status(staged["token"])
     assert status["read_total"] == staged["read_total"]
     assert all("product_name" in line for line in status["lines"])
-    assert import_status("bogus")["error"]
-    assert stage_invoice_pdf("!!!not-base64!!!")["error"]
+    with pytest.raises(AgentError) as excinfo:
+        import_status("bogus")
+    assert excinfo.value.code == "not_found"
+    with pytest.raises(AgentError) as excinfo:
+        stage_invoice_pdf("!!!not-base64!!!")
+    assert excinfo.value.code == "validation"
