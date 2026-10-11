@@ -53,7 +53,7 @@ def week_plan() -> dict:
         return {"plan_start": None, "plan_end": None, "days": []}
     entries = {(e["date"], e["meal_type"]): e for e in _rows(
         """SELECT mpe.date, mpe.meal_type, mpe.servings, mpe.is_auto_generated,
-                  mpe.is_continuation, r.name AS recipe_name
+                  mpe.is_continuation, mpe.origin, r.name AS recipe_name
            FROM meal_plan_entries mpe JOIN recipes r ON r.id = mpe.recipe_id
            WHERE mpe.date BETWEEN ? AND ?""",
         (start_str, end_str),
@@ -70,6 +70,7 @@ def week_plan() -> dict:
                 "servings": entry["servings"],
                 "manual": not entry["is_auto_generated"],
                 "leftovers": bool(entry["is_continuation"]),
+                "origin": entry.get("origin") or "ui",
             }
         days.append({
             "date": key,
@@ -95,6 +96,7 @@ def shopping_list() -> dict:
             "manual": bool(row["is_manual"]),
             "buy": pick.get("name"),
             "line_cost": row.get("line_cost"),
+            "origin": row.get("origin") or "ui",
         })
     unit_pref, subtract = shopping_preferences()
     return {"groups": groups, "totals": list_totals(rows),
@@ -105,7 +107,7 @@ def pantry_status() -> dict:
     """Pantry alerts (expired/expiring/low) plus the watch list."""
     from services import dashboard as dash
     items = _rows(
-        """SELECT p.id, p.quantity, p.unit, p.expiry_date, i.name, i.display_name,
+        """SELECT p.id, p.quantity, p.unit, p.expiry_date, p.origin, i.name, i.display_name,
                   i.minimum_stock, i.category
            FROM pantry_items p JOIN ingredients i ON p.ingredient_id = i.id""")
     return dash.pantry_alerts(items)
@@ -152,6 +154,7 @@ def list_ingredients(search: str = "") -> dict:
 def get_recipe(ref: str) -> dict:
     """One recipe with its ingredients, by id or exact name."""
     from routes.recipes import get_recipe_with_ingredients
+    from services.mutations import AgentError
     recipe = None
     if ref.isdigit():
         recipe, _ = get_recipe_with_ingredients(int(ref))
@@ -160,12 +163,13 @@ def get_recipe(ref: str) -> dict:
         if row:
             recipe, _ = get_recipe_with_ingredients(row[0]["id"])
     if recipe is None:
-        return {"error": f"No recipe found for {ref!r}."}
+        raise AgentError("not_found", f"No recipe found for {ref!r}.")
     return recipe
 
 
 def _resolve_recipe_id(db, ref: str) -> int:
-    """Recipe id from an id string or exact name; raises ValueError when unknown."""
+    """Recipe id from an id string or exact name; raises AgentError when unknown."""
+    from services.mutations import AgentError
     ref = (ref or "").strip()
     if ref.isdigit():
         row = db.execute("SELECT id FROM recipes WHERE id = ?", (int(ref),)).fetchone()
@@ -175,11 +179,12 @@ def _resolve_recipe_id(db, ref: str) -> int:
         row = db.execute("SELECT id FROM recipes WHERE name = ?", (ref,)).fetchone()
         if row:
             return row["id"]
-    raise ValueError(f"No recipe found for {ref!r}.")
+    raise AgentError("not_found", f"No recipe found for {ref!r}.")
 
 
 def _resolve_ingredient_id(db, ref: str) -> int:
-    """Ingredient id from an id string or exact name; raises ValueError when unknown."""
+    """Ingredient id from an id string or exact name; raises AgentError when unknown."""
+    from services.mutations import AgentError
     ref = (ref or "").strip()
     if ref.isdigit():
         row = db.execute("SELECT id FROM ingredients WHERE id = ?", (int(ref),)).fetchone()
@@ -189,7 +194,7 @@ def _resolve_ingredient_id(db, ref: str) -> int:
         row = db.execute("SELECT id FROM ingredients WHERE name = ?", (ref,)).fetchone()
         if row:
             return row["id"]
-    raise ValueError(f"No ingredient found for {ref!r}.")
+    raise AgentError("not_found", f"No ingredient found for {ref!r}.")
 
 
 SERVER_VERSION = "0.3.0"
@@ -215,14 +220,14 @@ def add_stock(ingredient: str, quantity: float, unit: str = "",
     from services.mutations import add_stock as _insert
     db = get_db()
     return _insert(db, _resolve_ingredient_id(db, ingredient), quantity,
-                   unit=unit, expiry_date=expiry_date, location=location)
+                   unit=unit, expiry_date=expiry_date, location=location, origin="mcp")
 
 
 def tick_many(item_ids: list, checked: bool = True) -> dict:
     """Tick or untick many shopping-list rows at once."""
     from database import get_db
     from services.mutations import set_ticks
-    return set_ticks(get_db(), [int(i) for i in (item_ids or [])], checked)
+    return set_ticks(get_db(), [int(i) for i in (item_ids or [])], checked, origin="mcp")
 
 
 def link_product(product: str, ingredient: str = "", update_price: bool = True,
@@ -235,7 +240,8 @@ def link_product(product: str, ingredient: str = "", update_price: bool = True,
     if choice not in ("", "new"):
         choice = str(_resolve_ingredient_id(db, choice))
     level, message, price_updated = _link(db, (product or "").strip(), choice,
-                                          update_price, (new_category or "").strip() or "other")
+                                          update_price, (new_category or "").strip() or "other",
+                                          origin="mcp")
     return {"level": level, "message": message, "price_updated": price_updated}
 
 
@@ -250,10 +256,13 @@ def stage_invoice_pdf(pdf_base64: str) -> dict:
     try:
         raw = base64.b64decode(pdf_base64, validate=True)
     except Exception:
-        return {"error": "That isn't valid base64 PDF data."}
+        from services.mutations import AgentError
+        raise AgentError("validation", "That isn't valid base64 PDF data.")
     meta, rows, warnings = parse_woolworths_invoice_pdf(raw)
     if not meta:
-        return {"error": warnings[0] if warnings else "That PDF couldn't be read as a Woolworths invoice."}
+        from services.mutations import AgentError
+        raise AgentError("validation",
+                         warnings[0] if warnings else "That PDF couldn't be read as a Woolworths invoice.")
     db = get_db()
     token = create_import_batch(db, meta, rows)
     _, lines = get_import_batch(db, token)
@@ -267,10 +276,11 @@ def stage_invoice_pdf(pdf_base64: str) -> dict:
 def import_status(token: str) -> dict:
     """A staged batch's lines and read total, for review."""
     from database import get_db
+    from services.mutations import AgentError
     from services.spend_import import get_import_batch, staged_read_total
     batch, lines = get_import_batch(get_db(), (token or "").strip())
     if not batch:
-        return {"error": "Unknown or finished import batch."}
+        raise AgentError("not_found", "Unknown or finished import batch.")
     return {"invoice_number": batch["invoice_number"], "order_date": batch["order_date"],
             "subtotal": batch["subtotal"], "status": batch["status"],
             "read_total": staged_read_total(lines),
@@ -287,7 +297,8 @@ def add_meal(date: str, meal_type: str, recipe: str, servings: int = 0) -> dict:
     db = get_db()
     return place_meal(db, date.strip(), meal_type.strip(), _resolve_recipe_id(db, recipe),
                       servings=servings or None,
-                      default_servings=int(get_setting("default_servings", "2")))
+                      default_servings=int(get_setting("default_servings", "2")),
+                      origin="mcp")
 
 
 def swap_meal(entry_id: int, recipe: str, servings: int = 0) -> dict:
@@ -295,7 +306,8 @@ def swap_meal(entry_id: int, recipe: str, servings: int = 0) -> dict:
     from database import get_db
     from services.mutations import swap_meal as _swap
     db = get_db()
-    return _swap(db, entry_id, _resolve_recipe_id(db, recipe), servings=servings or None)
+    return _swap(db, entry_id, _resolve_recipe_id(db, recipe), servings=servings or None,
+                 origin="mcp")
 
 
 def remove_meal(entry_id: int) -> dict:
@@ -312,7 +324,8 @@ def generate_plan(confirm: bool = False) -> dict:
     from services.repository import load_manual_entries, load_recipes, load_rules
     start, end = get_plan_dates()
     if not (start and end):
-        return {"error": "No plan dates set."}
+        from services.mutations import AgentError
+        raise AgentError("no_plan_dates", "No plan dates set.")
     if not confirm:
         manual = load_manual_entries(start, end)
         entries, error = generate_plan_entries(
@@ -333,21 +346,21 @@ def set_item_ticked(item_id: int, checked: bool = True) -> dict:
     """Tick or untick a shopping-list row."""
     from database import get_db
     from services.mutations import set_tick
-    return set_tick(get_db(), item_id, checked)
+    return set_tick(get_db(), item_id, checked, origin="mcp")
 
 
 def add_list_item(name: str, quantity: float, unit: str = "each", category: str = "other") -> dict:
     """Add a free-text row to the shopping list."""
     from database import get_db
     from services.mutations import add_manual_item
-    return add_manual_item(get_db(), name, quantity, unit=unit, category=category)
+    return add_manual_item(get_db(), name, quantity, unit=unit, category=category, origin="mcp")
 
 
 def use_pantry_stock(item_id: int, amount: float) -> dict:
     """Use up pantry stock; reports what remains."""
     from database import get_db
     from services.mutations import consume_stock
-    return consume_stock(get_db(), item_id, amount)
+    return consume_stock(get_db(), item_id, amount, origin="mcp")
 
 
 # ---------------------------------------------------------------------------
@@ -355,10 +368,13 @@ def use_pantry_stock(item_id: int, amount: float) -> dict:
 # ---------------------------------------------------------------------------
 
 def _safe(fn, **kwargs):
+    from services.mutations import AgentError
     try:
         return fn(**kwargs)
+    except AgentError as exc:
+        return {"error": {"code": exc.code, "message": str(exc)}}
     except Exception as exc:  # structured error, like the day-planner server
-        return {"error": f"{type(exc).__name__}: {exc}"}
+        return {"error": {"code": "internal", "message": f"{type(exc).__name__}: {exc}"}}
 
 
 @mcp.tool()

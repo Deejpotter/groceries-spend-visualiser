@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS ingredients (
     store TEXT,
     minimum_stock REAL DEFAULT 0,
     pack_size REAL,
+    origin TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -111,6 +112,7 @@ CREATE TABLE IF NOT EXISTS meal_plan_entries (
     is_continuation INTEGER DEFAULT 0,
     continuation_of INTEGER,
     source_rule_id INTEGER,
+    origin TEXT,
     FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE
 );
 
@@ -127,6 +129,7 @@ CREATE TABLE IF NOT EXISTS shopping_list_items (
     ingredient_id INTEGER,
     estimated_cost REAL,
     pack_pick TEXT,
+    origin TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -137,6 +140,7 @@ CREATE TABLE IF NOT EXISTS pantry_items (
     unit TEXT NOT NULL,
     expiry_date TEXT,
     location TEXT DEFAULT 'pantry',
+    origin TEXT,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (ingredient_id) REFERENCES ingredients(id) ON DELETE CASCADE
 );
@@ -154,6 +158,7 @@ CREATE TABLE IF NOT EXISTS purchases (
     cup_price TEXT,
     stockcode TEXT,
     ingredient_id INTEGER,
+    origin TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (store, basket_id, product_name),
     FOREIGN KEY (ingredient_id) REFERENCES ingredients(id) ON DELETE SET NULL
@@ -201,6 +206,11 @@ MIGRATIONS = [
     ("ingredients", "pack_size", "REAL"),
     ("ingredients", "display_name", "TEXT"),
     ("shopping_list_items", "pack_pick", "TEXT"),
+    ("ingredients", "origin", "TEXT"),
+    ("meal_plan_entries", "origin", "TEXT"),
+    ("shopping_list_items", "origin", "TEXT"),
+    ("pantry_items", "origin", "TEXT"),
+    ("purchases", "origin", "TEXT"),
 ]
 
 

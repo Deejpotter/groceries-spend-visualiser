@@ -5,7 +5,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 from database import get_db
 from auth import login_required
 from models import category_label, today as local_today
-from services.mutations import ValidationError
+from services.mutations import AgentError
 
 pantry_bp = Blueprint("pantry", __name__)
 
@@ -100,7 +100,7 @@ def pantry_form(item_id=None):
                 add_stock(db, ingredient_id, quantity, unit=unit,
                           expiry_date=expiry_date, location=location)
                 flash("Pantry item added.", "success")
-        except ValidationError as exc:
+        except AgentError as exc:
             return render_template("pantry/form.html", item=submitted,
                                    ingredients=ingredients, errors=exc.messages)
         except ValueError as exc:
