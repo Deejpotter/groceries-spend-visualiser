@@ -114,7 +114,18 @@
                             everything else is reported as unclassified and skipped.
                         </small>
                     </div>
+                    <div class="form-group">
+                        <label for="banksync_api_key">BankSync API key</label>
+                        <input type="password" class="form-control" id="banksync_api_key"
+                               name="banksync_api_key" placeholder="Saved — leave blank to keep">
+                        <small class="text-muted">
+                            Create one in BankSync under Developer Settings. Used to pull
+                            transactions from your connected banks (CommBank via Open Banking).
+                            API access needs BankSync's Standard plan or higher.
+                        </small>
+                    </div>
                     <button type="submit" name="action" value="save_bank" class="btn btn-primary">Save Bank Settings</button>
+                    <button type="submit" name="action" value="test_banksync" class="btn btn-secondary">Test BankSync Key</button>
                 </form>
             </div>
         </div>
