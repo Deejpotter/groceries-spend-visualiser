@@ -178,6 +178,53 @@ def _resolve_recipe_id(db, ref: str) -> int:
     raise ValueError(f"No recipe found for {ref!r}.")
 
 
+def _resolve_ingredient_id(db, ref: str) -> int:
+    """Ingredient id from an id string or exact name; raises ValueError when unknown."""
+    ref = (ref or "").strip()
+    if ref.isdigit():
+        row = db.execute("SELECT id FROM ingredients WHERE id = ?", (int(ref),)).fetchone()
+        if row:
+            return row["id"]
+    else:
+        row = db.execute("SELECT id FROM ingredients WHERE name = ?", (ref,)).fetchone()
+        if row:
+            return row["id"]
+    raise ValueError(f"No ingredient found for {ref!r}.")
+
+
+SERVER_VERSION = "0.3.0"
+
+
+def server_info() -> dict:
+    """Server version, plan dates and table counts — orient in one call."""
+    from database import get_db, get_plan_dates
+    db = get_db()
+    counts = {}
+    for table in ("ingredients", "recipes", "meal_rules", "meal_plan_entries",
+                  "shopping_list_items", "pantry_items", "purchases"):
+        counts[table] = db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+    start, end = get_plan_dates()
+    return {"server": "groceries", "version": SERVER_VERSION,
+            "plan_start": start or None, "plan_end": end or None, "counts": counts}
+
+
+def add_stock(ingredient: str, quantity: float, unit: str = "",
+                expiry_date: str = "", location: str = "pantry") -> dict:
+    """Add pantry stock for an ingredient (id or exact name)."""
+    from database import get_db
+    from services.mutations import add_stock as _insert
+    db = get_db()
+    return _insert(db, _resolve_ingredient_id(db, ingredient), quantity,
+                   unit=unit, expiry_date=expiry_date, location=location)
+
+
+def tick_many(item_ids: list, checked: bool = True) -> dict:
+    """Tick or untick many shopping-list rows at once."""
+    from database import get_db
+    from services.mutations import set_ticks
+    return set_ticks(get_db(), [int(i) for i in (item_ids or [])], checked)
+
+
 def add_meal(date: str, meal_type: str, recipe: str, servings: int = 0) -> dict:
     """Place a recipe in a plan slot (replaces whatever is there)."""
     from database import get_db, get_setting
@@ -355,6 +402,29 @@ def use_pantry(item_id: int, amount: float) -> dict:
     """Use up pantry stock; reports what remains."""
     with _app_ctx():
         return _safe(use_pantry_stock, item_id=item_id, amount=amount)
+
+
+@mcp.tool()
+def get_server_info() -> dict:
+    """Server version, plan dates and table counts — orient in one call."""
+    with _app_ctx():
+        return _safe(server_info)
+
+
+@mcp.tool()
+def add_pantry_stock(ingredient: str, quantity: float, unit: str = "",
+                     expiry_date: str = "", location: str = "pantry") -> dict:
+    """Add pantry stock for an ingredient (id or exact name)."""
+    with _app_ctx():
+        return _safe(add_stock, ingredient=ingredient, quantity=quantity, unit=unit,
+                     expiry_date=expiry_date, location=location)
+
+
+@mcp.tool()
+def tick_items(item_ids: list, checked: bool = True) -> dict:
+    """Tick or untick many shopping-list rows at once."""
+    with _app_ctx():
+        return _safe(tick_many, item_ids=item_ids, checked=checked)
 
 
 # ---------------------------------------------------------------------------

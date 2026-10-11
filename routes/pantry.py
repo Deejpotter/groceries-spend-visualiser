@@ -4,7 +4,8 @@ from datetime import datetime
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from database import get_db
 from auth import login_required
-from models import UNIT_LOOKUP, category_label, today as local_today, validate_date_format
+from models import category_label, today as local_today
+from services.mutations import ValidationError
 
 pantry_bp = Blueprint("pantry", __name__)
 
@@ -69,6 +70,7 @@ def pantry_form(item_id=None):
     ingredients = db.execute("SELECT id, name, display_name, unit, category FROM ingredients ORDER BY name").fetchall()
 
     if request.method == "POST":
+        from services.mutations import add_stock, update_stock
         ingredient_id = request.form.get("ingredient_id", type=int)
         raw_quantity = request.form.get("quantity", "").strip()
         try:
@@ -78,21 +80,6 @@ def pantry_form(item_id=None):
         unit = request.form.get("unit", "").strip()
         expiry_date = request.form.get("expiry_date", "").strip() or None
         location = request.form.get("location", "pantry").strip()
-
-        ingredient = db.execute("SELECT unit FROM ingredients WHERE id = ?", (ingredient_id,)).fetchone() if ingredient_id else None
-        errors = []
-        if not ingredient:
-            errors.append("Ingredient is required.")
-        if quantity is None:
-            errors.append("Quantity must be a number.")
-        elif quantity <= 0:
-            errors.append("Quantity must be greater than zero.")
-        if unit and unit not in UNIT_LOOKUP:
-            errors.append("Choose a valid unit.")
-        if expiry_date and not validate_date_format(expiry_date):
-            errors.append("Expiry date must be a valid date.")
-        if not location:
-            errors.append("Location is required.")
 
         submitted = {
             "id": item_id,
@@ -104,26 +91,21 @@ def pantry_form(item_id=None):
         }
         if item_id and existing:
             submitted = {**dict(existing), **submitted}
-        if errors:
-            return render_template("pantry/form.html", item=submitted, ingredients=ingredients, errors=errors)
-
-        unit = unit or ingredient["unit"]
-
-        if item_id:
-            db.execute(
-                """UPDATE pantry_items SET ingredient_id=?, quantity=?, unit=?,
-                   expiry_date=?, location=?, updated_at=CURRENT_TIMESTAMP
-                   WHERE id=?""",
-                (ingredient_id, quantity, unit, expiry_date, location, item_id)
-            )
-            flash("Pantry item updated.", "success")
-        else:
-            db.execute(
-                """INSERT INTO pantry_items (ingredient_id, quantity, unit, expiry_date, location)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (ingredient_id, quantity, unit, expiry_date, location)
-            )
-            flash("Pantry item added.", "success")
+        try:
+            if item_id:
+                update_stock(db, item_id, ingredient_id, quantity, unit=unit,
+                             expiry_date=expiry_date, location=location)
+                flash("Pantry item updated.", "success")
+            else:
+                add_stock(db, ingredient_id, quantity, unit=unit,
+                          expiry_date=expiry_date, location=location)
+                flash("Pantry item added.", "success")
+        except ValidationError as exc:
+            return render_template("pantry/form.html", item=submitted,
+                                   ingredients=ingredients, errors=exc.messages)
+        except ValueError as exc:
+            return render_template("pantry/form.html", item=submitted,
+                                   ingredients=ingredients, errors=[str(exc)])
         db.commit()
         return redirect(url_for("pantry.pantry_list"))
 

@@ -4,9 +4,9 @@ import pytest
 
 from database import get_db, set_setting
 from mcp_server.server import (
-    add_list_item, add_meal, generate_plan, get_recipe, list_ingredients, list_rules,
-    pantry_status, remove_meal, set_item_ticked, shopping_list, spend_summary,
-    swap_meal, use_pantry, week_plan, require_api_key,
+    add_list_item, add_meal, add_stock, generate_plan, get_recipe, list_ingredients, list_rules,
+    pantry_status, remove_meal, server_info, set_item_ticked, shopping_list, spend_summary,
+    swap_meal, tick_many, use_pantry, week_plan, require_api_key,
 )
 
 
@@ -139,3 +139,34 @@ def test_mcp_list_and_pantry_writes(db):
     db.commit()
     used = use_pantry(1, 2.0)
     assert (used["remaining"], used["depleted"]) == (3, False)
+
+
+def test_server_info_and_bulk_ticks(db):
+    info = server_info()
+    assert info["server"] == "groceries" and info["counts"]["ingredients"] == 0
+    assert info["plan_start"] is None
+    _seed(db)
+    _set_dates(db)
+    info = server_info()
+    assert (info["plan_start"], info["counts"]["ingredients"]) == ("2026-10-05", 1)
+    for i in (1, 2):
+        db.execute("INSERT INTO shopping_list_items (ingredient_name, quantity, unit, checked, is_manual)"
+                   f" VALUES ('Item{i}', 1, 'each', 0, 0)")
+    db.commit()
+    assert tick_many([1, 2, 77], True) == {"updated": 2, "missing": [77]}
+    added = add_stock("Mince", 2)
+    assert (added["quantity"], added["unit"]) == (2, "kg")
+    with pytest.raises(ValueError, match="No ingredient found"):
+        add_stock("Nope", 1)
+
+
+def test_tool_registry_matches_expectation():
+    import asyncio
+    from mcp_server import server
+    names = sorted(t.name for t in asyncio.run(server.mcp.list_tools()))
+    assert names == sorted([
+        "get_week_plan", "get_shopping_list", "get_pantry_status", "get_spend_summary",
+        "get_rules", "search_ingredients", "read_recipe", "plan_add_meal", "plan_swap_meal",
+        "plan_remove_meal", "plan_generate", "tick_item", "add_shopping_item", "use_pantry",
+        "get_server_info", "add_pantry_stock", "tick_items",
+    ])

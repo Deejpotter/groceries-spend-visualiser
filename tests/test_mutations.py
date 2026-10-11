@@ -3,7 +3,8 @@
 import pytest
 
 from services.mutations import (
-    add_manual_item, consume_stock, place_meal, remove_meal, set_tick, swap_meal,
+    add_manual_item, add_stock, consume_stock, place_meal, remove_meal, set_tick, set_ticks,
+    swap_meal, update_stock,
 )
 
 
@@ -76,3 +77,27 @@ def test_consume_stock(db):
         consume_stock(db, 1, 0)
     with pytest.raises(ValueError, match="Item not found"):
         consume_stock(db, 999, 1)
+
+
+def test_add_and_update_stock(db):
+    _seed(db)
+    with pytest.raises(ValueError, match="Ingredient is required"):
+        add_stock(db, 99, 1)
+    with pytest.raises(ValueError, match="greater than zero"):
+        add_stock(db, 1, 0)
+    row = add_stock(db, 1, 2, expiry_date="2026-12-01", location="fridge")
+    assert (row["unit"], row["location"]) == ("kg", "fridge")  # unit defaults to ingredient's
+    updated = update_stock(db, row["item_id"], 1, 3, unit="g")
+    assert (updated["quantity"], updated["unit"]) == (3, "g")
+    with pytest.raises(ValueError, match="Item not found"):
+        update_stock(db, 999, 1, 1)
+
+
+def test_set_ticks_bulk(db):
+    for i in (1, 2, 3):
+        db.execute("INSERT INTO shopping_list_items (ingredient_name, quantity, unit, checked, is_manual)"
+                   f" VALUES ('Item{i}', 1, 'each', 0, 0)")
+    db.commit()
+    result = set_ticks(db, [1, 2, 99], True)
+    assert result == {"updated": 2, "missing": [99]}
+    assert set_ticks(db, [], True) == {"updated": 0, "missing": []}
