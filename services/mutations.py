@@ -6,9 +6,9 @@ raise ValueError with the user-facing message (pantry validators raise
 ValidationError carrying every problem at once).
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
-from models import CATEGORY_LOOKUP, MEAL_TYPES, UNIT_LOOKUP, validate_date_format
+from models import CATEGORY_LOOKUP, MEAL_TYPES, UNIT_LOOKUP, short_name, validate_date_format
 
 
 class ValidationError(ValueError):
@@ -221,3 +221,63 @@ def set_ticks(db, item_ids: List[int], checked: bool) -> Dict:
         )
         db.commit()
     return {"updated": len(found), "missing": missing}
+
+
+def _latest_purchase(db, product_name):
+    return db.execute(
+        "SELECT unit_price, cup_price, store, stockcode FROM purchases"
+        " WHERE product_name = ? ORDER BY order_date DESC LIMIT 1",
+        (product_name,),
+    ).fetchone()
+
+
+def link_product(db, product_name: str, choice: str, update_price: bool = True,
+                 new_category: str = "other") -> Tuple[str, str, bool]:
+    """Link one product to an ingredient. Returns (level, message, price_updated)."""
+    from services.spend_import import parse_cup_price, price_per_unit, product_url
+    latest = _latest_purchase(db, product_name)
+    if latest is None:
+        return "error", "No purchases found for that product.", False
+    if choice == "new":
+        # Create an ingredient named after the product, priced from the latest purchase.
+        cup = parse_cup_price(latest["cup_price"]) if latest else None
+        unit = {"g": "kg", "mL": "L"}.get(cup[2], cup[2]) if cup else "each"
+        price = price_per_unit(latest["cup_price"], latest["unit_price"], unit) if latest else None
+        category = new_category if new_category in CATEGORY_LOOKUP else "other"
+        cur = db.execute(
+            "INSERT INTO ingredients (name, display_name, category, unit, price, store, url) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (product_name, short_name(product_name), category, unit, price, latest["store"] if latest else None,
+             product_url(latest["store"], latest["stockcode"]) if latest else None),
+        )
+        db.execute("UPDATE purchases SET ingredient_id = ? WHERE product_name = ?", (cur.lastrowid, product_name))
+        db.commit()
+        return "success", f"Created ingredient “{product_name}” in {CATEGORY_LOOKUP.get(category, category)}.", False
+    if choice:
+        ingredient = db.execute("SELECT id, unit, price FROM ingredients WHERE id = ?", (choice,)).fetchone()
+        if not ingredient:
+            return "error", "Ingredient not found.", False
+        ingredient_id = ingredient["id"]
+        price_updated = False
+        if update_price and latest:
+            price = price_per_unit(latest["cup_price"], latest["unit_price"], ingredient["unit"])
+            if price is not None:
+                old_price = ingredient["price"]
+                db.execute("UPDATE ingredients SET price = ? WHERE id = ?", (price, ingredient_id))
+                price_updated = True
+                if old_price is None:
+                    note = f"Linked and set price to ${price:.2f} per {ingredient['unit']}."
+                else:
+                    note = (f"Linked and updated price ${old_price:.2f} → ${price:.2f}"
+                            f" per {ingredient['unit']}.")
+                level = "success"
+            else:
+                note = "Linked. The purchase price couldn't be converted to the ingredient's unit, so the price wasn't changed."
+                level = "warning"
+        else:
+            note, level = "Product linked.", "success"
+        db.execute("UPDATE purchases SET ingredient_id = ? WHERE product_name = ?", (ingredient_id, product_name))
+        db.commit()
+        return level, note, price_updated
+    db.execute("UPDATE purchases SET ingredient_id = NULL WHERE product_name = ?", (product_name,))
+    db.commit()
+    return "info", "Product unlinked.", False

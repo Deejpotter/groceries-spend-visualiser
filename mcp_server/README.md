@@ -24,6 +24,9 @@ exposed over MCP (stdio). Agents and humans always see the same numbers.
 | `get_server_info` | Version, plan dates, table counts — orient in one call |
 | `add_pantry_stock` | Add pantry stock for an ingredient |
 | `tick_items` | Tick/untick many rows at once |
+| `link_spend_product` | Link a product to an ingredient (or create/unlink) |
+| `stage_invoice` | Stage a base64 PDF invoice for review (imports nothing) |
+| `get_import_status` | A staged batch's lines and read total |
 
 Writes share `services/mutations.py` with the web routes, so both faces
 stay consistent. Imports stay review-gated: there is no tool for them —

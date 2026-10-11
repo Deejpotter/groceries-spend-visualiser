@@ -7,13 +7,12 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 
 from auth import login_required
 from database import get_db
-from models import CATEGORY_LOOKUP, label_of, short_name
+from models import label_of
 from services.spend_analysis import analyze_purchases, load_purchases
 from services.spend_import import (
     commit_import_batch, create_import_batch, discard_import_batch, get_import_batch,
-    import_csv_file, import_purchases, parse_cup_price, parse_purchase_csv,
-    parse_woolworths_invoice_pdf, price_per_unit, product_url, save_staged_edits,
-    staged_read_total,
+    import_csv_file, import_purchases, parse_purchase_csv,
+    parse_woolworths_invoice_pdf, save_staged_edits, staged_read_total,
 )
 
 spend_bp = Blueprint("spend", __name__)
@@ -218,16 +217,10 @@ def import_review(token):
     )
 
 
-def _latest_purchase(db, product_name):
-    return db.execute(
-        "SELECT unit_price, cup_price, store, stockcode FROM purchases WHERE product_name = ? ORDER BY order_date DESC LIMIT 1",
-        (product_name,),
-    ).fetchone()
-
-
 @spend_bp.route("/spend/products/link", methods=["POST"])
 @login_required
 def spend_link_product():
+    from services.mutations import link_product
     db = get_db()
     product_name = request.form.get("product_name", "").strip()
     back = redirect(url_for("spend.spend_products", q=request.form.get("q", ""),
@@ -235,7 +228,7 @@ def spend_link_product():
                             page=request.form.get("page", "1")))
     if not product_name:
         return back
-    level, message, _ = _apply_link(
+    level, message, _ = link_product(
         db, product_name, request.form.get("ingredient_id", "").strip(),
         bool(request.form.get("update_price")),
         request.form.get("new_category", "other").strip(),
@@ -248,6 +241,7 @@ def spend_link_product():
 @login_required
 def spend_link_batch():
     """Save every row on the products page in one request."""
+    from services.mutations import link_product
     db = get_db()
     names = request.form.getlist("product_name")
     choices = request.form.getlist("ingredient_id")
@@ -265,7 +259,7 @@ def spend_link_batch():
         if not name:
             continue
         choice = choices[i].strip() if i < len(choices) else ""
-        level, message, price_updated = _apply_link(db, name, choice, str(i) in checked, new_category)
+        level, message, price_updated = link_product(db, name, choice, str(i) in checked, new_category)
         if level == "error":
             problems.append(f"{name}: {message}")
         else:
@@ -278,56 +272,6 @@ def spend_link_batch():
     for problem in problems[:3]:
         flash(problem, "error")
     return back
-
-
-def _apply_link(db, product_name, choice, update_price, new_category="other"):
-    """Link one product to an ingredient. Returns (level, message, price_updated)."""
-    latest = _latest_purchase(db, product_name)
-    if latest is None:
-        return "error", "No purchases found for that product.", False
-    if choice == "new":
-        # Create an ingredient named after the product, priced from the latest purchase.
-        cup = parse_cup_price(latest["cup_price"]) if latest else None
-        unit = {"g": "kg", "mL": "L"}.get(cup[2], cup[2]) if cup else "each"
-        price = price_per_unit(latest["cup_price"], latest["unit_price"], unit) if latest else None
-        category = new_category if new_category in CATEGORY_LOOKUP else "other"
-        cur = db.execute(
-            "INSERT INTO ingredients (name, display_name, category, unit, price, store, url) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (product_name, short_name(product_name), category, unit, price, latest["store"] if latest else None,
-             product_url(latest["store"], latest["stockcode"]) if latest else None),
-        )
-        db.execute("UPDATE purchases SET ingredient_id = ? WHERE product_name = ?", (cur.lastrowid, product_name))
-        db.commit()
-        return "success", f"Created ingredient “{product_name}” in {CATEGORY_LOOKUP.get(category, category)}.", False
-    if choice:
-        ingredient = db.execute("SELECT id, unit, price FROM ingredients WHERE id = ?", (choice,)).fetchone()
-        if not ingredient:
-            return "error", "Ingredient not found.", False
-        ingredient_id = ingredient["id"]
-        price_updated = False
-        if update_price and latest:
-            price = price_per_unit(latest["cup_price"], latest["unit_price"], ingredient["unit"])
-            if price is not None:
-                old_price = ingredient["price"]
-                db.execute("UPDATE ingredients SET price = ? WHERE id = ?", (price, ingredient_id))
-                price_updated = True
-                if old_price is None:
-                    note = f"Linked and set price to ${price:.2f} per {ingredient['unit']}."
-                else:
-                    note = (f"Linked and updated price ${old_price:.2f} → ${price:.2f}"
-                            f" per {ingredient['unit']}.")
-                level = "success"
-            else:
-                note = "Linked. The purchase price couldn't be converted to the ingredient's unit, so the price wasn't changed."
-                level = "warning"
-        else:
-            note, level = "Product linked.", "success"
-        db.execute("UPDATE purchases SET ingredient_id = ? WHERE product_name = ?", (ingredient_id, product_name))
-        db.commit()
-        return level, note, price_updated
-    db.execute("UPDATE purchases SET ingredient_id = NULL WHERE product_name = ?", (product_name,))
-    db.commit()
-    return "info", "Product unlinked.", False
 
 
 def register_spend_routes(app):

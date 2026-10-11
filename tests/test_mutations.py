@@ -101,3 +101,17 @@ def test_set_ticks_bulk(db):
     result = set_ticks(db, [1, 2, 99], True)
     assert result == {"updated": 2, "missing": [99]}
     assert set_ticks(db, [], True) == {"updated": 0, "missing": []}
+
+
+def test_link_product_cases(db):
+    from services.mutations import link_product
+    _seed(db)
+    db.execute("INSERT INTO purchases (order_date, basket_id, store, product_name, quantity,"
+               " unit_price, line_total, cup_price) VALUES ('2026-10-01', 'b1', 'Woolworths',"
+               " 'Mince 500g', 1, 8.5, 8.5, '$1.70 / 100G')")
+    db.commit()
+    assert link_product(db, "Ghost", "1") == ("error", "No purchases found for that product.", False)
+    assert link_product(db, "Mince 500g", "99")[0] == "error"
+    level, _, updated = link_product(db, "Mince 500g", "1", True)
+    assert (level, updated) == ("success", True)
+    assert link_product(db, "Mince 500g", "new")[0] == "success"

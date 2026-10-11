@@ -225,6 +225,61 @@ def tick_many(item_ids: list, checked: bool = True) -> dict:
     return set_ticks(get_db(), [int(i) for i in (item_ids or [])], checked)
 
 
+def link_product(product: str, ingredient: str = "", update_price: bool = True,
+                 new_category: str = "other") -> dict:
+    """Link a product to an ingredient (id/name, "new", or "" to unlink)."""
+    from database import get_db
+    from services.mutations import link_product as _link
+    db = get_db()
+    choice = (ingredient or "").strip()
+    if choice not in ("", "new"):
+        choice = str(_resolve_ingredient_id(db, choice))
+    level, message, price_updated = _link(db, (product or "").strip(), choice,
+                                          update_price, (new_category or "").strip() or "other")
+    return {"level": level, "message": message, "price_updated": price_updated}
+
+
+def stage_invoice_pdf(pdf_base64: str) -> dict:
+    """Stage a base64 PDF invoice for review (nothing is imported yet)."""
+    import base64
+    from database import get_db
+    from services.spend_import import (
+        create_import_batch, get_import_batch, parse_woolworths_invoice_pdf,
+        staged_read_total,
+    )
+    try:
+        raw = base64.b64decode(pdf_base64, validate=True)
+    except Exception:
+        return {"error": "That isn't valid base64 PDF data."}
+    meta, rows, warnings = parse_woolworths_invoice_pdf(raw)
+    if not meta:
+        return {"error": warnings[0] if warnings else "That PDF couldn't be read as a Woolworths invoice."}
+    db = get_db()
+    token = create_import_batch(db, meta, rows)
+    _, lines = get_import_batch(db, token)
+    return {"token": token, "invoice_number": meta.get("invoice_number"),
+            "order_date": meta.get("order_date"), "subtotal": meta.get("subtotal"),
+            "staged_lines": len(lines), "read_total": staged_read_total(lines),
+            "warnings": warnings,
+            "note": "Nothing is imported until the review is confirmed in the UI."}
+
+
+def import_status(token: str) -> dict:
+    """A staged batch's lines and read total, for review."""
+    from database import get_db
+    from services.spend_import import get_import_batch, staged_read_total
+    batch, lines = get_import_batch(get_db(), (token or "").strip())
+    if not batch:
+        return {"error": "Unknown or finished import batch."}
+    return {"invoice_number": batch["invoice_number"], "order_date": batch["order_date"],
+            "subtotal": batch["subtotal"], "status": batch["status"],
+            "read_total": staged_read_total(lines),
+            "lines": [{"id": l["id"], "product_name": l["product_name"], "quantity": l["quantity"],
+                       "unit_price": l["unit_price"], "line_total": l["line_total"],
+                       "excluded": bool(l["excluded"]), "already": bool(l["already"]),
+                       "note": l.get("note")} for l in lines]}
+
+
 def add_meal(date: str, meal_type: str, recipe: str, servings: int = 0) -> dict:
     """Place a recipe in a plan slot (replaces whatever is there)."""
     from database import get_db, get_setting
@@ -425,6 +480,29 @@ def tick_items(item_ids: list, checked: bool = True) -> dict:
     """Tick or untick many shopping-list rows at once."""
     with _app_ctx():
         return _safe(tick_many, item_ids=item_ids, checked=checked)
+
+
+@mcp.tool()
+def link_spend_product(product: str, ingredient: str = "", update_price: bool = True,
+                       new_category: str = "other") -> dict:
+    """Link a product to an ingredient (id/name, "new", or "" to unlink)."""
+    with _app_ctx():
+        return _safe(link_product, product=product, ingredient=ingredient,
+                     update_price=update_price, new_category=new_category)
+
+
+@mcp.tool()
+def stage_invoice(pdf_base64: str) -> dict:
+    """Stage a base64 PDF invoice for review (nothing is imported yet)."""
+    with _app_ctx():
+        return _safe(stage_invoice_pdf, pdf_base64=pdf_base64)
+
+
+@mcp.tool()
+def get_import_status(token: str) -> dict:
+    """A staged batch's lines and read total, for review."""
+    with _app_ctx():
+        return _safe(import_status, token=token)
 
 
 # ---------------------------------------------------------------------------
