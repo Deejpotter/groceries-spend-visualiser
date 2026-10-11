@@ -156,6 +156,27 @@ def to_purchases(rows: List[Dict], patterns,
     return purchases, unclassified
 
 
+def bank_txn_to_purchase(row: Dict, patterns) -> Optional[Dict]:
+    """One mapped BankSync transaction to a purchase dict, or None.
+
+    The basket id carries the BankSync transaction id, so re-syncing
+    the same transaction is always idempotent.
+    """
+    store = classify_merchant(row["description"], patterns)
+    if not store:
+        return None
+    return {
+        "order_date": row["order_date"],
+        "basket_id": f"bs:{row['txn_id']}",
+        "store": store,
+        "product_name": row["description"],
+        "quantity": 1,
+        "unit_price": row["amount"],
+        "line_total": row["amount"],
+        "origin": "banksync",
+    }
+
+
 def _dedupe_key(row) -> Tuple[str, str, float]:
     return row["store"], row["order_date"], round(row["line_total"], 2)
 

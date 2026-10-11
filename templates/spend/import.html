@@ -43,7 +43,29 @@
                             duplicates are listed for review before anything is force-imported.
                         </small>
                     </div>
-                    <button type="submit" class="btn btn-primary">{{ icon('import') }} Import bank CSV</button>
+        <div class="card mt-4">
+            <div class="card-header"><h4 class="mb-0">Sync from BankSync</h4></div>
+            <div class="card-body">
+                <form method="post" action="{{ url_for('spend.banksync_sync') }}">
+                    {{ csrf() }}
+                    {% if banksync_configured %}
+                    <p class="text-muted">
+                        Pulls new transactions from every connected account
+                        (CommBank and other Australian banks, via Open Banking).
+                        New shops import as single-line purchases; the sync
+                        remembers where it stopped, and anything that looks like
+                        a duplicate is listed for review.
+                    </p>
+                    <button type="submit" class="btn btn-primary">{{ icon('refresh-cw') }} Sync now</button>
+                    {% else %}
+                    <p class="text-muted">
+                        Connect your bank through BankSync to import transactions
+                        automatically. Add your BankSync API key under
+                        <a href="{{ url_for('settings.settings') }}">Settings → Bank Imports</a>
+                        (BankSync's Standard plan or higher includes API access).
+                    </p>
+                    <a href="{{ url_for('settings.settings') }}" class="btn btn-secondary">Open settings</a>
+                    {% endif %}
                 </form>
             </div>
         </div>

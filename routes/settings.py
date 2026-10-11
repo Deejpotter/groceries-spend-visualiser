@@ -97,9 +97,27 @@ def save():
             values.update({"bank_merchant_patterns": patterns,
                            "errors": errors, "error_form": "bank"})
             return render_template("settings.html", **values)
+        api_key = request.form.get("banksync_api_key", "").strip()
+        if api_key:
+            set_setting("banksync_api_key", api_key)
         set_setting("bank_merchant_patterns", patterns.strip())
         db.commit()
         flash("Bank import settings saved.", "success")
+
+    elif action == "test_banksync":
+        from services.banksync_client import BankSyncClient, BankSyncError
+        api_key = request.form.get("banksync_api_key", "").strip()
+        if not api_key:
+            flash("Enter a BankSync API key first.", "error")
+            return redirect(url_for("settings.settings"))
+        try:
+            who = BankSyncClient(api_key).whoami()
+            workspace = who.get("workspace") or {}
+            name = workspace.get("name") or who.get("name") or "workspace"
+            flash(f"Connected to BankSync ({name}).", "success")
+        except BankSyncError as exc:
+            flash(f"BankSync connection failed: {exc}", "error")
+        return redirect(url_for("settings.settings"))
 
     else:
         flash("No settings to save.", "error")

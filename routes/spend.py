@@ -6,7 +6,7 @@ import click
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 
 from auth import login_required
-from database import get_db
+from database import get_db, get_setting
 from models import label_of
 from services.spend_analysis import analyze_purchases, load_purchases
 from services.spend_import import (
@@ -79,7 +79,10 @@ def spend_import():
         for err in errors[:3]:
             flash(err, "warning")
         return redirect(url_for("spend.spend_dashboard", range="all"))
-    return render_template("spend/import.html")
+    return render_template(
+        "spend/import.html",
+        banksync_configured=bool(get_setting("banksync_api_key")),
+    )
 
 
 @spend_bp.route("/spend/import-bank", methods=["POST"])
@@ -110,6 +113,33 @@ def import_bank_csv():
     return render_template(
         "spend/bank_result.html", added=added, duplicates=duplicates,
         unclassified=unclassified, errors=errors,
+    )
+
+
+@spend_bp.route("/spend/banksync/sync", methods=["POST"])
+@login_required
+def banksync_sync():
+    """Pull new BankSync transactions for every connected account."""
+    from services.banksync_client import (
+        BankSyncClient, BankSyncError, sync_accounts,
+    )
+    from services.bank_import import load_merchant_patterns
+    api_key = get_setting("banksync_api_key")
+    if not api_key:
+        flash("Add your BankSync API key on the settings page first.", "error")
+        return redirect(url_for("spend.spend_import"))
+    db = get_db()
+    try:
+        result = sync_accounts(
+            db, BankSyncClient(api_key), load_merchant_patterns(db))
+    except BankSyncError as exc:
+        flash(f"BankSync sync failed: {exc}", "error")
+        return redirect(url_for("spend.spend_import"))
+    return render_template(
+        "spend/bank_result.html", added=result["added"],
+        duplicates=result["duplicates"],
+        unclassified=result["unclassified"],
+        errors=result["errors"],
     )
 
 
