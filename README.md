@@ -30,9 +30,17 @@ items and ticks survive a regenerate. Print-friendly.
 "use" an amount after cooking.
 
 **Spend tracking** — import a Woolworths PDF tax invoice (the emailed invoice per
-order — there is no CSV export, so the PDF is the source). The spend dashboard shows total, monthly and per-shop spend, days between
+order — there is no CSV export, so the PDF is the source), a transaction CSV
+exported from NetBank, or sync automatically from BankSync (API key in
+Settings → Bank Imports; pulls new transactions from every connected account,
+CommBank included, via Open Banking). Bank rows import as one purchase per shop
+and are classified by editable merchant patterns; rows that look like a
+duplicate of a purchase you already have (same store, date and total — from any
+source) are listed for review rather than silently imported. The spend dashboard
+shows total, monthly and per-shop spend, days between
 shops, a monthly chart, and your most frequently bought and highest-spend products, over
-3/6/12 months or all time. Link purchased products to your ingredients to:
+3/6/12 months or all time. Set a monthly budget target (Settings → Budget) to
+pace this month's spend and project where you'll land by month end. Link purchased products to your ingredients to:
 - see spend by category, and
 - update ingredient prices from your latest purchase (using the shelf "cup price", e.g.
   `$1.51 / 100G` → `$15.10 / kg`), so shopping-list estimates match what you really pay.

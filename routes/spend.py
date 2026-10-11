@@ -8,6 +8,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 from auth import login_required
 from database import get_db, get_setting
 from models import label_of
+from services.budget import budget_status
 from services.spend_analysis import analyze_purchases, load_purchases
 from services.spend_import import (
     commit_import_batch, create_import_batch, discard_import_batch, get_import_batch,
@@ -37,6 +38,12 @@ def spend_dashboard():
     if range_key not in RANGES:
         range_key = "12m"
     stats = analyze_purchases(load_purchases(db, start=_range_start(db, range_key)))
+    raw_target = (get_setting("monthly_budget") or "").strip()
+    try:
+        target = float(raw_target) if raw_target else None
+    except ValueError:
+        target = None
+    budget = budget_status(load_purchases(db), target)
     unlinked = db.execute(
         "SELECT COUNT(DISTINCT product_name) FROM purchases WHERE ingredient_id IS NULL"
     ).fetchone()[0]
@@ -46,6 +53,7 @@ def spend_dashboard():
         range_key=range_key,
         ranges=[("3m", "3 months"), ("6m", "6 months"), ("12m", "12 months"), ("all", "All time")],
         unlinked_count=unlinked,
+        budget=budget,
     )
 
 

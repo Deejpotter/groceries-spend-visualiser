@@ -74,6 +74,25 @@
         <div class="kpi-value">{{ stats.avg_days_between_shops }}<span class="kpi-unit">days</span></div>
         <div class="kpi-context">on average</div>
     </div>
+    {% if budget %}
+    <div class="kpi-tile" data-tone="{{ budget.tone }}">
+        <div class="kpi-label">{{ icon('chart-line') }} This month</div>
+        <div class="kpi-value">{{ budget.spent|money }}<span class="kpi-unit">/ {{ budget.target|money }}</span></div>
+        <div class="kpi-context">
+            {% if budget.tone == 'ok' %}
+            on track — projected {{ budget.projected|money }} by month end
+            ({{ budget.variance|money }} under)
+            {% elif budget.tone == 'warn' %}
+            close to pace — projected {{ budget.projected|money }} by month end
+            ({{ budget.variance|money }} under)
+            {% else %}
+            over pace — projected {{ budget.projected|money }} by month end
+            ({{ (-budget.variance)|money }} over)
+            {% endif %}
+            &middot; {{ budget.days_left }} day{{ '' if budget.days_left == 1 else 's' }} left
+        </div>
+    </div>
+    {% endif %}
 </div>
 
 <div class="card mb-4">
