@@ -16,13 +16,16 @@ def settings():
 
 def _settings_values():
     """Current settings as template values (overridable with submitted input)."""
+    from services.bank_import import DEFAULT_MERCHANT_PATTERNS
     plan_start, plan_end = get_plan_dates()
+    default_patterns = "\n".join(f"{k}={n}" for k, n in DEFAULT_MERCHANT_PATTERNS)
     return {
         "plan_start": plan_start,
         "plan_end": plan_end,
         "unit_preference": get_setting("unit_preference", "metric"),
         "default_servings": get_setting("default_servings", "2"),
         "subtract_pantry": get_setting("subtract_pantry_from_list", "0") == "1",
+        "bank_merchant_patterns": get_setting("bank_merchant_patterns") or default_patterns,
         "errors": None,
         "error_form": None,
     }
@@ -76,6 +79,27 @@ def save():
         set_setting("subtract_pantry_from_list", 1 if request.form.get("subtract_pantry") else 0)
         db.commit()
         flash("Preferences saved.", "success")
+
+    elif action == "save_bank":
+        patterns = request.form.get("bank_merchant_patterns", "")
+        errors = []
+        for line in patterns.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" in line:
+                keyword, name = line.split("=", 1)
+                if not keyword.strip() or not name.strip():
+                    errors.append("Every pattern needs both a keyword and a store name.")
+                    break
+        if errors:
+            values = _settings_values()
+            values.update({"bank_merchant_patterns": patterns,
+                           "errors": errors, "error_form": "bank"})
+            return render_template("settings.html", **values)
+        set_setting("bank_merchant_patterns", patterns.strip())
+        db.commit()
+        flash("Bank import settings saved.", "success")
 
     else:
         flash("No settings to save.", "error")

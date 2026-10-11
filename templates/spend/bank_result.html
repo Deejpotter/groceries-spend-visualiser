@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf, icon %}
+
+{% block title %}Bank import result — Grocery Visualiser{% endblock %}
+
+{% block content %}
+<h1>Bank import result</h1>
+<p class="text-muted">{{ added }} purchase(s) imported from your bank CSV.</p>
+
+{% if duplicates %}
+<div class="card mb-3">
+    <div class="card-header">
+        <h4 class="mb-0">Possible duplicates — skipped ({{ duplicates|length }})</h4>
+    </div>
+    <div class="card-body">
+        <p class="text-muted">
+            Same store, date and total as a purchase you already have (from an invoice,
+            an earlier CSV, or BankSync). Tick the ones that are genuinely separate shops
+            to import them anyway.
+        </p>
+        <form method="post" action="{{ url_for('spend.import_bank_duplicates') }}">
+            {{ csrf() }}
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th></th><th>Date</th><th>Description</th><th>Store</th><th class="text-right">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for d in duplicates %}
+                        <tr>
+                            <td><input type="checkbox" name="keep" value="{{ loop.index0 }}"></td>
+                            <td>{{ d.order_date }}</td>
+                            <td>{{ d.product_name }}</td>
+                            <td>{{ d.store }}</td>
+                            <td class="text-right">${{ "%.2f"|format(d.line_total) }}</td>
+                            <input type="hidden" name="d_date" value="{{ d.order_date }}">
+                            <input type="hidden" name="d_description" value="{{ d.product_name }}">
+                            <input type="hidden" name="d_amount" value="{{ d.line_total }}">
+                            <input type="hidden" name="d_source" value="{{ d.origin }}">
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm">{{ icon('import') }} Import selected</button>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{% if unclassified %}
+<div class="card mb-3">
+    <div class="card-header">
+        <h4 class="mb-0">Unclassified rows — skipped ({{ unclassified|length }})</h4>
+    </div>
+    <div class="card-body">
+        <p class="text-muted">
+            These rows didn't match any grocery merchant pattern, so nothing was imported.
+            Add patterns on the <a href="{{ url_for('settings.settings') }}">settings page</a>
+            and re-import the file.
+        </p>
+        <div class="table-responsive">
+            <table class="table table-sm">
+                <thead>
+                    <tr><th>Date</th><th>Description</th><th class="text-right">Amount</th></tr>
+                </thead>
+                <tbody>
+                    {% for u in unclassified %}
+                    <tr>
+                        <td>{{ u.order_date }}</td>
+                        <td>{{ u.description }}</td>
+                        <td class="text-right">${{ "%.2f"|format(u.amount) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if errors %}
+<div class="card mb-3">
+    <div class="card-header">Skipped lines</div>
+    <div class="card-body">
+        <ul class="mb-0">
+            {% for err in errors %}<li>{{ err }}</li>{% endfor %}
+        </ul>
+    </div>
+</div>
+{% endif %}
+
+<a href="{{ url_for('spend.spend_dashboard', range='all') }}" class="btn btn-secondary">Back to spend dashboard</a>
+{% endblock %}

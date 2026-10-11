@@ -96,6 +96,29 @@
             </div>
         </div>
 
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>Bank Imports</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{{ url_for('settings.save') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    {% if error_form == 'bank' %}{{ form_errors(errors) }}{% endif %}
+                    <div class="form-group">
+                        <label for="bank_merchant_patterns">Grocery merchant patterns</label>
+                        <textarea class="form-control" id="bank_merchant_patterns"
+                                  name="bank_merchant_patterns" rows="8">{{ bank_merchant_patterns }}</textarea>
+                        <small class="text-muted">
+                            One per line: <code>keyword=Store Name</code>, or a bare keyword (store name is then the keyword).
+                            A bank row whose description contains the keyword imports as that store;
+                            everything else is reported as unclassified and skipped.
+                        </small>
+                    </div>
+                    <button type="submit" name="action" value="save_bank" class="btn btn-primary">Save Bank Settings</button>
+                </form>
+            </div>
+        </div>
+
         <div class="card">
             <div class="card-header bg-danger text-white">
                 <h5>Admin</h5>
