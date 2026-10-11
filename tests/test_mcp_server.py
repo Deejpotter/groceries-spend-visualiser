@@ -4,9 +4,10 @@ import pytest
 
 from database import get_db, set_setting
 from mcp_server.server import (
-    add_list_item, add_meal, add_stock, generate_plan, get_recipe, list_ingredients, list_rules,
-    pantry_status, remove_meal, server_info, set_item_ticked, shopping_list, spend_summary,
-    swap_meal, tick_many, use_pantry, week_plan, require_api_key,
+    add_list_item, add_meal, add_stock, generate_plan, get_recipe, import_status, link_product,
+    list_ingredients, list_rules, pantry_status, remove_meal, server_info, set_item_ticked,
+    shopping_list, spend_summary, stage_invoice_pdf, swap_meal, tick_many, use_pantry,
+    week_plan, require_api_key,
 )
 
 
@@ -168,5 +169,36 @@ def test_tool_registry_matches_expectation():
         "get_week_plan", "get_shopping_list", "get_pantry_status", "get_spend_summary",
         "get_rules", "search_ingredients", "read_recipe", "plan_add_meal", "plan_swap_meal",
         "plan_remove_meal", "plan_generate", "tick_item", "add_shopping_item", "use_pantry",
-        "get_server_info", "add_pantry_stock", "tick_items",
+        "get_server_info", "add_pantry_stock", "tick_items", "link_spend_product",
+        "stage_invoice", "get_import_status",
     ])
+
+
+def test_mcp_link_product_round_trip(db):
+    _seed(db)
+    db.execute("INSERT INTO purchases (order_date, basket_id, store, product_name, quantity,"
+               " unit_price, line_total) VALUES ('2026-10-01', 'b1', 'Woolworths', 'Mince 500g', 1, 8.5, 8.5)")
+    db.commit()
+    linked = link_product("Mince 500g", "Mince")
+    assert linked["level"] in ("success", "warning")  # no cup price: link holds, price warns
+    assert db.execute("SELECT ingredient_id FROM purchases WHERE product_name = 'Mince 500g'").fetchone()[0] == 1
+    created = link_product("Mince 500g", "new", new_category="dairy")
+    assert "dairy" in created["message"].lower() or "Dairy" in created["message"]
+    unlinked = link_product("Mince 500g", "")
+    assert unlinked["level"] == "info"
+    assert db.execute("SELECT ingredient_id FROM purchases WHERE product_name = 'Mince 500g'").fetchone()[0] is None
+
+
+def test_mcp_stage_and_status_invoice(db):
+    from test_spend_pdf import REVIEW_LINES, _minimal_pdf
+    import base64
+    raw = _minimal_pdf(REVIEW_LINES)
+    staged = stage_invoice_pdf(base64.b64encode(raw).decode())
+    assert staged["invoice_number"] == "999001999"
+    assert staged["staged_lines"] >= 1
+    assert "note" in staged and "UI" in staged["note"]
+    status = import_status(staged["token"])
+    assert status["read_total"] == staged["read_total"]
+    assert all("product_name" in line for line in status["lines"])
+    assert import_status("bogus")["error"]
+    assert stage_invoice_pdf("!!!not-base64!!!")["error"]
