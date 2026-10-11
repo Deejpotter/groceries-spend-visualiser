@@ -2,12 +2,21 @@
 
 Pure-ish helpers over an explicit db handle: routes and the MCP server are
 thin wrappers that add flashes / structured errors. Validation failures
-raise ValueError with the user-facing message.
+raise ValueError with the user-facing message (pantry validators raise
+ValidationError carrying every problem at once).
 """
 
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from models import CATEGORY_LOOKUP, MEAL_TYPES, UNIT_LOOKUP, validate_date_format
+
+
+class ValidationError(ValueError):
+    """Validation failure carrying every problem (pantry forms show them all)."""
+
+    def __init__(self, messages):
+        self.messages = list(messages)
+        super().__init__("; ".join(self.messages))
 
 
 def _recipe_or_raise(db, recipe_id) -> Dict:
@@ -140,3 +149,75 @@ def consume_stock(db, item_id: int, amount: float) -> Dict:
     db.commit()
     return {"used": amount, "unit": entry["unit"], "remaining": new_qty,
             "depleted": new_qty == 0}
+
+
+def _validated_stock(db, ingredient_id, quantity, unit, expiry_date, location) -> Dict:
+    """Shared validation for pantry add/edit; returns the cleaned row."""
+    ingredient = db.execute("SELECT id, unit FROM ingredients WHERE id = ?",
+                            (ingredient_id,)).fetchone()
+    errors = []
+    if not ingredient:
+        errors.append("Ingredient is required.")
+    if quantity is None:
+        errors.append("Quantity must be a number.")
+    elif quantity <= 0:
+        errors.append("Quantity must be greater than zero.")
+    unit = (unit or "").strip() or (ingredient["unit"] if ingredient else "")
+    if unit and unit not in UNIT_LOOKUP:
+        errors.append("Choose a valid unit.")
+    expiry_date = (expiry_date or "").strip() or None
+    if expiry_date and not validate_date_format(expiry_date):
+        errors.append("Expiry date must be a valid date.")
+    location = (location or "").strip()
+    if not location:
+        errors.append("Location is required.")
+    if errors:
+        raise ValidationError(errors)
+    return {"ingredient_id": ingredient["id"], "quantity": quantity, "unit": unit,
+            "expiry_date": expiry_date, "location": location}
+
+
+def add_stock(db, ingredient_id, quantity, unit=None, expiry_date=None,
+              location="pantry") -> Dict:
+    """Add a pantry stock row."""
+    row = _validated_stock(db, ingredient_id, quantity, unit, expiry_date, location)
+    cur = db.execute(
+        "INSERT INTO pantry_items (ingredient_id, quantity, unit, expiry_date, location)"
+        " VALUES (?, ?, ?, ?, ?)",
+        (row["ingredient_id"], row["quantity"], row["unit"], row["expiry_date"], row["location"]),
+    )
+    db.commit()
+    return {"item_id": cur.lastrowid, **row}
+
+
+def update_stock(db, item_id: int, ingredient_id, quantity, unit=None,
+                 expiry_date=None, location="pantry") -> Dict:
+    """Replace a pantry stock row."""
+    if not db.execute("SELECT 1 FROM pantry_items WHERE id = ?", (item_id,)).fetchone():
+        raise ValueError("Item not found.")
+    row = _validated_stock(db, ingredient_id, quantity, unit, expiry_date, location)
+    db.execute(
+        """UPDATE pantry_items SET ingredient_id=?, quantity=?, unit=?,
+           expiry_date=?, location=?, updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+        (row["ingredient_id"], row["quantity"], row["unit"], row["expiry_date"],
+         row["location"], item_id),
+    )
+    db.commit()
+    return {"item_id": item_id, **row}
+
+
+def set_ticks(db, item_ids: List[int], checked: bool) -> Dict:
+    """Set the ticked state on many shopping-list rows at once."""
+    ids = [int(i) for i in (item_ids or [])]
+    if not ids:
+        return {"updated": 0, "missing": []}
+    found = {r[0] for r in db.execute(
+        f"SELECT id FROM shopping_list_items WHERE id IN ({','.join('?' * len(ids))})", ids)}
+    missing = [i for i in ids if i not in found]
+    if found:
+        db.execute(
+            f"UPDATE shopping_list_items SET checked = ? WHERE id IN ({','.join('?' * len(found))})",
+            [1 if checked else 0, *sorted(found)],
+        )
+        db.commit()
+    return {"updated": len(found), "missing": missing}

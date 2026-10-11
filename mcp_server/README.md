@@ -21,6 +21,9 @@ exposed over MCP (stdio). Agents and humans always see the same numbers.
 | `tick_item` | Tick/untick a shopping-list row |
 | `add_shopping_item` | Free-text row on the shopping list |
 | `use_pantry` | Use pantry stock; reports what remains |
+| `get_server_info` | Version, plan dates, table counts — orient in one call |
+| `add_pantry_stock` | Add pantry stock for an ingredient |
+| `tick_items` | Tick/untick many rows at once |
 
 Writes share `services/mutations.py` with the web routes, so both faces
 stay consistent. Imports stay review-gated: there is no tool for them —
