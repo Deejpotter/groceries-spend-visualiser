@@ -82,6 +82,60 @@ def spend_import():
     return render_template("spend/import.html")
 
 
+@spend_bp.route("/spend/import-bank", methods=["POST"])
+@login_required
+def import_bank_csv():
+    """Import a transaction CSV exported from NetBank."""
+    from services.bank_import import (
+        import_bank_transactions, load_merchant_patterns, parse_netbank_csv,
+        to_purchases,
+    )
+    upload = request.files.get("bank_file")
+    if not upload or not upload.filename:
+        flash("Choose a CSV file exported from NetBank.", "error")
+        return redirect(url_for("spend.spend_import"))
+    try:
+        text = upload.read().decode("utf-8-sig")
+    except UnicodeDecodeError:
+        flash("That file isn't a UTF-8 CSV.", "error")
+        return redirect(url_for("spend.spend_import"))
+
+    rows, errors = parse_netbank_csv(text)
+    if errors and not rows:
+        flash(errors[0], "error")
+        return redirect(url_for("spend.spend_import"))
+    db = get_db()
+    purchases, unclassified = to_purchases(rows, load_merchant_patterns(db))
+    added, duplicates = import_bank_transactions(db, purchases)
+    return render_template(
+        "spend/bank_result.html", added=added, duplicates=duplicates,
+        unclassified=unclassified, errors=errors,
+    )
+
+
+@spend_bp.route("/spend/import-bank/duplicates", methods=["POST"])
+@login_required
+def import_bank_duplicates():
+    """Force-import duplicate rows confirmed as separate shops."""
+    from services.bank_import import force_import_duplicate
+    keep = {int(i) for i in request.form.getlist("keep") if i.isdigit()}
+    dates = request.form.getlist("d_date")
+    descriptions = request.form.getlist("d_description")
+    amounts = request.form.getlist("d_amount")
+    sources = request.form.getlist("d_source")
+    added = 0
+    for i in sorted(keep):
+        if i >= len(dates):
+            continue
+        if force_import_duplicate(
+            get_db(), dates[i], descriptions[i], amounts[i],
+            sources[i] if i < len(sources) else "csv",
+        ):
+            added += 1
+    flash(f"Imported {added} previously-skipped duplicate(s).", "success")
+    return redirect(url_for("spend.spend_dashboard", range="all"))
+
+
 @spend_bp.route("/spend/products")
 @login_required
 def spend_products():
