@@ -1,9 +1,10 @@
 """Routes for grocery spend tracking: purchase import, spend dashboard, product↔ingredient links."""
 
-from datetime import date, timedelta
+import threading
+from datetime import date, datetime, timedelta, timezone
 
 import click
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, current_app, render_template, request, redirect, url_for, flash
 
 from auth import login_required
 from database import get_db, get_setting
@@ -30,9 +31,60 @@ def _range_start(db, key):
     return (date.fromisoformat(latest) - timedelta(days=days)).isoformat()
 
 
+_AUTO_SYNC_HOURS = 24
+_banksync_lock = threading.Lock()
+
+
+def _auto_sync_due(last_sync, now):
+    """Whether a background sync should run (API key checked by caller)."""
+    if not last_sync:
+        return True
+    try:
+        last = datetime.fromisoformat(last_sync)
+    except (TypeError, ValueError):
+        return True
+    return now - last >= timedelta(hours=_AUTO_SYNC_HOURS)
+
+
+def _maybe_auto_sync():
+    """Sync BankSync in the background when the bookmark is stale.
+
+    Opening the spend dashboard is the natural trigger: whenever
+    you look at your money, it is at most a day old. A lock keeps
+    concurrent syncs (several tabs, or several gunicorn workers)
+    from piling up — the import itself is idempotent anyway.
+    """
+    if not get_setting("banksync_api_key"):
+        return
+    if not _auto_sync_due(get_setting("banksync_last_sync"),
+                            datetime.now(timezone.utc).replace(tzinfo=None)):
+        return
+    if not _banksync_lock.acquire(blocking=False):
+        return
+    app = current_app._get_current_object()
+
+    def _run():
+        try:
+            with app.app_context():
+                from services.banksync_client import (
+                    BankSyncError, run_sync,
+                )
+                try:
+                    run_sync(get_db())
+                except BankSyncError as exc:
+                    app.logger.error(f"BankSync auto-sync failed: {exc}")
+        except Exception as exc:  # a thread must never break a request
+            app.logger.error(f"BankSync auto-sync error: {exc}")
+        finally:
+            _banksync_lock.release()
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
 @spend_bp.route("/spend")
 @login_required
 def spend_dashboard():
+    _maybe_auto_sync()
     db = get_db()
     range_key = request.args.get("range", "12m")
     if range_key not in RANGES:
@@ -128,20 +180,15 @@ def import_bank_csv():
 @login_required
 def banksync_sync():
     """Pull new BankSync transactions for every connected account."""
-    from services.banksync_client import (
-        BankSyncClient, BankSyncError, sync_accounts,
-    )
-    from services.bank_import import load_merchant_patterns
-    api_key = get_setting("banksync_api_key")
-    if not api_key:
+    from services.banksync_client import BankSyncError, run_sync
+    if not get_setting("banksync_api_key"):
         flash("Add your BankSync API key on the settings page first.", "error")
         return redirect(url_for("spend.spend_import"))
-    db = get_db()
     try:
-        result = sync_accounts(
-            db, BankSyncClient(api_key), load_merchant_patterns(db))
+        result = run_sync(get_db())
     except BankSyncError as exc:
         flash(f"BankSync sync failed: {exc}", "error")
+        return redirect(url_for("spend.spend_import"))
         return redirect(url_for("spend.spend_import"))
     return render_template(
         "spend/bank_result.html", added=result["added"],

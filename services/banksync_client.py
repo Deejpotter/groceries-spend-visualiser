@@ -6,10 +6,11 @@ Developer Settings and sent as the X-API-Key header.
 """
 
 import json
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 BASE_URL = "https://api.banksync.io"
@@ -171,3 +172,16 @@ def sync_accounts(db, client, patterns) -> Dict:
     db.commit()
     return {"added": added, "duplicates": duplicates,
             "unclassified": unclassified, "errors": errors}
+
+
+def run_sync(db) -> Dict:
+    """Run one sync and stamp the last-sync bookmark."""
+    from database import get_setting, set_setting
+    from services.bank_import import load_merchant_patterns
+    result = sync_accounts(
+        db, BankSyncClient(get_setting("banksync_api_key")),
+        load_merchant_patterns(db))
+    set_setting("banksync_last_sync",
+                datetime.now(timezone.utc).replace(tzinfo=None).isoformat())
+    db.commit()
+    return result

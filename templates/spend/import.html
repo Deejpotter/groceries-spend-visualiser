@@ -50,11 +50,11 @@
                     {{ csrf() }}
                     {% if banksync_configured %}
                     <p class="text-muted">
-                        Pulls new transactions from every connected account
-                        (CommBank and other Australian banks, via Open Banking).
-                        New shops import as single-line purchases; the sync
-                        remembers where it stopped, and anything that looks like
-                        a duplicate is listed for review.
+                        Syncs automatically in the background (at most once
+                        every 24 hours) whenever you open the spend dashboard.
+                        Sync now forces it immediately. New shops import as
+                        single-line purchases; anything that looks like a
+                        duplicate is listed for review.
                     </p>
                     <button type="submit" class="btn btn-primary">{{ icon('refresh-cw') }} Sync now</button>
                     {% else %}
