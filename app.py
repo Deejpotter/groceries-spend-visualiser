@@ -131,6 +131,9 @@ def create_app(testing=False):
         """Create the env-configured admin on first request, or send users to /setup."""
         if request.endpoint in (None, "static", "health", "setup"):
             return None
+        if request.blueprint == "api":
+            # The API has its own bearer-key auth; never redirect it to /setup.
+            return None
         if admin_exists():
             return None
         if auto_create_admin():
@@ -260,6 +263,33 @@ def create_app(testing=False):
             plan_start or today.isoformat(), plan_end or week_end)
         spare_recipes = recipes_using_spares(spare_items, recipes, recipe_ingredients, ingredients)
 
+        # Fortnightly subscription summary for the dashboard tile.
+        from services.subscriptions import fortnight_for_date, subscriptions_due_in_range
+        from services.budget import fortnightly_summary
+        from services.shopping_list_generator import generate_shopping_list, total_cost
+
+        sub_spare = None
+        sub_due_count = 0
+        subs = [dict(r) for r in db.execute(
+            "SELECT * FROM subscriptions WHERE active = 1")]
+        if subs:
+            f_start, f_end = fortnight_for_date(today)
+            due = subscriptions_due_in_range(subs, f_start, f_end)
+            sub_due_count = len(due)
+            # Grocery estimate for the fortnight (use current plan period).
+            grocery_est = 0.0
+            if plan_start and plan_end:
+                entries, recipes_d, ring_d, ing_d = load_shopping_inputs(plan_start, plan_end)
+                grouped = generate_shopping_list(entries, recipes_d, ring_d, ing_d)
+                grocery_est = total_cost(grouped)
+            raw_income = (get_setting("fortnightly_income") or "").strip()
+            try:
+                income_val = float(raw_income.replace("$", "").replace(",", "")) if raw_income else None
+            except ValueError:
+                income_val = None
+            summary = fortnightly_summary(subs, grocery_est, income_val, f_start, f_end)
+            sub_spare = summary["spare"]
+
         return render_template(
             "dashboard.html",
             ingredient_count=count("SELECT COUNT(*) FROM ingredients"),
@@ -282,6 +312,8 @@ def create_app(testing=False):
             upcoming=upcoming,
             spare_items=spare_items,
             spare_recipes=spare_recipes,
+            sub_spare=sub_spare,
+            sub_due_count=sub_due_count,
         )
 
     @application.cli.command("init-db")

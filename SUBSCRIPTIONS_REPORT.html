@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Subscriptions & Fortnightly Budget — Investigation Report</title>
+<style>
+  :root {
+    --brand: #c25e3a;
+    --ink: #2d2a26;
+    --ink-soft: #7a6c58;
+    --line: #e2d6c1;
+    --bg: #faf7f2;
+    --card: #ffffff;
+    --ok: #3a7d44;
+    --warn: #c2903a;
+    --danger: #c2403a;
+    --info: #3a6d8c;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--ink); line-height: 1.6;
+    padding: 2rem;
+  }
+  .container { max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+  h2 { font-size: 1.4rem; margin: 2rem 0 0.75rem; color: var(--brand); border-bottom: 2px solid var(--line); padding-bottom: 0.3rem; }
+  h3 { font-size: 1.1rem; margin: 1.25rem 0 0.5rem; }
+  p { margin-bottom: 0.75rem; }
+  .subtitle { color: var(--ink-soft); font-size: 1.05rem; margin-bottom: 1.5rem; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+    padding: 1.25rem 1.5rem; margin-bottom: 1rem;
+  }
+  .card-header { font-weight: 600; font-size: 1.05rem; margin-bottom: 0.5rem; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
+  @media (max-width: 720px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+  table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--line); }
+  th { font-weight: 600; background: var(--bg); }
+  code { background: var(--bg); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85em; }
+  .tag { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+  .tag-ok { background: #e6f2e7; color: var(--ok); }
+  .tag-warn { background: #fdf3e0; color: var(--warn); }
+  .tag-danger { background: #fde8e6; color: var(--danger); }
+  .tag-info { background: #e3eef4; color: var(--info); }
+  .pain-point { border-left: 4px solid var(--danger); }
+  .opportunity { border-left: 4px solid var(--ok); }
+  .note { border-left: 4px solid var(--info); }
+  ul, ol { margin: 0.5rem 0 0.75rem 1.25rem; }
+  li { margin-bottom: 0.3rem; }
+  .highlight { background: #fff8e6; padding: 0.1rem 0.3rem; border-radius: 3px; }
+  .toc { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.5rem; margin: 1.5rem 0; }
+  .toc ol { margin-bottom: 0; }
+  .phase { margin-bottom: 1.5rem; }
+  .phase-title { font-weight: 700; color: var(--brand); margin-bottom: 0.25rem; }
+  .step { margin: 0.5rem 0 0.5rem 1rem; }
+  .step-title { font-weight: 600; }
+  .substep { margin: 0.25rem 0 0.25rem 2rem; color: var(--ink-soft); }
+  .file-ref { font-family: monospace; font-size: 0.85em; color: var(--info); }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Subscriptions & Fortnightly Budget</h1>
+<p class="subtitle">Investigation Report &mdash; groceries-spend-visualiser</p>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol>
+  <li><a href="#reasoning">Reasoning &amp; Approach</a></li>
+  <li><a href="#current-state">Current State Assessment</a></li>
+  <li><a href="#pain-points">Pain Points &amp; Gaps</a></li>
+  <li><a href="#feature-design">Feature Design</a></li>
+  <li><a href="#implementation">Implementation Plan</a></li>
+  <li><a href="#recommendations">Recommendations</a></li>
+</ol>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="reasoning">1. Reasoning &amp; Approach</h2>
+
+<div class="card">
+<div class="card-header">How I'm thinking about this</div>
+<p>You asked for two things:</p>
+<ol>
+  <li><strong>Subscription/bill tracking</strong> — see what regular payments are coming up</li>
+  <li><strong>Fortnightly spare money</strong> — income minus groceries minus subscriptions for your pay cycle</li>
+</ol>
+<p>Plus a "nice to have": the app should <em>suggest</em> things that could be bills or subscriptions based on popular names or recurrence in your data.</p>
+
+<p>Here's my reasoning on the best way to deliver this:</p>
+
+<h3>Why subscriptions first, not full budgeting</h3>
+<p>Your app already has a spend pipeline (Woolworths PDF, BankSync, NetBank CSV) and a monthly grocery budget. Subscriptions are the smallest unit of work that delivers the "what's due this fortnight" view. Full budgeting (categories, envelopes, account reconciliation) would be a much larger project with different data models — better to validate the simple version first.</p>
+
+<h3>Why a simple table, not a recurrence engine</h3>
+<p>Subscriptions don't need a complex "next occurrence" calculation engine. A <code>next_due</code> date + <code>frequency</code> is enough — the app computes whether each subscription is due in the current fortnight. This keeps the schema trivial and the logic testable.</p>
+
+<h3>Why suggest from purchase data</h3>
+<p>Your <code>purchases</code> table already stores every transaction with <code>store</code>, <code>order_date</code>, <code>product_name</code>, and <code>line_total</code>. If you buy something regularly from the same merchant at similar amounts, that's a signal. BankSync transactions go further — they include Netflix, Spotify, insurance, utilities. The app can surface these as "you might want to track this as a subscription" without any external API.</p>
+
+<h3>Why fortnightly, not monthly</h3>
+<p>Your existing <code>budget_status()</code> in <code>services/budget.py</code> is monthly-only. You get paid fortnightly, so the fortnight is the natural budgeting period. The grocery estimate from the shopping list already covers a plan period (which is typically 1&ndash;2 weeks), so it slots in cleanly.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="current-state">2. Current State Assessment</h2>
+
+<h3>What already exists and is relevant</h3>
+
+<table>
+<tr><th>Component</th><th>File</th><th>Relevance</th></tr>
+<tr><td>Monthly budget pacing</td><td class="file-ref">services/budget.py</td><td><code>budget_status()</code> computes monthly spend vs. target with tone (ok/warn/danger). Fortnightly version can reuse this pattern.</td></tr>
+<tr><td>Bank transaction import</td><td class="file-ref">services/bank_import.py</td><td>NetBank CSV parsing, merchant classification, dedupe. Already categorises transactions by grocery merchant.</td></tr>
+<tr><td>BankSync API client</td><td class="file-ref">services/banksync_client.py</td><td>Pulls transactions from Australian banks via CDR. Auto-syncs to purchases. <span class="tag tag-info">Key insight</span></td></tr>
+<tr><td>Woolworths PDF import</td><td class="file-ref">services/spend_import.py</td><td>Staged import with review. Parses tax invoices to purchases.</td></tr>
+<tr><td>Spend analysis</td><td class="file-ref">services/spend_analysis.py</td><td>Pure-function stats: totals, monthly spend, category spend, top products by frequency/spend.</td></tr>
+<tr><td>Dashboard metrics</td><td class="file-ref">services/dashboard.py</td><td>Pure functions for KPIs: plan coverage, shopping summary, pantry alerts, spend window, sparklines.</td></tr>
+<tr><td>Settings system</td><td class="file-ref">database.py</td><td>Key/value <code>settings</code> table. Already stores <code>monthly_budget</code>, <code>plan_start_date</code>, etc.</td></tr>
+<tr><td>Purchases table</td><td class="file-ref">database.py SCHEMA</td><td>All transactions with store, date, product_name, line_total, ingredient_id. <span class="tag tag-warn">No category field</span></td></tr>
+</table>
+
+<h3>What's missing</h3>
+
+<table>
+<tr><th>Gap</th><th>Impact</th></tr>
+<tr><td>No <code>subscriptions</code> table</td><td>Can't track recurring non-grocery expenses at all.</td></tr>
+<tr><td>No subscription routes/services/templates</td><td>No UI or API for managing subscriptions.</td></tr>
+<tr><td>No fortnightly budget view</td><td>Existing budget is monthly-only; doesn't match pay cycle.</td></tr>
+<tr><td>No "upcoming payments" view</td><td>Nothing surfaces what's due in the next 14 days.</td></tr>
+<tr><td>No recurrence detection</td><td>Purchase data has signals (same merchant, similar amount, regular interval) but they're not surfaced.</td></tr>
+<tr><td>No savings/spare calculation</td><td>No "income &minus; expenses = spare" calculation exists.</td></tr>
+<tr><td>Purchases lack a category field</td><td>Groceries are categorised via ingredient links, but non-grocery bank transactions have no category.</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="pain-points">3. Pain Points &amp; Gaps</h2>
+
+<div class="card pain-point">
+<div class="card-header">Pain Point 1: Non-grocery transactions are discarded</div>
+<p>BankSync and NetBank imports only keep transactions matching grocery merchant patterns (Woolworths, Coles, ALDI, etc.). Everything else &mdash; Netflix, Spotify, rent, utilities, insurance &mdash; is classified as "unclassified" and <strong>thrown away</strong>. This is the single biggest data gap: the raw material for subscription suggestions already flows through the app but is discarded at the door.</p>
+</div>
+
+<div class="card pain-point">
+<div class="card-header">Pain Point 2: No way to track recurring non-grocery expenses</div>
+<p>Even if you wanted to manually add "Netflix $18.99/monthly" today, there's nowhere to put it. The <code>purchases</code> table is for actual transactions, not forward-looking commitments. There's no concept of "this much money will leave my account on this date."</p>
+</div>
+
+<div class="card pain-point">
+<div class="card-header">Pain Point 3: Monthly budget doesn't match pay cycle</div>
+<p><code>budget_status()</code> computes monthly pacing (spent vs. target, projected, tone). But you get paid fortnightly and want to know "after this fortnight's bills, what's spare?" The monthly view is too coarse &mdash; a big bill early in the month makes the whole month look bad even if the fortnight is fine.</p>
+</div>
+
+<div class="card pain-point">
+<div class="card-header">Pain Point 4: No "what's due" view</div>
+<p>The dashboard shows groceries, meal plan, pantry, and spend &mdash; but nothing about upcoming bills. You have to remember that rent is due on the 1st, Netflix on the 15th, etc.</p>
+</div>
+
+<div class="card opportunity">
+<div class="card-header">Opportunity: Purchase data already contains recurrence signals</div>
+<p>Your <code>purchases</code> table has <code>store</code>, <code>order_date</code>, <code>product_name</code>, and <code>line_total</code> for every transaction. BankSync transactions add <code>description</code> (merchant name) and <code>amount</code>. A simple heuristic &mdash; "same description, similar amount, 3+ times, regular interval" &mdash; can surface candidates without any external API or ML.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="feature-design">4. Feature Design</h2>
+
+<h3>4.1 Data Model: <code>subscriptions</code> table</h3>
+
+<div class="card">
+<table>
+<tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+<tr><td><code>id</code></td><td>INTEGER PK</td><td>Autoincrement</td></tr>
+<tr><td><code>name</code></td><td>TEXT NOT NULL</td><td>e.g. "Netflix", "Rent", "Electricity"</td></tr>
+<tr><td><code>amount</code></td><td>REAL NOT NULL</td><td>Cost per occurrence (positive = expense)</td></tr>
+<tr><td><code>frequency</code></td><td>TEXT NOT NULL</td><td><code>weekly</code>, <code>fortnightly</code>, <code>monthly</code>, <code>quarterly</code>, <code>yearly</code></td></tr>
+<tr><td><code>category</code></td><td>TEXT</td><td>Optional grouping: <code>bills</code>, <code>entertainment</code>, <code>insurance</code>, <code>utilities</code>, <code>rent</code>, etc.</td></tr>
+<tr><td><code>next_due</code></td><td>TEXT</td><td>ISO date (YYYY-MM-DD) of next payment</td></tr>
+<tr><td><code>active</code></td><td>INTEGER DEFAULT 1</td><td>Soft-delete / pause (0 = hidden)</td></tr>
+<tr><td><code>notes</code></td><td>TEXT</td><td>Optional</td></tr>
+<tr><td><code>created_at</code></td><td>TIMESTAMP</td><td>Auto</td></tr>
+</table>
+<p><strong>Migration:</strong> Add to <code>MIGRATIONS</code> list in <code>database.py</code> as a new table creation (not just ALTER). Actually &mdash; since <code>SCHEMA</code> uses <code>CREATE TABLE IF NOT EXISTS</code>, we can add the <code>subscriptions</code> table directly to <code>SCHEMA</code> and it will be created automatically on <code>init_db()</code>. No migration entry needed for a new table.</p>
+</div>
+
+<h3>4.2 Fortnightly Summary</h3>
+
+<div class="card">
+<p>The fortnightly summary page shows:</p>
+<pre style="background: var(--bg); padding: 1rem; border-radius: 6px; font-family: monospace; font-size: 0.9rem; overflow-x: auto;">
+Fortnight: Mon 12 Oct &ndash; Sun 25 Oct
+─────────────────────────────────────────
+  Income (fortnightly)           $2,400.00
+  Groceries (planned)             -$185.00
+  Subscriptions due               -$127.50
+    Netflix                       -$18.99
+    Rent                         -$100.00
+    Spotify                         -$8.51
+  ─────────────────────────────────────────
+  Spare                         $2,087.50
+</pre>
+<p><strong>Calculation logic (pure function in <code>services/budget.py</code>):</strong></p>
+<ol>
+  <li>Determine fortnight start/end (Mon&ndash;Sun, 14 days). Current fortnight = the one containing today.</li>
+  <li>Sum subscriptions where <code>next_due</code> falls within the fortnight, OR frequency implies a payment is due (monthly bills whose due date is in range, weekly &times; 2, etc.).</li>
+  <li>Get grocery estimate from the current meal plan's shopping list (already computed by <code>shopping_list_generator.py</code>).</li>
+  <li>Subtract both from a configured fortnightly income (new setting: <code>fortnightly_income</code>).</li>
+</ol>
+</div>
+
+<h3>4.3 Subscription Suggestions from Purchase Data</h3>
+
+<div class="card">
+<p>Two detection strategies, both pure functions over purchase dicts:</p>
+
+<h3>Strategy A: Recurrence detection (from purchases)</h3>
+<p>Scan <code>purchases</code> for patterns:</p>
+<ul>
+  <li>Same <code>store</code> (or <code>product_name</code> prefix) appearing 3+ times</li>
+  <li>Similar <code>line_total</code> (within &plusmn;10%)</li>
+  <li>Regular interval (roughly weekly, fortnightly, or monthly)</li>
+</ul>
+<p>Surface as: "You've paid Woolworths $85.30 about weekly &mdash; is this a regular expense?" (No &mdash; it's groceries. But the signal is there.)</p>
+
+<h3>Strategy B: BankSync unclassified transactions</h3>
+<p>BankSync already pulls <em>all</em> transactions but only keeps grocery ones. The "unclassified" list is currently discarded. Instead, keep it in memory during sync and surface descriptions that look like bills:</p>
+<ul>
+  <li>Known merchant patterns (Netflix, Spotify, AGL, Origin Energy, etc.)</li>
+  <li>Merchant names that repeat across syncs</li>
+  <li>Round amounts on regular dates</li>
+</ul>
+<p>Surface as: "These merchants appear regularly in your bank feed &mdash; add them as subscriptions?"</p>
+
+<p><strong>Recommendation:</strong> Start with Strategy B (BankSync unclassified) &mdash; it's higher signal, lower effort, and the data is already flowing. Strategy A can be a later enhancement.</p>
+</div>
+
+<h3>4.4 User Workflow</h3>
+
+<div class="card">
+<ol>
+  <li><strong>Add a subscription</strong> &mdash; manual form (name, amount, frequency, next_due, category)</li>
+  <li><strong>See upcoming</strong> &mdash; fortnightly summary shows what's due</li>
+  <li><strong>Get suggestions</strong> &mdash; app surfaces potential subscriptions from bank data</li>
+  <li><strong>Confirm/dismiss</strong> &mdash; one click to add a suggested subscription, or dismiss it</li>
+  <li><strong>Track spare</strong> &mdash; fortnightly summary shows income &minus; groceries &minus; subscriptions = spare</li>
+</ol>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="implementation">5. Implementation Plan</h2>
+
+<div class="phase">
+<div class="phase-title">Phase 1: Data Layer &amp; CRUD (the foundation)</div>
+
+<div class="step">
+<div class="step-title">Step 1.1: Add <code>subscriptions</code> table to SCHEMA</div>
+<p><strong>Logic:</strong> New tables go in <code>SCHEMA</code> in <code>database.py</code> (not MIGRATIONS &mdash; that's for ALTER TABLE on existing tables). <code>init_db()</code> runs <code>executescript(SCHEMA)</code> which creates it automatically.</p>
+<div class="substep">Add CREATE TABLE for <code>subscriptions</code> to SCHEMA</div>
+<div class="substep">Add <code>subscriptions</code> to <code>COUNTED_TABLES</code> for db-status</div>
+<div class="substep">Verify: <code>flask --app app db-status</code> shows subscriptions with 0 rows</div>
+</div>
+
+<div class="step">
+<div class="step-title">Step 1.2: Create <code>services/subscriptions.py</code></div>
+<p><strong>Logic:</strong> Pure functions over dicts, no Flask, no SQL. Follows the pattern of <code>services/budget.py</code> and <code>services/dashboard.py</code>. Every function is unit-testable without a database.</p>
+<div class="substep"><code>subscriptions_due_in_range(subscriptions, start, end)</code> &mdash; filter subscriptions whose next_due or frequency-implied due date falls in [start, end]</div>
+<div class="substep"><code>fortnightly_subscription_total(subscriptions, start, end)</code> &mdash; sum of amounts due in range</div>
+<div class="substep"><code>next_occurrence(subscription, from_date)</code> &mdash; compute next due date after from_date based on frequency</div>
+<div class="substep"><code>fortnight_for_date(d)</code> &mdash; return (start, end) of the fortnight containing date d (Mon&ndash;Sun)</div>
+<div class="substep"><code>format_frequency(freq)</code> &mdash; "monthly" &rarr; "Monthly"</div>
+</div>
+
+<div class="step">
+<div class="step-title">Step 1.3: Create <code>routes/subscriptions.py</code></div>
+<p><strong>Logic:</strong> Standard blueprint pattern matching <code>routes/settings.py</code> and <code>routes/pantry.py</code>. All state-changing routes are POST + CSRF protected.</p>
+<div class="substep"><code>GET /subscriptions</code> &mdash; list all active subscriptions, grouped by category</div>
+<div class="substep"><code>GET/POST /subscriptions/add</code> &mdash; add form</div>
+<div class="substep"><code>POST /subscriptions/&lt;id&gt;/edit</code> &mdash; edit (or reuse add form with pre-filled values)</div>
+<div class="substep"><code>POST /subscriptions/&lt;id&gt;/toggle</code> &mdash; activate/deactivate</div>
+<div class="substep"><code>POST /subscriptions/&lt;id&gt;/delete</code> &mdash; soft-delete (set active=0)</div>
+</div>
+
+<div class="step">
+<div class="step-title">Step 1.4: Create subscription templates</div>
+<div class="substep"><code>templates/subscriptions/list.html</code> &mdash; card-based list (like meal rules), grouped by category</div>
+<div class="substep"><code>templates/subscriptions/form.html</code> &mdash; add/edit form (name, amount, frequency, next_due, category, notes)</div>
+</div>
+
+<div class="step">
+<div class="step-title">Step 1.5: Register routes and add settings</div>
+<div class="substep">Register <code>subscriptions_bp</code> in <code>routes/__init__.py</code></div>
+<div class="substep">Add <code>fortnightly_income</code> setting to settings page</div>
+</div>
+</div>
+
+<div class="phase">
+<div class="phase-title">Phase 2: Fortnightly Summary</div>
+
+<div class="step">
+<div class="step-title">Step 2.1: Extend <code>services/budget.py</code></div>
+<p><strong>Logic:</strong> The fortnightly summary is a pure function that takes subscriptions + grocery estimate + income and returns a breakdown. Reuses the tone pattern from <code>budget_status()</code>.</p>
+<div class="substep"><code>fortnightly_summary(subscriptions, grocery_estimate, income, start, end)</code> &mdash; returns {income, groceries, subscriptions: [...], subscription_total, spare, tone}</div>
+</div>
+
+<div class="step">
+<div class="step-title">Step 2.2: Create fortnightly summary route + template</div>
+<div class="substep"><code>GET /budget</code> or <code>GET /subscriptions/fortnight</code> &mdash; fortnightly summary page</div>
+<div class="substep"><code>templates/subscriptions/fortnight.html</code> &mdash; the summary view</div>
+<div class="substep">Add nav link from dashboard</div>
+</div>
+
+<div class="step">
+<div class="step-title">Step 2.3: Wire grocery estimate into the summary</div>
+<p><strong>Logic:</strong> The shopping list generator already produces an estimated cost. The fortnightly summary needs to pull the current plan's grocery cost and include it.</p>
+<div class="substep">Load current plan dates from settings</div>
+<div class="substep">Call shopping list generator for current plan</div>
+<div class="substep">Extract estimated cost total</div>
+</div>
+</div>
+
+<div class="phase">
+<div class="phase-title">Phase 3: Subscription Suggestions</div>
+
+<div class="step">
+<div class="step-title">Step 3.1: Create suggestion service</div>
+<p><strong>Logic:</strong> Pure functions that scan purchase/bank data for recurrence patterns. Returns a list of suggested subscriptions with confidence.</p>
+<div class="substep"><code>suggest_from_purchases(purchases)</code> &mdash; scan for recurring merchants/amounts</div>
+<div class="substep><code>suggest_from_unclassified(unclassified)</code> &mdash; scan bank feed unclassified list</div>
+<div class="substep><code>known_subscription_merchants</code> &mdash; static list of popular Australian subscription merchants (Netflix, Spotify, Stan, Disney+, AGL, Origin, AAMI, RACV, etc.)</div>
+</div>
+
+<div class="step">
+<div class="step-title">Step 3.2: Create suggestion route + template</div>
+<div class="substep"><code>GET /subscriptions/suggest</code> &mdash; show suggestions</div>
+<div class="substep"><code>POST /subscriptions/suggest/accept</code> &mdash; accept a suggestion (creates subscription)</div>
+<div class="substep"><code>POST /subscriptions/suggest/dismiss</code> &mdash; dismiss a suggestion</div>
+<div class="substep"><code>templates/subscriptions/suggest.html</code> &mdash; suggestion cards with accept/dismiss</div>
+</div>
+</div>
+
+<div class="phase">
+<div class="phase-title">Phase 4: Tests &amp; Polish</div>
+
+<div class="step">
+<div class="step-title">Step 4.1: Service tests</div>
+<div class="substep"><code>tests/test_subscriptions.py</code> &mdash; unit tests for all pure functions in <code>services/subscriptions.py</code></div>
+<div class="substep"><code>tests/test_budget.py</code> &mdash; add fortnightly_summary tests</div>
+<div class="substep"><code>tests/test_suggestions.py</code> &mdash; unit tests for suggestion logic</div>
+</div>
+
+<div class="step">
+<div class="step-title">Step 4.2: Integration tests</div>
+<div class="substep">Subscription CRUD via Flask test client</div>
+<div class="substep">Fortnightly summary page renders correctly</div>
+<div class="substep">Settings save/load fortnightly income</div>
+</div>
+
+<div class="step">
+<div class="step-title">Step 4.3: Dashboard integration</div>
+<div class="substep">Add "Subscriptions due" tile to dashboard</div>
+<div class="substep">Add "Fortnightly spare" tile to dashboard</div>
+</div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="recommendations">6. Recommendations</h2>
+
+<div class="card">
+<h3>Do this now</h3>
+<ol>
+  <li><strong>Subscriptions table + CRUD</strong> &mdash; the foundation. Small, self-contained, immediately useful.</li>
+  <li><strong>Fortnightly summary</strong> &mdash; the "what's spare" view. This is the core value proposition.</li>
+  <li><strong>BankSync unclassified suggestions</strong> &mdash; the data is already flowing; just keep it and surface it.</li>
+</ol>
+</div>
+
+<div class="card">
+<h3>Don't do this yet</h3>
+<ol>
+  <li><strong>Full budgeting</strong> &mdash; categories, envelopes, account reconciliation. Different data model, much bigger project.</li>
+  <li><strong>Recurrence detection from purchases</strong> &mdash; interesting but noisy (groceries will dominate). BankSync unclassified is cleaner.</li>
+  <li><strong>Automatic "mark as paid" tracking</strong> &mdash; keep it manual for now. Auto-detection adds complexity.</li>
+</ol>
+</div>
+
+<div class="card note">
+<h3>Technical notes</h3>
+<ul>
+  <li>The <code>subscriptions</code> table goes in <code>SCHEMA</code> (not <code>MIGRATIONS</code>) &mdash; new tables are created automatically by <code>init_db()</code>.</li>
+  <li>Fortnightly period = Monday to Sunday (14 days). The current fortnight contains today's date.</li>
+  <li>The existing <code>budget_status()</code> pattern (monthly pacing with tone) is the template for <code>fortnightly_summary()</code>.</li>
+  <li>All new routes follow the existing blueprint pattern: POST-only for state changes, CSRF protected, <code>@login_required</code>.</li>
+  <li>The suggestion feature should be opt-in &mdash; surface suggestions but require explicit "accept" before creating anything.</li>
+</ul>
+</div>
+
+<div class="card">
+<h3>Estimated effort</h3>
+<table>
+<tr><th>Phase</th><th>Scope</th><th>Rough size</th></tr>
+<tr><td>1</td><td>Subscriptions table + CRUD</td><td>~4-6 hours</td></tr>
+<tr><td>2</td><td>Fortnightly summary</td><td>~3-4 hours</td></tr>
+<tr><td>3</td><td>Suggestions from bank data</td><td>~4-5 hours</td></tr>
+<tr><td>4</td><td>Tests + dashboard polish</td><td>~3-4 hours</td></tr>
+<tr><td><strong>Total</strong></td><td></td><td><strong>~15-20 hours</strong></td></tr>
+</table>
+</div>
+
+</div>
+</body>
+</html>

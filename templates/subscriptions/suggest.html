@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf %}
+
+{% block title %}Subscription Suggestions — Grocery Visualiser{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="mb-0">Subscription Suggestions</h1>
+        <p class="page-sub">Potential subscriptions detected from your bank data and purchase history.</p>
+    </div>
+    <div class="d-flex flex-wrap">
+        <a href="{{ url_for('subscriptions.subscription_list') }}" class="btn btn-outline-primary mr-2 mb-2">Back to list</a>
+    </div>
+</div>
+
+{% if not suggestions %}
+<div class="card mb-4 section-card">
+    <div class="card-body">
+        <p class="text-muted mb-2">No suggestions right now. As you import more bank data or purchase history, the app will detect recurring payments here.</p>
+        <a href="{{ url_for('spend.spend_import') }}" class="btn btn-outline-primary btn-sm">Import spend data</a>
+        <a href="{{ url_for('subscriptions.subscription_add') }}" class="btn btn-outline-secondary btn-sm ml-2">Add manually</a>
+    </div>
+</div>
+{% endif %}
+
+{% if suggestions %}
+<div class="card mb-4 section-card">
+    <div class="card-header">
+        <span class="section-title">{{ suggestions|length }} suggestion{{ 's' if suggestions|length != 1 }}</span>
+    </div>
+    <div class="card-body py-2">
+        {% for s in suggestions %}
+        <div class="d-flex justify-content-between align-items-start py-2 {{ 'border-top' if not loop.first }}">
+            <div>
+                <strong>{{ s.name }}</strong>
+                <span class="badge badge-pill badge-{{ 'success' if s.confidence == 'high' else 'warning' }} ml-2">{{ s.confidence }}</span>
+                <br>
+                <small class="text-muted">{{ s.reason }}</small>
+                <br>
+                <small>
+                    ${{ "%.2f"|format(s.amount) }} {{ s.frequency }}
+                    {% if s.category %} &middot; {{ s.category|title }}{% endif %}
+                    {% if s.source %} &middot; from {{ s.source }}{% endif %}
+                </small>
+            </div>
+            <div class="ml-3">
+                <form method="post" action="{{ url_for('subscriptions.subscription_accept_suggestion') }}" class="d-inline">
+                    {{ csrf() }}
+                    <input type="hidden" name="name" value="{{ s.name }}">
+                    <input type="hidden" name="amount" value="{{ s.amount }}">
+                    <input type="hidden" name="frequency" value="{{ s.frequency }}">
+                    <input type="hidden" name="category" value="{{ s.category }}">
+                    <button type="submit" class="btn btn-sm btn-outline-success">Add</button>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-header">How suggestions work</div>
+    <div class="card-body">
+        <ul>
+            <li><strong>BankSync data:</strong> The app scans unclassified bank transactions for known merchant names (Netflix, Spotify, utilities, insurance) and recurring descriptions.</li>
+            <li><strong>Purchase history:</strong> The app detects when the same product is bought 3+ times at similar amounts on a regular schedule.</li>
+            <li>Suggestions are opt-in: nothing is added until you click "Add".</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}

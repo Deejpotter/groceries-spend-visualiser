@@ -167,6 +167,18 @@ CREATE TABLE IF NOT EXISTS purchases (
 CREATE INDEX IF NOT EXISTS idx_purchases_date ON purchases(order_date);
 CREATE INDEX IF NOT EXISTS idx_plan_date ON meal_plan_entries(date, meal_type);
 
+CREATE TABLE IF NOT EXISTS subscriptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    amount REAL NOT NULL,
+    frequency TEXT NOT NULL DEFAULT 'monthly',
+    category TEXT,
+    next_due TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS import_batches (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     token TEXT UNIQUE NOT NULL,
@@ -276,7 +288,7 @@ def init_db() -> bool:
 COUNTED_TABLES = (
     "users", "ingredients", "recipes", "recipe_ingredients", "meal_rules",
     "meal_plan_entries", "shopping_list_items", "pantry_items", "purchases",
-    "import_batches", "import_staged_lines",
+    "subscriptions", "import_batches", "import_staged_lines",
 )
 
 

@@ -30,6 +30,7 @@
     ('shopping_list.shopping_list_view', 'Shopping List', ['shopping_list.']),
     ('pantry.pantry_list', 'Pantry', ['pantry.']),
     ('spend.spend_dashboard', 'Spend', ['spend.']),
+    ('subscriptions.subscription_list', 'Subscriptions', ['subscriptions.']),
 ] %}
 {% from "_macros.html" import icon %}
 <nav class="navbar navbar-expand-lg navbar-dark bg-brand d-print-none">
@@ -111,6 +112,8 @@
        {% if request.endpoint and request.endpoint.startswith('pantry.') %}aria-current="page"{% endif %}>{{ icon('package-open') }}Pantry</a>
     <a href="{{ url_for('spend.spend_dashboard') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('spend.') }}"
        {% if request.endpoint and request.endpoint.startswith('spend.') %}aria-current="page"{% endif %}>{{ icon('receipt') }}Spend</a>
+    <a href="{{ url_for('subscriptions.subscription_list') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('subscriptions.') }}"
+       {% if request.endpoint and request.endpoint.startswith('subscriptions.') %}aria-current="page"{% endif %}>{{ icon('credit-card') }}Bills</a>
 </nav>
 {% endif %}
 

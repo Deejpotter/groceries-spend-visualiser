@@ -1,226 +1,203 @@
-"""MCP query functions against a throwaway database (no running server)."""
+"""MCP server: the stdio client shape over the app's HTTP API.
+
+The server is a thin HTTP client now, so these tests verify the client
+behaviour (request shaping, bearer auth, error mapping) and the tool
+registry — the app-side logic is covered by tests/test_api.py.
+"""
+
+import base64
+import io
+import json
+import urllib.error
 
 import pytest
 
-from database import get_db, set_setting
-from services.mutations import AgentError
 from mcp_server.server import (
-    add_list_item, add_meal, add_stock, generate_plan, get_recipe, import_status, link_product,
-    list_ingredients, list_rules, pantry_status, remove_meal, server_info, set_item_ticked,
-    shopping_list, spend_summary, stage_invoice_pdf, swap_meal, tick_many, use_pantry,
-    week_plan, require_api_key,
+    GroceriesApi, ApiError, _b64, _safe, mcp,
 )
 
 
-def _seed(db):
-    db.execute("INSERT INTO ingredients (id, name, category, unit, price, minimum_stock)"
-               " VALUES (1, 'Mince', 'meat', 'kg', 17.0, 1)")
-    db.execute("INSERT INTO recipes (id, name, servings) VALUES (1, 'Bolognese', 4)")
-    db.execute("INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity)"
-               " VALUES (1, 1, 500)")
-    db.commit()
+class FakeResponse:
+    """Minimal context-manager stand-in for an HTTP response."""
+
+    def __init__(self, payload, status=200):
+        self._body = json.dumps(payload).encode() if payload is not None else b""
+        self.status = status
+
+    def read(self):
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
 
 
-def _set_dates(db, start="2026-10-05", end="2026-10-09"):
-    set_setting("plan_start_date", start)
-    set_setting("plan_end_date", end)
-    db.commit()
+class FakeOpener:
+    """Records requests, replies from a queue (or raises queued errors)."""
+
+    def __init__(self, responses=None, errors=None):
+        self.requests = []
+        self.responses = list(responses or [])
+        self.errors = list(errors or [])
+
+    def __call__(self, req, timeout=None):
+        self.requests.append((req, timeout))
+        if self.errors:
+            raise self.errors.pop(0)
+        return self.responses.pop(0)
 
 
-def test_week_plan_empty(db):
-    assert week_plan() == {"plan_start": None, "plan_end": None, "days": []}
+def _http_error(status, payload):
+    """A urllib HTTPError carrying a JSON body."""
+    return urllib.error.HTTPError(
+        "http://x/api", status, "err", {}, io.BytesIO(json.dumps(payload).encode()))
 
 
-def test_week_plan_lists_meals(db):
-    _seed(db)
-    _set_dates(db)
-    db.execute("INSERT INTO meal_plan_entries (date, meal_type, recipe_id, servings, is_auto_generated)"
-               " VALUES ('2026-10-05', 'dinner', 1, 4, 0)")
-    db.commit()
-    plan = week_plan()
-    assert (plan["plan_start"], plan["plan_end"]) == ("2026-10-05", "2026-10-09")
-    assert len(plan["days"]) == 5
-    monday = plan["days"][0]
-    assert monday["date"] == "2026-10-05"
-    assert monday["meals"]["dinner"] == {
-        "recipe": "Bolognese", "servings": 4, "manual": True, "leftovers": False,
-        "origin": "ui"}
-    assert plan["days"][1]["meals"] == {}
+def _api(**kw):
+    kw.setdefault("base_url", "https://groceries.example")
+    kw.setdefault("api_key", "gx_test")
+    return GroceriesApi(**kw)
 
 
-def test_shopping_list_empty(db):
-    assert shopping_list() == {
-        "groups": {}, "totals": {"packs_total": 0, "exact_total": 0},
-        "unit_preference": "metric", "subtract_pantry": False}
+# ---------------------------------------------------------------------------
+# Client: request shaping and auth
+# ---------------------------------------------------------------------------
+
+def test_get_sends_bearer_and_path():
+    opener = FakeOpener([FakeResponse({"ok": True})])
+    api = _api(opener=opener)
+    assert api.get("/plan") == {"ok": True}
+    req, _ = opener.requests[0]
+    assert req.get_method() == "GET"
+    assert req.full_url == "https://groceries.example/plan"
+    assert req.get_header("Authorization") == "Bearer gx_test"
 
 
-def test_pantry_status_flags_low_stock(db):
-    _seed(db)
-    db.execute("INSERT INTO pantry_items (ingredient_id, quantity, unit, location)"
-               " VALUES (1, 0.2, 'kg', 'fridge')")
-    db.commit()
-    status = pantry_status()
-    assert status["low_count"] == 1
-    assert status["expired_count"] == 0
+def test_base_url_trailing_slash_is_trimmed():
+    opener = FakeOpener([FakeResponse({})])
+    api = _api(base_url="https://groceries.example/", opener=opener)
+    api.get("/plan")
+    assert opener.requests[0][0].full_url == "https://groceries.example/plan"
 
 
-def test_spend_summary_empty(db):
-    assert spend_summary() == {"purchases": 0, "note": "No purchases yet."}
+def test_post_sends_json_body():
+    opener = FakeOpener([FakeResponse({"added": 1})])
+    api = _api(opener=opener)
+    assert api.post("/shopping-list/tick", {"item_ids": [1], "checked": True}) == {"added": 1}
+    req, _ = opener.requests[0]
+    assert req.get_method() == "POST"
+    assert json.loads(req.data.decode()) == {"item_ids": [1], "checked": True}
 
 
-def test_spend_summary_totals(db):
-    db.execute("INSERT INTO purchases (order_date, basket_id, store, product_name, quantity,"
-               " unit_price, line_total) VALUES ('2026-10-01', 'b1', 'Woolworths', 'Milk', 1, 3.0, 3.0)")
-    db.commit()
-    summary = spend_summary()
-    assert summary["total_spend"] == pytest.approx(3.0)
-    assert summary["total_shops"] == 1
+def test_delete_method():
+    opener = FakeOpener([FakeResponse({"removed": 3})])
+    api = _api(opener=opener)
+    assert api.delete("/plan/entries/3") == {"removed": 3}
+    assert opener.requests[0][0].get_method() == "DELETE"
 
 
-def test_list_rules_order(db):
-    db.execute("INSERT INTO meal_rules (day_of_week, meal_type, is_active, sort_order)"
-               " VALUES ('mon', 'dinner', 1, 0)")
-    db.commit()
-    rules = list_rules()["rules"]
-    assert [(r["days"], r["meal"], r["active"]) for r in rules] == [("mon", "dinner", True)]
+def test_missing_env_vars_raise_config_error():
+    with pytest.raises(ApiError) as excinfo:
+        GroceriesApi("", "key")
+    assert excinfo.value.code == "config"
+    with pytest.raises(ApiError):
+        GroceriesApi("https://x", "")
 
 
-def test_search_ingredients_and_read_recipe(db):
-    _seed(db)
-    assert list_ingredients("inc")["count"] == 1
-    assert list_ingredients("nope")["count"] == 0
-    by_id = get_recipe("1")
-    assert by_id["name"] == "Bolognese"
-    assert by_id["recipe_ingredients"][0]["quantity"] == 500
-    assert get_recipe("Bolognese")["name"] == "Bolognese"
-    with pytest.raises(AgentError) as excinfo:
-        get_recipe("Nope")
+# ---------------------------------------------------------------------------
+# Client: error mapping
+# ---------------------------------------------------------------------------
+
+def test_api_error_body_maps_code_and_message():
+    opener = FakeOpener(errors=[_http_error(404, {"error": {"code": "not_found",
+                                                            "message": "No recipe."}})])
+    with pytest.raises(ApiError) as excinfo:
+        _api(opener=opener).get("/recipes/nope")
     assert excinfo.value.code == "not_found"
+    assert excinfo.value.message == "No recipe."
 
 
-def test_require_api_key_gate(db, monkeypatch):
-    monkeypatch.delenv("GROCERIES_API_KEY", raising=False)
-    with pytest.raises(SystemExit):
-        require_api_key()
-    monkeypatch.setenv("GROCERIES_API_KEY", "gx_wrong")
-    set_setting("mcp_api_key", "gx_right")
-    get_db().commit()
-    with pytest.raises(SystemExit):
-        require_api_key()
-    monkeypatch.setenv("GROCERIES_API_KEY", "gx_right")
-    require_api_key()  # matches: no exit
+def test_error_body_without_structure_falls_back():
+    opener = FakeOpener(errors=[_http_error(500, {})])
+    with pytest.raises(ApiError) as excinfo:
+        _api(opener=opener).get("/plan")
+    assert excinfo.value.code == "http_error"
+    assert "500" in excinfo.value.message
 
 
-def test_mcp_meal_writes_round_trip(db):
-    _seed(db)
-    _set_dates(db)
-    placed = add_meal("2026-10-05", "dinner", "Bolognese")
-    assert placed["servings"] == 4
-    assert db.execute("SELECT origin FROM meal_plan_entries").fetchone()[0] == "mcp"
-    swapped = swap_meal(placed["entry_id"], "Bolognese", servings=6)
-    assert swapped["servings"] == 6
-    assert remove_meal(placed["entry_id"])["removed"] == placed["entry_id"]
-    with pytest.raises(AgentError, match="No recipe found"):
-        add_meal("2026-10-05", "dinner", "Nope")
+def test_connection_failure_maps_to_connection_code():
+    opener = FakeOpener(errors=[urllib.error.URLError("no route")])
+    with pytest.raises(ApiError) as excinfo:
+        _api(opener=opener).get("/plan")
+    assert excinfo.value.code == "connection"
 
 
-def test_error_codes_and_safe_shape(db):
-    from mcp_server.server import _safe
-    assert _safe(get_recipe, ref="Nope") == {
-        "error": {"code": "not_found", "message": "No recipe found for 'Nope'."}}
-    assert week_plan()["days"] == []
-    _seed(db)
-    _set_dates(db)
-    add_meal("2026-10-05", "dinner", "Bolognese")
-    assert week_plan()["days"][0]["meals"]["dinner"]["origin"] == "mcp"
+# ---------------------------------------------------------------------------
+# _safe: ApiError becomes a structured {error: ...} payload (never raises)
+# ---------------------------------------------------------------------------
+
+def test_safe_wraps_api_error():
+    def boom():
+        raise ApiError("validation", "bad input")
+    assert _safe(boom) == {"error": {"code": "validation", "message": "bad input"}}
 
 
-def test_mcp_generate_preview_then_confirm(db):
-    _seed(db)
-    with pytest.raises(AgentError) as excinfo:
-        generate_plan()
-    assert excinfo.value.code == "no_plan_dates"
-    _set_dates(db)
-    db.execute("INSERT INTO meal_rules (day_of_week, meal_type, is_active, sort_order)"
-               " VALUES ('mon', 'dinner', 1, 0)")
-    db.commit()
-    preview = generate_plan()
-    assert preview["confirmed"] is False and preview["auto_entries"] >= 1
-    done = generate_plan(confirm=True)
-    assert done["confirmed"] is True and done["entries"] >= 1
+def test_safe_wraps_unexpected_error():
+    def boom():
+        raise ValueError("kaboom")
+    result = _safe(boom)
+    assert result["error"]["code"] == "internal"
+    assert "ValueError" in result["error"]["message"]
 
 
-def test_mcp_list_and_pantry_writes(db):
-    _seed(db)
-    item = add_list_item("Milk", 2, unit="L", category="dairy")
-    assert set_item_ticked(item["item_id"], True)["checked"] is True
-    db.execute("INSERT INTO pantry_items (ingredient_id, quantity, unit) VALUES (1, 5, 'kg')")
-    db.commit()
-    used = use_pantry(1, 2.0)
-    assert (used["remaining"], used["depleted"]) == (3, False)
+# ---------------------------------------------------------------------------
+# _b64 + import_files file handling
+# ---------------------------------------------------------------------------
+
+def test_b64_round_trip(tmp_path):
+    f = tmp_path / "invoice.pdf"
+    f.write_bytes(b"%PDF-1.4 fake")
+    assert base64.b64decode(_b64(str(f))) == b"%PDF-1.4 fake"
 
 
-def test_server_info_and_bulk_ticks(db):
-    info = server_info()
-    assert info["server"] == "groceries" and info["counts"]["ingredients"] == 0
-    assert info["plan_start"] is None
-    _seed(db)
-    _set_dates(db)
-    info = server_info()
-    assert (info["plan_start"], info["counts"]["ingredients"]) == ("2026-10-05", 1)
-    for i in (1, 2):
-        db.execute("INSERT INTO shopping_list_items (ingredient_name, quantity, unit, checked, is_manual)"
-                   f" VALUES ('Item{i}', 1, 'each', 0, 0)")
-    db.commit()
-    assert tick_many([1, 2, 77], True) == {"updated": 2, "missing": [77]}
-    added = add_stock("Mince", 2)
-    assert (added["quantity"], added["unit"]) == (2, "kg")
-    with pytest.raises(ValueError, match="No ingredient found"):
-        add_stock("Nope", 1)
+def test_import_files_reads_and_posts(tmp_path, monkeypatch):
+    from mcp_server import server
+    f = tmp_path / "history.csv"
+    f.write_text("date,product_name,quantity,unit_price\n2026-01-01,Milk,1,3.50\n")
+    opener = FakeOpener([FakeResponse({"added": 1, "skipped": 0, "files": []})])
+    monkeypatch.setenv("GROCERIES_URL", "https://groceries.example")
+    monkeypatch.setenv("GROCERIES_API_KEY", "gx_test")
+    monkeypatch.setattr(server, "_client", lambda: _api(opener=opener))
+    result = server.import_files([str(f)])
+    assert result == {"added": 1, "skipped": 0, "files": []}
+    req, _ = opener.requests[0]
+    body = json.loads(req.data.decode())
+    assert body["files"][0]["filename"] == "history.csv"
+    assert body["store"] == "Woolworths"
+    assert base64.b64decode(body["files"][0]["content_base64"]).startswith(b"date,product_name")
 
+
+def test_import_files_missing_path_returns_error(tmp_path, monkeypatch):
+    from mcp_server import server
+    monkeypatch.setenv("GROCERIES_URL", "https://groceries.example")
+    monkeypatch.setenv("GROCERIES_API_KEY", "gx_test")
+    result = server.import_files([str(tmp_path / "nope.csv")])
+    assert result["error"]["code"] == "file_error"
+
+
+# ---------------------------------------------------------------------------
+# Tool registry
+# ---------------------------------------------------------------------------
 
 def test_tool_registry_matches_expectation():
     import asyncio
-    from mcp_server import server
-    names = sorted(t.name for t in asyncio.run(server.mcp.list_tools()))
+    names = sorted(t.name for t in asyncio.run(mcp.list_tools()))
     assert names == sorted([
-        "get_week_plan", "get_shopping_list", "get_pantry_status", "get_spend_summary",
-        "get_rules", "search_ingredients", "read_recipe", "plan_add_meal", "plan_swap_meal",
-        "plan_remove_meal", "plan_generate", "tick_item", "add_shopping_item", "use_pantry",
-        "get_server_info", "add_pantry_stock", "tick_items", "link_spend_product",
-        "stage_invoice", "get_import_status",
+        "get_server_info", "get_week_plan", "get_shopping_list", "get_pantry_status",
+        "get_spend_summary", "get_rules", "search_ingredients", "read_recipe",
+        "plan_add_meal", "plan_swap_meal", "plan_remove_meal", "plan_generate",
+        "tick_item", "tick_items", "add_shopping_item", "add_pantry_stock",
+        "use_pantry", "link_spend_product", "import_files",
     ])
-
-
-def test_mcp_link_product_round_trip(db):
-    _seed(db)
-    db.execute("INSERT INTO purchases (order_date, basket_id, store, product_name, quantity,"
-               " unit_price, line_total) VALUES ('2026-10-01', 'b1', 'Woolworths', 'Mince 500g', 1, 8.5, 8.5)")
-    db.commit()
-    linked = link_product("Mince 500g", "Mince")
-    assert linked["level"] in ("success", "warning")  # no cup price: link holds, price warns
-    assert db.execute("SELECT ingredient_id FROM purchases WHERE product_name = 'Mince 500g'").fetchone()[0] == 1
-    created = link_product("Mince 500g", "new", new_category="dairy")
-    assert "dairy" in created["message"].lower() or "Dairy" in created["message"]
-    unlinked = link_product("Mince 500g", "")
-    assert unlinked["level"] == "info"
-    assert db.execute("SELECT ingredient_id FROM purchases WHERE product_name = 'Mince 500g'").fetchone()[0] is None
-
-
-def test_mcp_stage_and_status_invoice(db):
-    from test_spend_pdf import REVIEW_LINES, _minimal_pdf
-    import base64
-    raw = _minimal_pdf(REVIEW_LINES)
-    staged = stage_invoice_pdf(base64.b64encode(raw).decode())
-    assert staged["invoice_number"] == "999001999"
-    assert staged["staged_lines"] >= 1
-    assert "note" in staged and "UI" in staged["note"]
-    status = import_status(staged["token"])
-    assert status["read_total"] == staged["read_total"]
-    assert all("product_name" in line for line in status["lines"])
-    with pytest.raises(AgentError) as excinfo:
-        import_status("bogus")
-    assert excinfo.value.code == "not_found"
-    with pytest.raises(AgentError) as excinfo:
-        stage_invoice_pdf("!!!not-base64!!!")
-    assert excinfo.value.code == "validation"

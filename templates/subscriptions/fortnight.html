@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf %}
+
+{% block title %}Fortnightly Budget — Grocery Visualiser{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="mb-0">Fortnightly Budget</h1>
+        <p class="page-sub">{{ start|nice_date }} &ndash; {{ end|nice_date }}</p>
+    </div>
+    <div class="d-flex flex-wrap">
+        <a href="{{ url_for('subscriptions.subscription_list') }}" class="btn btn-outline-primary mr-2 mb-2">Manage subscriptions</a>
+        <a href="{{ url_for('subscriptions.subscription_suggest') }}" class="btn btn-outline-secondary mb-2">Suggestions</a>
+    </div>
+</div>
+
+<div class="card mb-4 section-card border-left-{{ summary.tone }}">
+    <div class="card-header">
+        <span class="section-title">This fortnight</span>
+    </div>
+    <div class="card-body">
+        <table class="table table-borderless mb-0" style="max-width: 500px">
+            <tbody>
+                <tr>
+                    <td><strong>Income</strong></td>
+                    <td class="text-right">
+                        {% if summary.has_income %}
+                            ${{ "%.2f"|format(summary.income) }}
+                        {% else %}
+                            <span class="text-muted">Not set</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                <tr>
+                    <td>Groceries (planned)</td>
+                    <td class="text-right text-danger">-${{ "%.2f"|format(summary.groceries) }}</td>
+                </tr>
+                <tr>
+                    <td>Subscriptions due</td>
+                    <td class="text-right text-danger">-${{ "%.2f"|format(summary.subscription_total) }}</td>
+                </tr>
+                <tr style="border-top: 2px solid var(--line)">
+                    <td><strong>Spare</strong></td>
+                    <td class="text-right">
+                        {% if summary.spare is not none %}
+                            <strong class="{{ 'text-success' if summary.spare >= 0 else 'text-danger' }}">
+                                ${{ "%.2f"|format(summary.spare) }}
+                            </strong>
+                        {% else %}
+                            <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+
+        {% if not summary.has_income %}
+        <p class="text-muted small mt-2">
+            Set your fortnightly income in <a href="{{ url_for('settings.settings') }}">Settings</a> to see spare money.
+        </p>
+        {% endif %}
+    </div>
+</div>
+
+{% if summary.subscriptions %}
+<div class="card mb-4 section-card">
+    <div class="card-header">
+        <span class="section-title">Due this fortnight</span>
+    </div>
+    <div class="card-body py-2">
+        <table class="table table-sm mb-0">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Category</th>
+                    <th>Frequency</th>
+                    <th>Due</th>
+                    <th class="text-right">Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in summary.subscriptions %}
+                <tr>
+                    <td>
+                        <a href="{{ url_for('subscriptions.subscription_edit', sub_id=s.id) }}">{{ s.name }}</a>
+                    </td>
+                    <td>{{ s.category or 'Other' }}</td>
+                    <td>{{ s.frequency|title }}</td>
+                    <td>{{ s.next_due }}</td>
+                    <td class="text-right">${{ "%.2f"|format(s.amount) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="card mb-4 section-card">
+    <div class="card-body">
+        <p class="text-muted mb-0">No subscriptions due this fortnight.</p>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

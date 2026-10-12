@@ -1,78 +1,88 @@
 # Groceries MCP server
 
-Agent-friendly face of the app: the same pure services the web UI uses,
-exposed over MCP (stdio). Agents and humans always see the same numbers.
+Agent-friendly face of the Grocery Visualiser app. It is a **thin stdio
+client over the app's HTTP API** (`/api/v1`): the server itself holds no
+database connection and no business logic, so the same binary works
+against a local dev instance, staging or production by changing
+`GROCERIES_URL`.
 
-## Tools
+## Setup
 
-| Tool | What it returns |
-|---|---|
-| `get_week_plan` | Plan dates + each day's slots (meal or null) |
-| `get_shopping_list` | List grouped by category, with picks, costs, prefs |
-| `get_pantry_status` | Expired/expiring/low alerts + watch list |
-| `get_spend_summary` | Totals, averages, top products |
-| `get_rules` | Meal rules in evaluation order |
-| `search_ingredients` | Ingredients, optionally filtered by name |
-| `read_recipe` | One recipe with ingredients, by id or exact name |
-| `plan_add_meal` | Place a recipe in a slot (replaces; continuations handled) |
-| `plan_swap_meal` | Replace an entry's recipe (marks it manual) |
-| `plan_remove_meal` | Delete an entry (continuations go standalone) |
-| `plan_generate` | Preview counts; `confirm=true` regenerates auto entries |
-| `tick_item` | Tick/untick a shopping-list row |
-| `add_shopping_item` | Free-text row on the shopping list |
-| `use_pantry` | Use pantry stock; reports what remains |
-| `get_server_info` | Version, plan dates, table counts — orient in one call |
-| `add_pantry_stock` | Add pantry stock for an ingredient |
-| `tick_items` | Tick/untick many rows at once |
-| `link_spend_product` | Link a product to an ingredient (or create/unlink) |
-| `stage_invoice` | Stage a base64 PDF invoice for review (imports nothing) |
-| `get_import_status` | A staged batch's lines and read total |
+1. Get an API key: `flask --app app set-api-key` (prints the key once —
+   store it in your secrets store, e.g. `krasus/secrets/`).
+2. On the **remote** app, the key must exist in its database. For a
+   Coolify container: `docker exec <container> flask --app app set-api-key`.
+3. Point the server at the app:
 
-Writes share `services/mutations.py` with the web routes, so both faces
-stay consistent. Imports stay review-gated: there is no tool for them —
-stage in the UI and confirm there.
-
-Failures return `{"error": {"code", "message"}}` with codes `not_found`,
-`validation`, `no_plan_dates` and `internal`. Every mutation stamps an
-`origin` (`ui` from the web, `mcp` from here); reads surface it so you can
-see who changed what.
-
-## Run it
-
-```bash
-set GROCERIES_API_KEY=<key from `flask --app app set-api-key`>
+```sh
+export GROCERIES_URL="https://groceries-staging.deejpotter.com"
+export GROCERIES_API_KEY="gx_..."
 python mcp_server/server.py
 ```
 
-The first run adopts the provided key; afterwards the env key must match
-the stored one or the server refuses to start. Rotate with `set-api-key`.
+Dependencies: the `mcp` package (`pip install mcp`) — stdlib handles the
+rest (urllib, json, base64).
 
-## Register it
+## Client config
 
-OpenCode (`opencode.json`, `mcp` section):
+OpenClaw / Claude Code / Claude Desktop (`mcpServers`), and Hermes
+(`config.yaml` → `mcp_servers`) all share the same shape:
 
 ```json
-"groceries": {
-  "type": "local",
-  "command": ["C:/Users/Deej/Repos/groceries-spend-visualiser/myenv/Scripts/python.exe",
-              "C:/Users/Deej/Repos/groceries-spend-visualiser/mcp_server/server.py"],
-  "environment": { "GROCERIES_API_KEY": "<key>" },
-  "enabled": true,
-  "timeout": 15000
+{
+  "groceries": {
+    "command": "python",
+    "args": ["C:/Users/Deej/Repos/groceries-spend-visualiser/mcp_server/server.py"],
+    "env": {
+      "GROCERIES_URL": "https://groceries-staging.deejpotter.com",
+      "GROCERIES_API_KEY": "gx_..."
+    }
+  }
 }
 ```
 
-Claude Code (`~/.claude.json`, `mcpServers`):
+Auth is a bearer key: the app is single-admin, so there is one shared key
+(no per-user tokens). Rotate it with `flask set-api-key` and update every
+client that uses it.
 
-```json
-"groceries": {
-  "type": "stdio", "command": "C:/Users/Deej/Repos/groceries-spend-visualiser/myenv/Scripts/python.exe",
-  "args": ["C:/Users/Deej/Repos/groceries-spend-visualiser/mcp_server/server.py"],
-  "env": { "GROCERIES_API_KEY": "<key>" }
-}
-```
+## Tools
+
+| Tool | Endpoint | What it does |
+|------|----------|--------------|
+| `get_server_info` | `GET /server-info` | Version, plan dates, table counts — orient first |
+| `get_week_plan` | `GET /plan` | Plan days with each slot's meal |
+| `get_shopping_list` | `GET /shopping-list` | List by category, picks, costs |
+| `get_pantry_status` | `GET /pantry` | Expired/expiring/low alerts |
+| `get_spend_summary` | `GET /spend/summary` | Totals, averages, top products |
+| `get_rules` | `GET /rules` | Meal rules in order |
+| `search_ingredients` | `GET /ingredients` | Filter by name |
+| `read_recipe` | `GET /recipes/<ref>` | One recipe with ingredients (id or name) |
+| `plan_add_meal` | `POST /plan/meals` | Place a recipe in a slot |
+| `plan_swap_meal` | `POST /plan/entries/<id>/swap` | Replace an entry's recipe |
+| `plan_remove_meal` | `DELETE /plan/entries/<id>` | Remove an entry |
+| `plan_generate` | `POST /plan/generate` | Preview counts; `confirm=true` regenerates |
+| `tick_item` / `tick_items` | `POST /shopping-list/tick` | Tick rows (one or many) |
+| `add_shopping_item` | `POST /shopping-list/items` | Free-text list row |
+| `add_pantry_stock` | `POST /pantry/stock` | Add pantry stock (id or name) |
+| `use_pantry` | `POST /pantry/items/<id>/use` | Consume stock; reports remainder |
+| `link_spend_product` | `POST /spend/links` | Link product to ingredient (`new` / `""`) |
+| `import_files` | `POST /import` | Import local CSV/PDF files (auto-commit) |
+
+Imports are **auto-commit**: the API parses, dedupes (by store + basket +
+product) and applies the skip rules (unavailable and free items are
+skipped), so re-running an import is safe. Per-file `added`/`skipped`
+counts and warnings come back in the result.
+
+Errors return `{"error": {"code", "message"}}` — codes `unauthorized`,
+`not_found`, `validation`, `no_plan_dates`, `connection`, `internal`.
+The server never raises on tool failure; the shape is always returned.
 
 ## Tests
 
-`tests/test_mcp_server.py` calls the query functions directly against a
-throwaway database — no running server needed.
+```sh
+python -m pytest tests/test_mcp_server.py
+```
+
+Covers request shaping, bearer auth, error mapping, the `import_files`
+file path, and the tool registry. The app-side logic behind the API is
+covered by `tests/test_api.py`.

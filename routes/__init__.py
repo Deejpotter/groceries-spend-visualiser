@@ -7,6 +7,8 @@ from routes.shopping_list import register_shopping_routes
 from routes.pantry import register_pantry_routes
 from routes.settings import register_settings_routes
 from routes.spend import register_spend_routes
+from routes.subscriptions import register_subscriptions_routes
+from routes.api import api_bp
 
 
 def register_all_routes(app):
@@ -18,3 +20,5 @@ def register_all_routes(app):
     register_pantry_routes(app)
     register_settings_routes(app)
     register_spend_routes(app)
+    register_subscriptions_routes(app)
+    app.register_blueprint(api_bp)
