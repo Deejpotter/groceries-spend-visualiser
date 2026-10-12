@@ -1,0 +1,372 @@
+"""HTTP API (/api/v1): bearer auth, read endpoints, auto-commit import.
+
+The API is the same services the web UI and MCP server use, exposed over
+HTTP with a bearer key so agents (and the rebuilt MCP server) can work
+against a remote deployment instead of a local SQLite file.
+"""
+
+import base64
+import io
+
+import pytest
+
+from conftest import login
+from services.spend_import import parse_woolworths_invoice_pdf, parse_woolworths_invoice_text
+from tests.test_spend_pdf import _minimal_pdf
+
+# Same shape as test_spend_pdf.py: synthetic Woolworths invoice text.
+# Subtotal: 5.20 + 2.20 + 4.50 + 7.60 + 5.50 = 25.00.
+INVOICE_TEXT = """Sub Total:Sub Total:
+Thank you for working with us towards a greener future.  Reusable bags: Reusable bags:
+Delivery Fee:Delivery Fee:
+Invoice Total:Invoice Total:
+Invoice total includes GST of:Invoice total includes GST of:
+Paid Amount:Paid Amount:
+SuppliedSupplied
+LineLine DescriptionDescription OrderedOrdered SuppliedSupplied PricePrice AmountAmount
+BabyBaby
+1 * Test baby bath
+500ml 1 1 $8.80 $8.80
+BakeryBakery
+2 Golden crumpets round 6 pack 1 1 $2.20 $2.20
+2     (Sub) Test raisin toast 520G 0 1 $4.50 $4.50
+3 Missing loaf 600g 1 0 $4.40 $0.00
+Out Of StockOut Of Stock
+4 Free sticker each 1 1 $0.00 $0.00
+Serviced DeliServiced Deli
+5 Test bacon per kg 0.40 0.40 $19.00 $7.60
+MeatMeat
+6 Test chicken fillet 0.50 0.50 kg $11.00 $5.50
+$25.00
+$0.00
+$0.00
+$25.00
+$2.01
+$25.00
+Tax Invoice Page 1 of 1
+Invoice/Order Number: 999001999Invoice/Order Number: 999001999
+Date: 07 Jul 2023Date: 07 Jul 2023
+"""
+
+CSV_TEXT = (
+    "date,basket_id,product_name,quantity,unit_price\n"
+    "2026-01-10,api-basket-1,API test milk 2L,2,3.50\n"
+    "2026-01-10,api-basket-1,API test bread,1,4.20\n"
+    "2026-01-11,api-basket-2,API test eggs,1,6.00\n"
+)
+
+
+@pytest.fixture
+def api_client(app):
+    """Test client with an API key set and a user row present."""
+    from database import get_db, set_setting
+    with app.app_context():
+        set_setting("mcp_api_key", "test-api-key-123")
+        get_db().commit()
+        db = get_db()
+        from werkzeug.security import generate_password_hash
+        db.execute("INSERT OR IGNORE INTO users (username, password_hash) VALUES (?, ?)",
+                   ("tester", generate_password_hash("test12345")))
+        db.commit()
+    client = app.test_client()
+    client.environ_base["HTTP_AUTHORIZATION"] = "Bearer test-api-key-123"
+    return client
+
+
+def _pdf_bytes():
+    """Minimal one-page PDF carrying INVOICE_TEXT (xref-correct, pypdf-readable)."""
+    return _minimal_pdf(INVOICE_TEXT.splitlines())
+
+
+# ---------------------------------------------------------------------------
+# Auth
+# ---------------------------------------------------------------------------
+
+def test_health_needs_no_auth(client):
+    """The health check stays unauthenticated (CI + deploy checks use it)."""
+    r = client.get("/api/v1/health")
+    assert r.status_code == 200
+    assert r.get_json() == {"status": "ok"}
+
+
+def test_missing_key_is_401(client):
+    r = client.get("/api/v1/server-info")
+    assert r.status_code == 401
+    body = r.get_json()
+    assert body["error"]["code"] == "unauthorized"
+
+
+def test_wrong_key_is_401(client):
+    r = client.get("/api/v1/server-info",
+                   headers={"Authorization": "Bearer wrong-key"})
+    assert r.status_code == 401
+    assert r.get_json()["error"]["code"] == "unauthorized"
+
+
+def test_valid_key_passes(api_client):
+    r = api_client.get("/api/v1/server-info")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["server"] == "groceries"
+    assert "counts" in body
+
+
+# ---------------------------------------------------------------------------
+# Read endpoints
+# ---------------------------------------------------------------------------
+
+def test_server_info_reports_counts(api_client, db):
+    db.execute("INSERT INTO ingredients (name, category, unit) VALUES ('API milk', 'dairy', 'L')")
+    db.commit()
+    body = api_client.get("/api/v1/server-info").get_json()
+    assert body["counts"]["ingredients"] >= 1
+    assert "version" in body
+
+
+def test_week_plan_endpoint(api_client, db):
+    from database import get_db, set_setting
+    from datetime import date, timedelta
+    today = date.today()
+    with api_client.application.app_context():
+        set_setting("plan_start_date", today.isoformat())
+        set_setting("plan_end_date", (today + timedelta(days=6)).isoformat())
+        get_db().commit()
+    db.execute("INSERT INTO recipes (name, servings) VALUES ('API soup', 2)")
+    db.commit()
+    db.execute("INSERT INTO meal_plan_entries (date, meal_type, recipe_id, servings)"
+               " VALUES (?, 'dinner', 1, 2)", (today.isoformat(),))
+    db.commit()
+    body = api_client.get("/api/v1/plan").get_json()
+    assert body["plan_start"] == today.isoformat()
+    assert len(body["days"]) == 7
+    assert body["days"][0]["meals"]["dinner"]["recipe"] == "API soup"
+
+
+def test_shopping_list_endpoint(api_client, db):
+    db.execute("INSERT INTO shopping_list_items (ingredient_name, quantity, unit,"
+               " category, is_manual) VALUES ('API item', 1, 'each', 'other', 1)")
+    db.commit()
+    body = api_client.get("/api/v1/shopping-list").get_json()
+    names = [row["name"] for rows in body["groups"].values() for row in rows]
+    assert "API item" in names
+
+
+def test_spend_summary_endpoint(api_client, db):
+    from services.spend_import import import_purchases
+    _, rows, _ = parse_woolworths_invoice_text(INVOICE_TEXT)
+    import_purchases(db, rows)
+    body = api_client.get("/api/v1/spend/summary").get_json()
+    assert body["total_shops"] == 1
+    assert body["total_spend"] > 0
+
+
+def test_rules_endpoint(api_client, db):
+    db.execute("INSERT INTO meal_rules (day_of_week, meal_type, tag_filter, is_active, sort_order)"
+               " VALUES ('all', 'dinner', 'standard', 1, 1)")
+    db.commit()
+    body = api_client.get("/api/v1/rules").get_json()
+    assert len(body["rules"]) == 1
+    assert body["rules"][0]["meal"] == "dinner"
+
+
+def test_pantry_endpoint(api_client, db):
+    db.execute("INSERT INTO ingredients (name, category, unit) VALUES ('API pantry ing', 'dairy', 'each')")
+    db.execute("INSERT INTO pantry_items (ingredient_id, quantity, unit, location)"
+               " VALUES (1, 3, 'each', 'pantry')")
+    db.commit()
+    body = api_client.get("/api/v1/pantry").get_json()
+    assert isinstance(body, dict)
+
+
+def test_ingredients_search_endpoint(api_client, db):
+    db.execute("INSERT INTO ingredients (name, category, unit) VALUES ('API zucchini', 'produce', 'each')")
+    db.execute("INSERT INTO ingredients (name, category, unit) VALUES ('API toothpaste', 'other', 'each')")
+    db.commit()
+    body = api_client.get("/api/v1/ingredients?search=zucchini").get_json()
+    assert body["count"] == 1
+    assert body["ingredients"][0]["name"] == "API zucchini"
+
+
+def test_recipe_endpoint(api_client, db):
+    db.execute("INSERT INTO recipes (name, servings) VALUES ('API curry', 4)")
+    db.commit()
+    body = api_client.get("/api/v1/recipes/API curry").get_json()
+    assert body["name"] == "API curry"
+
+
+def test_recipe_endpoint_404(api_client):
+    r = api_client.get("/api/v1/recipes/nope-not-here")
+    assert r.status_code == 404
+    assert r.get_json()["error"]["code"] == "not_found"
+
+
+# ---------------------------------------------------------------------------
+# Import endpoint — auto-commit decisions
+# ---------------------------------------------------------------------------
+
+def test_import_csv_commits(api_client, db):
+    """A CSV upload parses, dedupes and commits in one call."""
+    payload = {"files": [{
+        "filename": "history.csv",
+        "content_base64": base64.b64encode(CSV_TEXT.encode()).decode(),
+    }]}
+    r = api_client.post("/api/v1/import", json=payload)
+    assert r.status_code == 200, r.get_data(as_text=True)
+    body = r.get_json()
+    assert body["added"] == 3
+    assert body["skipped"] == 0
+    assert body["files"][0]["rows"] == 3
+    assert db.execute("SELECT COUNT(*) FROM purchases").fetchone()[0] == 3
+
+
+def test_import_csv_is_idempotent(api_client, db):
+    payload = {"files": [{
+        "filename": "history.csv",
+        "content_base64": base64.b64encode(CSV_TEXT.encode()).decode(),
+    }]}
+    api_client.post("/api/v1/import", json=payload)
+    r = api_client.post("/api/v1/import", json=payload)
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["added"] == 0
+    assert body["skipped"] == 3
+
+
+def test_import_pdf_commits_and_skips_bad_lines(api_client, db):
+    """The PDF path imports priced lines and skips unavailable/free ones."""
+    payload = {"files": [{
+        "filename": "invoice.pdf",
+        "content_base64": base64.b64encode(_pdf_bytes()).decode(),
+    }]}
+    r = api_client.post("/api/v1/import", json=payload)
+    assert r.status_code == 200, r.get_data(as_text=True)
+    body = r.get_json()
+    assert body["added"] == 5  # 5 priced lines; unavailable + free skipped
+    assert body["files"][0]["invoice_number"] == "999001999"
+    assert body["files"][0]["order_date"] == "2023-07-07"
+    warnings = body["files"][0]["warnings"]
+    assert any("unavailable" in w for w in warnings)
+    assert any("free" in w for w in warnings)
+
+
+def test_import_pdf_dedupes(api_client, db):
+    payload = {"files": [{
+        "filename": "invoice.pdf",
+        "content_base64": base64.b64encode(_pdf_bytes()).decode(),
+    }]}
+    api_client.post("/api/v1/import", json=payload)
+    r = api_client.post("/api/v1/import", json=payload)
+    body = r.get_json()
+    assert body["added"] == 0
+    assert body["skipped"] == 5
+
+
+def test_import_mixed_files(api_client, db):
+    payload = {"files": [
+        {"filename": "invoice.pdf", "content_base64": base64.b64encode(_pdf_bytes()).decode()},
+        {"filename": "history.csv", "content_base64": base64.b64encode(CSV_TEXT.encode()).decode()},
+    ]}
+    r = api_client.post("/api/v1/import", json=payload)
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["added"] == 8  # 5 PDF + 3 CSV
+    assert len(body["files"]) == 2
+
+
+def test_import_rejects_bad_base64(api_client):
+    payload = {"files": [{"filename": "x.csv", "content_base64": "!!!not-base64!!!"}]}
+    r = api_client.post("/api/v1/import", json=payload)
+    assert r.status_code == 400
+    assert r.get_json()["error"]["code"] == "validation"
+
+
+def test_import_rejects_missing_files(api_client):
+    r = api_client.post("/api/v1/import", json={})
+    assert r.status_code == 400
+    assert r.get_json()["error"]["code"] == "validation"
+
+
+def test_import_rejects_unreadable_pdf(api_client):
+    payload = {"files": [{
+        "filename": "junk.pdf",
+        "content_base64": base64.b64encode(b"%PDF-1.4 not really a pdf").decode(),
+    }]}
+    r = api_client.post("/api/v1/import", json=payload)
+    assert r.status_code == 200  # per-file error, not a request failure
+    body = r.get_json()
+    assert body["added"] == 0
+    assert body["files"][0].get("error")
+
+
+def test_import_requires_auth(client):
+    r = client.post("/api/v1/import", json={"files": []})
+    assert r.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Write endpoints (share services/mutations with the web UI)
+# ---------------------------------------------------------------------------
+
+def test_tick_items_endpoint(api_client, db):
+    db.execute("INSERT INTO shopping_list_items (ingredient_name, quantity, unit, category, is_manual)"
+               " VALUES ('API tick me', 1, 'each', 'other', 1)")
+    db.commit()
+    r = api_client.post("/api/v1/shopping-list/tick", json={"item_ids": [1], "checked": True})
+    assert r.status_code == 200
+    assert r.get_json()["updated"] == 1
+    assert db.execute("SELECT checked FROM shopping_list_items WHERE id = 1").fetchone()[0] == 1
+
+
+def test_add_shopping_item_endpoint(api_client, db):
+    r = api_client.post("/api/v1/shopping-list/items",
+                        json={"name": "API free item", "quantity": 2, "unit": "each"})
+    assert r.status_code == 200
+    assert r.get_json()["name"] == "API free item"
+
+
+def test_place_meal_endpoint(api_client, db):
+    db.execute("INSERT INTO recipes (name, servings) VALUES ('API dinner', 2)")
+    db.commit()
+    from datetime import date
+    r = api_client.post("/api/v1/plan/meals",
+                        json={"date": date.today().isoformat(), "meal_type": "dinner",
+                              "recipe": "API dinner"})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["recipe"] == "API dinner"
+    assert body["entry_id"]
+
+
+def test_place_meal_validation_error(api_client, db):
+    db.execute("INSERT INTO recipes (name, servings) VALUES ('API valid dinner', 2)")
+    db.commit()
+    r = api_client.post("/api/v1/plan/meals",
+                        json={"date": "not-a-date", "meal_type": "dinner", "recipe": "API valid dinner"})
+    assert r.status_code == 400
+    assert r.get_json()["error"]["code"] == "validation"
+
+
+def test_plan_generate_preview(api_client, db):
+    from datetime import date, timedelta
+    from database import get_db, set_setting
+    today = date.today()
+    with api_client.application.app_context():
+        set_setting("plan_start_date", today.isoformat())
+        set_setting("plan_end_date", (today + timedelta(days=6)).isoformat())
+        get_db().commit()
+    r = api_client.post("/api/v1/plan/generate", json={"confirm": False})
+    assert r.status_code == 200
+    assert r.get_json()["confirmed"] is False
+
+
+def test_link_product_endpoint(api_client, db):
+    from services.spend_import import import_purchases
+    _, rows, _ = parse_woolworths_invoice_text(INVOICE_TEXT)
+    import_purchases(db, rows)
+    db.execute("INSERT INTO ingredients (name, category, unit) VALUES ('API test chicken fillet', 'meat', 'kg')")
+    db.commit()
+    r = api_client.post("/api/v1/spend/links",
+                        json={"product": "Test chicken fillet", "ingredient": "API test chicken fillet"})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["level"] in ("success", "warning")
