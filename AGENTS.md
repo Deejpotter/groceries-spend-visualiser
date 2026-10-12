@@ -123,8 +123,13 @@ mount on `/app/data` configured in the Coolify UI.
 - `flask --app app db-status` — path, size, row counts. Fastest way to confirm data survived.
 - `flask --app app backup-db` — timestamped copy via SQLite's online backup API (safe live).
 - `SECRET_KEY` must be set in each environment, or sessions reset every deploy.
-- `mcp_server/` — MCP server (stdio) exposing the same services to agents. Read-only tools;
-  key via `flask --app app set-api-key`. See `mcp_server/README.md`.
+- `mcp_server/` — MCP server: a **thin stdio client over the app's HTTP API** (`/api/v1`),
+  not a local-DB server. Set `GROCERIES_URL` + `GROCERIES_API_KEY` to point it at any
+  deployment. See `mcp_server/README.md`.
+- `routes/api.py` — the `/api/v1` HTTP API (bearer key = the `mcp_api_key` setting).
+  The web UI, the MCP server and any other agent all go through the same services.
+  Staging/prod containers need `flask --app app set-api-key` run once so the key exists
+  in their database; the key is a real remote credential — HTTPS only.
 
 ## Reference docs
 
