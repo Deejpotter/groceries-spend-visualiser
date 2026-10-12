@@ -80,6 +80,21 @@ Indexes: `idx_purchases_date` on `purchases(order_date)`, `idx_plan_date` on `me
 
 Single-user session-based auth via Flask `session` cookies. Passwords hashed with Werkzeug's `generate_password_hash`. On first visit, the app redirects to `/setup` to create the admin account. `ADMIN_USERNAME` / `ADMIN_PASSWORD` env vars can auto-create the admin on first request.
 
+### HTTP API auth (`/api/v1`)
+
+`routes/api.py` exposes the same services over JSON with **bearer-token auth**: the
+`Authorization: Bearer <key>` header, where the key is the `mcp_api_key` setting
+(rotated with `flask --app app set-api-key`). Because the app is single-admin, there
+is one shared key rather than per-user tokens. `/api/v1/health` is unauthenticated
+(CI and deploy checks use it); every other endpoint returns 401 with
+`{error: {code: "unauthorized"}}` on a missing or wrong key. The `before_request`
+setup-redirect is skipped for the `api` blueprint — it authenticates itself.
+
+This is how the MCP server (`mcp_server/server.py`) reaches remote deployments: it
+is a thin stdio client that calls `/api/v1`, so `GROCERIES_URL` alone selects local
+dev, staging or production. The API key is therefore a real remote credential —
+HTTPS only, stored in the secrets store like any other.
+
 ## Security Measures
 
 - CSRF protection on every form via Flask-WTF; enforced by a `csrf()` macro in `_macros.html`.
