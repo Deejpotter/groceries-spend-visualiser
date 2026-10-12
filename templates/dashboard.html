@@ -89,6 +89,17 @@
         <div class="kpi-context"><a href="{{ url_for('spend.spend_import') }}">Import purchases</a> to track spend</div>
         {% endif %}
     </div>
+
+    <div class="kpi-tile" data-tone="{{ 'ok' if sub_spare is not none and sub_spare >= 0 else ('warn' if sub_spare is not none else 'neutral') }}">
+        <div class="kpi-label">{{ icon('credit-card') }} Fortnightly spare</div>
+        <div class="kpi-value">
+            {% if sub_spare is not none %}{{ sub_spare|money }}{% else %}&mdash;{% endif %}
+        </div>
+        <div class="kpi-context">
+            {% if sub_due_count %}{{ sub_due_count }} subscription{{ 's' if sub_due_count != 1 }} due this fortnight{% else %}No subscriptions due{% endif %}
+        </div>
+        <a class="small" href="{{ url_for('subscriptions.subscription_fortnight') }}">Open budget →</a>
+    </div>
 </div>
 
 <div class="row">

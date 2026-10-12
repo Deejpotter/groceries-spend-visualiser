@@ -147,6 +147,15 @@
                             and projects where you'll land by month end. Leave blank to hide the budget tile.
                         </small>
                     </div>
+                    <div class="form-group">
+                        <label for="fortnightly_income">Fortnightly income</label>
+                        <input type="text" inputmode="decimal" class="form-control" id="fortnightly_income"
+                               name="fortnightly_income" value="{{ fortnightly_income }}" placeholder="e.g. 2400">
+                        <small class="text-muted">
+                            Your take-home pay each fortnight. Used on the subscriptions page to
+                            calculate spare money after groceries and bills. Leave blank to hide.
+                        </small>
+                    </div>
                     <button type="submit" name="action" value="save_budget" class="btn btn-primary">Save Budget</button>
                 </form>
             </div>

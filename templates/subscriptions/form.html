@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% from "_macros.html" import form_errors %}
+
+{% block title %}{{ 'Edit' if form and form.id else 'Add' }} Subscription — Grocery Visualiser{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <h1>{{ 'Edit' if form and form.id else 'Add' }} Subscription</h1>
+        <p class="text-muted">Track a recurring payment — bills, subscriptions, rent, insurance.</p>
+
+        <div class="card mb-4">
+            <div class="card-body">
+                <form method="post">
+                    {{ csrf() }}
+                    {% if errors %}{{ form_errors(errors) }}{% endif %}
+
+                    <div class="form-group">
+                        <label for="name">Name</label>
+                        <input type="text" class="form-control" id="name" name="name"
+                               value="{{ form.name if form else '' }}" placeholder="e.g. Netflix, Rent, Electricity" required>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label for="amount">Amount ($)</label>
+                            <input type="text" inputmode="decimal" class="form-control" id="amount" name="amount"
+                                   value="{{ form.amount if form else '' }}" placeholder="e.g. 18.99" required>
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label for="frequency">Frequency</label>
+                            <select class="form-control" id="frequency" name="frequency">
+                                <option value="weekly" {{ 'selected' if form and form.frequency == 'weekly' }}>Weekly</option>
+                                <option value="fortnightly" {{ 'selected' if form and form.frequency == 'fortnightly' }}>Fortnightly</option>
+                                <option value="monthly" {{ 'selected' if not form or form.frequency == 'monthly' }}>Monthly</option>
+                                <option value="quarterly" {{ 'selected' if form and form.frequency == 'quarterly' }}>Quarterly</option>
+                                <option value="yearly" {{ 'selected' if form and form.frequency == 'yearly' }}>Yearly</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label for="category">Category</label>
+                            <select class="form-control" id="category" name="category">
+                                {% for code, label in categories %}
+                                <option value="{{ code }}" {{ 'selected' if form and form.category == code }}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label for="next_due">Next due date</label>
+                            <input type="date" class="form-control" id="next_due" name="next_due"
+                                   value="{{ form.next_due if form else '' }}" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="notes">Notes (optional)</label>
+                        <textarea class="form-control" id="notes" name="notes" rows="2">{{ form.notes if form else '' }}</textarea>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">{{ 'Save changes' if form and form.id else 'Add subscription' }}</button>
+                    <a href="{{ url_for('subscriptions.subscription_list') }}" class="btn btn-link">Cancel</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -27,6 +27,7 @@ def _settings_values():
         "subtract_pantry": get_setting("subtract_pantry_from_list", "0") == "1",
         "bank_merchant_patterns": get_setting("bank_merchant_patterns") or default_patterns,
         "monthly_budget": get_setting("monthly_budget", ""),
+        "fortnightly_income": get_setting("fortnightly_income", ""),
         "errors": None,
         "error_form": None,
     }
@@ -109,20 +110,33 @@ def save():
         raw = request.form.get("monthly_budget", "").strip()
         if not raw:
             set_setting("monthly_budget", "")
-            db.commit()
-            flash("Budget target cleared.", "success")
-            return redirect(url_for("settings.settings"))
-        try:
-            target = float(raw.replace("$", "").replace(",", ""))
-        except ValueError:
-            target = None
-        if target is None or target <= 0:
-            values = _settings_values()
-            values.update({"monthly_budget": raw,
-                           "errors": ["Enter a dollar amount above zero."],
-                           "error_form": "budget"})
-            return render_template("settings.html", **values)
-        set_setting("monthly_budget", f"{target:.2f}")
+        else:
+            try:
+                target = float(raw.replace("$", "").replace(",", ""))
+                if target > 0:
+                    set_setting("monthly_budget", f"{target:.2f}")
+            except ValueError:
+                values = _settings_values()
+                values.update({"monthly_budget": raw,
+                               "errors": ["Enter a dollar amount above zero."],
+                               "error_form": "budget"})
+                return render_template("settings.html", **values)
+
+        income_raw = request.form.get("fortnightly_income", "").strip()
+        if not income_raw:
+            set_setting("fortnightly_income", "")
+        else:
+            try:
+                income_val = float(income_raw.replace("$", "").replace(",", ""))
+                if income_val > 0:
+                    set_setting("fortnightly_income", f"{income_val:.2f}")
+            except ValueError:
+                values = _settings_values()
+                values.update({"fortnightly_income": income_raw,
+                               "errors": ["Fortnightly income must be a dollar amount above zero."],
+                               "error_form": "budget"})
+                return render_template("settings.html", **values)
+
         db.commit()
         flash("Budget target saved.", "success")
 
