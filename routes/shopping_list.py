@@ -116,13 +116,25 @@ def shopping_list_toggle(item_id):
     db = get_db()
     row = db.execute("SELECT checked FROM shopping_list_items WHERE id = ?", (item_id,)).fetchone()
     if row is None:
-        if request.accept_mimetypes.best == "application/json":
-            return jsonify({"checked": False})
+        if request.headers.get("HX-Request"):
+            from services.repository import load_list_rows
+            rows = {r["id"]: r for r in load_list_rows()}
+            item = rows.get(item_id)
+            if item:
+                from flask import render_template
+                return render_template("shopping_lists/_item_row.html", item=item)
+            return jsonify({"checked": False}), 404
         flash("Item not found.", "error")
         return _back()
     state = set_tick(db, item_id, not row["checked"])
-    if request.accept_mimetypes.best == "application/json":
-        return jsonify({"checked": state["checked"]})
+    if request.headers.get("HX-Request"):
+        from flask import render_template
+        from services.repository import load_list_rows
+        rows = {r["id"]: r for r in load_list_rows()}
+        item = rows.get(item_id)
+        if item:
+            return render_template("shopping_lists/_item_row.html", item=item)
+        return jsonify({"checked": state["checked"]}), 200
     return _back()
 
 

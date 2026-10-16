@@ -105,59 +105,9 @@
     </div>
     <ul class="list-group list-group-flush">
         {% for item in items %}
-        <li class="list-group-item d-flex align-items-center py-2 {{ 'list-group-item-light checked-item' if item.checked }}">
-            <form method="post" action="{{ url_for('shopping_list.shopping_list_toggle', item_id=item.id) }}" class="mr-3 js-toggle-form">
-                {{ csrf() }}
-                <input type="checkbox" class="big-check" {% if item.checked %}checked{% endif %}
-                       aria-label="Mark {{ item|label }} as bought">
-                <noscript><button type="submit" class="btn btn-sm btn-outline-secondary ml-1">Save</button></noscript>
-            </form>
-            <div class="flex-grow-1">
-                <span class="item-name">{{ item.quantity|amount(item.unit) }} {{ item|label }}</span>
-                {% set choice = item.pack_choice %}
-                {% if choice %}<span class="badge badge-light border pack-badge" title="Packs to buy">{{ pack_label(choice.best) }}</span>{% endif %}
-                {% if item.is_manual %}<span class="badge badge-secondary">manual</span>{% endif %}
-                {% if item.product_url|http_url %}<a href="{{ item.product_url }}" target="_blank" rel="noopener noreferrer"
-                   class="small ml-1 d-print-none" title="Open product page" aria-label="Open product page for {{ item|label }}">{{ icon('external-link') }}</a>{% endif %}
-                {% if item.recipe_ref %}<div class="small text-muted">{{ item.recipe_ref }}</div>{% endif %}
-                {% if choice %}
-                <div class="small text-muted">
-                    {% if choice.best.spare > 0 %}<span class="text-warning-dark">{{ icon('package-open') }} {{ choice.best.spare_shown|amount(choice.best.spare_shown_unit) }} spare</span>{% else %}<span class="text-success">{{ icon('check') }} right size</span>{% endif %}
-                    {% if choice.best.name != item.ing_name %}· buy <em>{{ choice.best.name }}</em>{% endif %}
-                </div>
-                {% if choice.others %}
-                <details class="pack-others d-print-none">
-                    <summary>{{ choice.others|length }} other size{{ '' if choice.others|length == 1 else 's' }}</summary>
-                    <ul class="list-unstyled small mb-0">
-                        {% for o in choice.others %}
-                        <li>{{ pack_label(o) }} {{ o.name }} — {{ o.cost|money if o.cost else 'no price' }},
-                            {{ o.spare_shown|amount(o.spare_shown_unit) ~ ' spare' if o.spare > 0 else 'nothing spare' }}
-                            <form method="post" action="{{ url_for('shopping_list.shopping_list_pack', item_id=item.id) }}" class="d-inline">
-                                {{ csrf() }}
-                                <input type="hidden" name="product_name" value="{{ o.name }}">
-                                <button type="submit" class="btn btn-link btn-sm p-0">buy this instead</button>
-                            </form>
-                        </li>
-                        {% endfor %}
-                    </ul>
-                    {% if item.pack_pick %}
-                    <form method="post" action="{{ url_for('shopping_list.shopping_list_pack', item_id=item.id) }}" class="d-inline">
-                        {{ csrf() }}
-                        <button type="submit" class="btn btn-link btn-sm p-0">back to automatic ({{ item.pack_pick }})</button>
-                    </form>
-                    {% endif %}
-                </details>
-                {% endif %}
-                {% endif %}
-            </div>
-            {% if item.line_cost %}<span class="text-muted small mr-3 num">{{ item.line_cost|money }}</span>{% endif %}
-            <div class="d-print-none">
-            {{ post_button(url_for('shopping_list.shopping_list_delete', item_id=item.id), '', class='btn btn-sm btn-link text-danger px-3 py-2',
-                           glyph='times', title='Remove item', confirm='Remove ' ~ (item|label) ~ ' from the list?') }}
-            </div>
-        </li>
-        {% endfor %}
-    </ul>
+{% include "shopping_lists/_item_row.html" %}
+{% endfor %}
+</ul>
 </div>
 {% endfor %}
 {% if checked_count %}

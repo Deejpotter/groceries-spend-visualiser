@@ -118,7 +118,14 @@
                         <label for="banksync_api_key">BankSync API key</label>
                         <input type="password" class="form-control" id="banksync_api_key"
                                name="banksync_api_key" placeholder="Saved — leave blank to keep">
-                        <small class="text-muted">
+                        {% if banksync_key_set %}
+                        <small class="text-success">
+                            ✓ Key saved{% if banksync_last_sync %} · last sync {{ banksync_last_sync[:10] }}{% endif %}
+                        </small>
+                        {% else %}
+                        <small class="text-muted">No key saved yet.</small>
+                        {% endif %}
+                        <small class="text-muted d-block mt-1">
                             Create one in BankSync under Developer Settings. Used to pull
                             transactions from your connected banks (CommBank via Open Banking).
                             API access needs BankSync's Standard plan or higher.
