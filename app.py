@@ -288,12 +288,14 @@ def create_app(testing=False):
             f_start, f_end = fortnight_for_date(today)
             due = subscriptions_due_in_range(subs, f_start, f_end)
             sub_due_count = len(due)
-            # Grocery estimate for the fortnight (use current plan period).
+            # Grocery estimate for the fortnight (current plan, prorated to the overlap).
+            from services.budget import prorate_estimate
             grocery_est = 0.0
             if plan_start and plan_end:
                 entries, recipes_d, ring_d, ing_d = load_shopping_inputs(plan_start, plan_end)
                 grouped = generate_shopping_list(entries, recipes_d, ring_d, ing_d)
-                grocery_est = total_cost(grouped)
+                grocery_est, _, _ = prorate_estimate(
+                    total_cost(grouped), plan_start, plan_end, f_start, f_end)
             raw_income = (get_setting("fortnightly_income") or "").strip()
             try:
                 income_val = float(raw_income.replace("$", "").replace(",", "")) if raw_income else None

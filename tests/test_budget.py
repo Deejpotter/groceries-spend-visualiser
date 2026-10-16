@@ -1,8 +1,8 @@
-"""Monthly budget pacing."""
+"""Monthly budget pacing and fortnightly proration."""
 
-from datetime import date
+from datetime import date, timedelta
 
-from services.budget import budget_status
+from services.budget import budget_status, prorate_estimate
 
 
 def _rows(*pairs):
@@ -106,3 +106,68 @@ def test_save_budget_setting(client, db):
     assert db.execute(
         "SELECT value FROM settings WHERE key = 'monthly_budget'"
     ).fetchone()["value"] == ""
+
+
+def test_prorate_full_overlap():
+    value, plan_days, overlap = prorate_estimate(
+        100, "2026-10-12", "2026-10-25", "2026-10-12", "2026-10-25")
+    assert (value, plan_days, overlap) == (100, 14, 14)
+
+
+def test_prorate_partial_overlap():
+    # 28-day plan, fortnight covers the first 14 days: half the cost.
+    value, plan_days, overlap = prorate_estimate(
+        200, "2026-10-12", "2026-11-08", "2026-10-12", "2026-10-25")
+    assert (value, plan_days, overlap) == (100, 28, 14)
+
+
+def test_prorate_no_overlap_and_bad_ranges():
+    assert prorate_estimate(200, "2026-10-12", "2026-11-08",
+                            "2026-12-01", "2026-12-14") == (0.0, 28, 0)
+    assert prorate_estimate(200, "", "2026-11-08",
+                            "2026-10-12", "2026-10-25") == (0.0, 0, 0)
+    assert prorate_estimate(200, "2026-11-08", "2026-10-12",
+                            "2026-10-12", "2026-10-25") == (0.0, 0, 0)
+
+
+def test_prorate_accepts_date_objects():
+    value, plan_days, overlap = prorate_estimate(
+        100, date(2026, 10, 12), date(2026, 10, 25),
+        date(2026, 10, 12), date(2026, 10, 25))
+    assert (value, plan_days, overlap) == (100, 14, 14)
+
+
+def test_fortnight_prorates_long_plan(client, db):
+    """H1: a 28-day plan shows half its groceries in a fully-overlapped fortnight."""
+    from conftest import login
+    from services.budget import prorate_estimate as _prorate
+    from services.repository import load_shopping_inputs
+    from services.shopping_list_generator import generate_shopping_list, total_cost
+    login(client)
+    today = date.today()
+    start = today.isoformat()
+    end = (today + timedelta(days=27)).isoformat()
+    db.execute("INSERT INTO ingredients (name, category, unit, price)"
+               " VALUES ('Rice', 'pantry', 'kg', 4.00)")
+    db.execute("INSERT INTO recipes (name, servings) VALUES ('Rice bowl', 2)")
+    db.execute("INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity)"
+               " VALUES (1, 1, 1)")
+    db.execute("INSERT INTO meal_plan_entries (date, meal_type, recipe_id, servings,"
+               " is_auto_generated) VALUES (?, 'dinner', 1, 2, 0)", (start,))
+    db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('plan_start_date', ?)", (start,))
+    db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('plan_end_date', ?)", (end,))
+    db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('fortnightly_income', '2400')")
+    db.commit()
+    entries, recipes, ring, ing = load_shopping_inputs(start, end)
+    full = total_cost(generate_shopping_list(entries, recipes, ring, ing))
+    assert full > 0
+    from services.subscriptions import fortnight_for_date
+    f_start, f_end = fortnight_for_date(today)
+    expected, plan_days, overlap = _prorate(full, start, end, f_start, f_end)
+    resp = client.get("/subscriptions/fortnight")
+    assert resp.status_code == 200
+    assert f"${expected:.2f}".encode() in resp.data
+    if overlap != plan_days:
+        assert b"prorated" in resp.data
+    else:
+        assert b"prorated" not in resp.data
