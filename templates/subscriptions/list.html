@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% from "_macros.html" import csrf, post_button %}
 
-{% block title %}Subscriptions — Grocery Visualiser{% endblock %}
+{% block title %}Bills — Grocery Visualiser{% endblock %}
 
 {% block content %}
 <div class="page-head">
     <div>
-        <h1 class="mb-0">Subscriptions &amp; Bills</h1>
-        <p class="page-sub">Track recurring payments and see what's due each fortnight.</p>
+        <h1 class="mb-0">Bills</h1>
+        <p class="page-sub">Track recurring payments and subscriptions; see what's due each fortnight.</p>
     </div>
     <div class="d-flex flex-wrap">
         <a href="{{ url_for('subscriptions.subscription_add') }}" class="btn btn-primary mr-2 mb-2">+ Add subscription</a>

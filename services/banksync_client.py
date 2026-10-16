@@ -170,6 +170,8 @@ def sync_accounts(db, client, patterns) -> Dict:
                 cursors[account_id] = {"date": latest}
     set_setting("banksync_cursors", json.dumps(cursors))
     db.commit()
+    from services.bank_import import remember_unclassified
+    remember_unclassified(db, unclassified)
     return {"added": added, "duplicates": duplicates,
             "unclassified": unclassified, "errors": errors}
 

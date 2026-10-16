@@ -171,6 +171,8 @@ def import_bank_csv():
     db = get_db()
     purchases, unclassified = to_purchases(rows, load_merchant_patterns(db))
     added, duplicates = import_bank_transactions(db, purchases)
+    from services.bank_import import remember_unclassified
+    remember_unclassified(db, unclassified)
     return render_template(
         "spend/bank_result.html", added=added, duplicates=duplicates,
         unclassified=unclassified, errors=errors,

@@ -339,8 +339,15 @@ def subscription_suggest():
     """Show subscription suggestions from bank data and purchase history."""
     db = get_db()
 
-    # Suggestions from purchase history.
-    purchases = load_purchases(db, start="2024-01-01")
+    # Suggestions from purchase history (about 13 months back from the
+    # newest purchase, so old one-offs don't re-qualify as "recurring").
+    from datetime import timedelta
+    latest = db.execute("SELECT MAX(order_date) FROM purchases").fetchone()[0]
+    if latest:
+        start = (date.fromisoformat(latest[:10]) - timedelta(days=395)).isoformat()
+    else:
+        start = None
+    purchases = load_purchases(db, start=start)
     purchase_suggestions = suggest_from_purchases(purchases)
 
     # Suggestions from BankSync unclassified (stored in settings as JSON).
@@ -364,6 +371,7 @@ def subscription_suggest():
     return render_template(
         "subscriptions/suggest.html",
         suggestions=all_suggestions,
+        format_frequency=format_frequency,
     )
 
 

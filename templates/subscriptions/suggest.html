@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% from "_macros.html" import csrf %}
 
-{% block title %}Subscription Suggestions — Grocery Visualiser{% endblock %}
+{% block title %}Suggested Bills — Grocery Visualiser{% endblock %}
 
 {% block content %}
 <div class="page-head">
     <div>
-        <h1 class="mb-0">Subscription Suggestions</h1>
+        <h1 class="mb-0">Suggested Bills</h1>
         <p class="page-sub">Potential subscriptions detected from your bank data and purchase history.</p>
     </div>
     <div class="d-flex flex-wrap">
@@ -39,9 +39,10 @@
                 <small class="text-muted">{{ s.reason }}</small>
                 <br>
                 <small>
-                    ${{ "%.2f"|format(s.amount) }} {{ s.frequency }}
+                    ${{ "%.2f"|format(s.amount) }} {{ format_frequency(s.frequency) }}
                     {% if s.category %} &middot; {{ s.category|title }}{% endif %}
                     {% if s.source %} &middot; from {{ s.source }}{% endif %}
+                    {% if s.next_due %} &middot; next {{ s.next_due }}{% endif %}
                 </small>
             </div>
             <div class="ml-3">
