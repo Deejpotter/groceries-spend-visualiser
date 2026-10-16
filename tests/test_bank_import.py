@@ -45,6 +45,21 @@ def test_parse_debit_credit_layout():
     assert errors == []
 
 
+FROLLO_LAYOUT = """Date,Description,Amount,Balance,Category,Account Name
+01/10/2026,WOOLWORTHS MT WAVERLEY 3456,-82.40,1200.00,Groceries,Everyday
+02/10/2026,COLES EXPRESS,-23.10,1176.90,Groceries,Everyday
+03/10/2026,NETFLIX.COM,-18.99,1157.91,Entertainment,Visa
+"""
+
+
+def test_parse_frollo_layout():
+    rows, errors = parse_netbank_csv(FROLLO_LAYOUT)
+    assert len(rows) == 3
+    assert rows[0]["description"] == "WOOLWORTHS MT WAVERLEY 3456"
+    assert rows[0]["amount"] == 82.40
+    assert errors == []
+
+
 def test_parse_rejects_missing_columns():
     rows, errors = parse_netbank_csv("Date,Amount\n2026-10-01,1.00\n")
     assert rows == []

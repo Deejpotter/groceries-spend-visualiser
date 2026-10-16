@@ -31,7 +31,8 @@ items and ticks survive a regenerate. Print-friendly.
 
 **Spend tracking** — import a Woolworths PDF tax invoice (the emailed invoice per
 order — there is no CSV export, so the PDF is the source), a transaction CSV
-exported from NetBank, or sync automatically from BankSync (API key in
+exported from your bank (NetBank, Frollo, or any bank CSV with Date/Description/Amount
+columns), or sync automatically from BankSync (API key in
 Settings → Bank Imports; pulls new transactions from every connected account,
 CommBank included, via Open Banking). The spend dashboard syncs in the
 background at most once every 24 hours; schedule

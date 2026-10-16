@@ -33,14 +33,15 @@
                 <form method="post" enctype="multipart/form-data" action="{{ url_for('spend.import_bank_csv') }}">
                     {{ csrf() }}
                     <div class="form-group">
-                        <label for="bank_file">NetBank transaction CSV</label>
+                        <label for="bank_file">Bank transaction CSV (NetBank, Frollo, etc.)</label>
                         <input type="file" class="form-control" id="bank_file" name="bank_file" accept=".csv,text/csv" required>
                         <small class="text-muted">
-                            Export from NetBank: choose the account, then Export → CSV.
-                            One line per shop imports as a single purchase — the whole shop,
-                            not individual products. Only rows matching a grocery merchant
-                            pattern (see Settings → Bank Imports) are imported; possible
-                            duplicates are listed for review before anything is force-imported.
+                            Export from NetBank (account → Export → CSV) or Frollo
+                            (Settings → Export my data → CSV). One line per shop imports as
+                            a single purchase — the whole shop, not individual products.
+                            Only rows matching a grocery merchant pattern (see Settings →
+                            Bank Imports) are imported; possible duplicates are listed for
+                            review before anything is force-imported.
                         </small>
                     </div>
                     <button type="submit" class="btn btn-primary">{{ icon('import') }} Import bank CSV</button>
