@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Groceries App — UX Audit Round 2 · 16 Oct 2026</title>
+<style>
+  :root{--brand:#2e7d32;--brand-dark:#1b5e20;--ink:#212529;--muted:#6c757d;--bg:#f7f9f7;--card:#fff;--line:#e2e8e2;--crit:#c62828;--high:#e65100;--med:#8d6e00;--low:#2f6f31;}
+  *{box-sizing:border-box}body{margin:0;font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg);line-height:1.55}
+  header{background:linear-gradient(135deg,var(--brand-dark),var(--brand));color:#fff;padding:2.2rem 1.2rem}
+  header .wrap,main.wrap{max-width:960px;margin:0 auto}
+  header h1{margin:.2rem 0;font-size:1.7rem}header p{opacity:.92;margin:.3rem 0}
+  .pill{display:inline-block;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.4);border-radius:999px;padding:.15rem .7rem;font-size:.8rem;margin-right:.4rem}
+  main.wrap{padding:1.4rem 1.2rem 4rem}
+  section.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.2rem 1.3rem;margin:1rem 0;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+  h2{font-size:1.25rem;margin:.2rem 0 .7rem;color:var(--brand-dark)}
+  h3{font-size:1.02rem;margin:1.1rem 0 .4rem}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:.8rem}@media(max-width:640px){.grid{grid-template-columns:1fr}}
+  .kpi{background:#f1f8f1;border:1px solid var(--line);border-radius:10px;padding:.7rem .9rem}
+  .kpi b{font-size:1.3rem;display:block}
+  table{width:100%;border-collapse:collapse;font-size:.92rem;margin:.6rem 0}
+  th,td{text-align:left;padding:.5rem .55rem;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#f1f8f1;color:var(--brand-dark)}
+  code{background:#eef3ee;padding:.1rem .35rem;border-radius:5px;font-size:.83rem}
+  .sev{font-weight:700;font-size:.75rem;border-radius:999px;padding:.12rem .6rem;white-space:nowrap;color:#fff}
+  .sev.crit{background:var(--crit)}.sev.high{background:var(--high)}.sev.med{background:#a68b00}.sev.low{background:var(--low)}
+  .finding{border-left:4px solid var(--line);padding:.55rem .8rem;margin:.55rem 0;background:#fcfdfc;border-radius:0 8px 8px 0}
+  .finding.crit{border-color:var(--crit)}.finding.high{border-color:var(--high)}.finding.med{border-color:#c9a900}.finding.low{border-color:var(--low)}
+  .finding h4{margin:.1rem 0 .25rem;font-size:.95rem}
+  .finding p{margin:.25rem 0;font-size:.9rem}.finding .ev{color:var(--muted);font-size:.8rem}
+  .rec{background:#f1f8f1;border-radius:8px;padding:.5rem .7rem;font-size:.89rem;margin-top:.35rem}
+  .good{border-left:4px solid var(--low);padding:.55rem .8rem;margin:.55rem 0;background:#f6faf6;border-radius:0 8px 8px 0}
+  .good h4{margin:.1rem 0 .25rem;font-size:.95rem}.good p{margin:.25rem 0;font-size:.9rem}
+  ol.road li{margin:.45rem 0}
+  footer{color:var(--muted);font-size:.82rem;text-align:center;padding:2rem 1rem}
+  @media print{header{box-shadow:none}section.card{box-shadow:none;break-inside:avoid}main.wrap{padding:0}}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <span class="pill">UX audit · round 2</span><span class="pill">Groceries Spend Visualiser</span><span class="pill">16 Oct 2026</span>
+  <h1>New features, new pain: bank data, subscriptions &amp; budget flows</h1>
+  <p>Method: walked every workflow added since the 10 Oct audit (bank CSV import, BankSync sync, budget tile, subscriptions, per-account API keys) on a seeded local instance plus code review. Each crash below was reproduced, not inferred. Evidence cites <code>file:line</code>. No code changed.</p>
+</div></header>
+<main class="wrap">
+
+<section class="card">
+  <h2>Executive summary</h2>
+  <div class="grid">
+    <div class="kpi"><b>14 findings</b>4 critical · 3 high · 5 medium · 2 low</div>
+    <div class="kpi"><b>One theme</b>The new money features were shipped without being walked: two full-page 500s, one unusable form, and one advertised-but-dead feature. Nothing here is architecturally wrong — it is all a few lines from fixed.</div>
+  </div>
+  <h3>Fix first (top 5)</h3>
+  <table><thead><tr><th>#</th><th>Pain point</th><th>Severity</th><th>Why it tops</th></tr></thead><tbody>
+    <tr><td>1</td><td>Dashboard 500s the moment you add your first subscription</td><td><span class="sev crit">Critical</span></td><td>Home page bricks on the feature's happy path.</td></tr>
+    <tr><td>2</td><td>Fortnightly Budget page 500s on every load</td><td><span class="sev crit">Critical</span></td><td>The feature's headline page never renders.</td></tr>
+    <tr><td>3</td><td>Bank CSV form has no submit button; BankSync card nested inside it</td><td><span class="sev crit">Critical</span></td><td>NetBank import unreachable from the UI; Sync-now mis-posts.</td></tr>
+    <tr><td>4</td><td>Fortnight "Groceries (planned)" shows the whole plan's cost</td><td><span class="sev high">High</span></td><td>A wrong money number presented as fact.</td></tr>
+    <tr><td>5</td><td>Paused/deleted subscriptions vanish with no way back</td><td><span class="sev high">High</span></td><td>One-way door on other people's money data.</td></tr>
+  </tbody></table>
+</section>
+
+<section class="card">
+  <h2>Workflow maps (what was walked)</h2>
+  <table><thead><tr><th>Job</th><th>Path</th><th>Verdict</th></tr></thead><tbody>
+    <tr><td>Import bank data</td><td>Spend → Import → NetBank CSV card / BankSync card → result review</td><td><strong>Broken at the form:</strong> no submit, nested forms; review page itself is good.</td></tr>
+    <tr><td>Track bills</td><td>Subscriptions → add → list → Mark paid / Pause / Delete → Fortnight view</td><td><strong>Two 500s</strong> on the core loop; recovery path missing.</td></tr>
+    <tr><td>Budget the month</td><td>Settings → Budget target → dashboard tile; Settings → income → fortnight spare</td><td>Tile logic sound; fortnight math mislabels scope.</td></tr>
+    <tr><td>Find recurring bills</td><td>Subscriptions → Suggestions (purchases + bank feed)</td><td>Purchase half works; bank half can never fire.</td></tr>
+    <tr><td>Get an API key</td><td>Settings → API Keys → generate → copy once → revoke</td><td>Best new flow; show-once + prefix + last-used all correct.</td></tr>
+  </tbody></table>
+</section>
+
+<section class="card">
+  <h2>Findings C — Critical: crashes and dead forms</h2>
+  <div class="finding crit"><h4>C1 · Dashboard 500s once you own a subscription <span class="sev crit">Critical</span> <span class="done-badge">DONE · slice 1</span></h4>
+    <p>Adding your first subscription bricks the home page. <code>app.py</code> imports <code>set_setting</code> but the dashboard tile calls <code>get_setting("fortnightly_income")</code — <code>NameError</code> on every dashboard view while any active subscription exists. Reproduced: login → <code>GET /</code> raises; the full traceback ends at <code>app.py:285</code>.</p>
+    <p class="ev">app.py:12 (import) vs app.py:285 (use) · guarded only by <code>if subs:</code> at app.py:275, so zero-subscription users never see it — which is why CI and staging stayed green.</p>
+    <div class="rec"><b>Recommend:</b> add <code>get_setting</code> to the <code>database</code> import (one word). Then add a dashboard-with-subscriptions test — the gap is coverage, not architecture.</div></div>
+  <div class="finding crit"><h4>C2 · Fortnightly Budget page 500s on every load <span class="sev crit">Critical</span> <span class="done-badge">DONE · slice 1</span></h4>
+    <p>The route passes <code>date</code> objects as <code>start</code>/<code>end</code>; the template's <code>nice_date</code> filter feeds them to <code>parse_date</code> → <code>strptime(date_obj)</code> → <code>TypeError</code>. The page has never rendered for anyone. Reproduced: <code>GET /subscriptions/fortnight</code> raises.</p>
+    <p class="ev">routes/subscriptions.py:284-290 (passes dates) · app.py:100-104 (filter assumes strings) · templates/subscriptions/fortnight.html:10.</p>
+    <div class="rec"><b>Recommend:</b> harden <code>nice_date</code> to accept <code>date</code> objects (fixes every future caller too), or pass <code>.isoformat()</code> in the route. Same one-test fix as C1: GET the page in pytest.</div></div>
+  <div class="finding crit"><h4>C3 · Bank CSV form can't be submitted; BankSync card nested inside it <span class="sev crit">Critical</span> <span class="done-badge">DONE · slice 1</span></h4>
+    <p>The NetBank form opens at line 33 and is never closed — no submit button, no <code>&lt;/form&gt;</code> — and the entire BankSync card (its own <code>&lt;form&gt;</code>) sits inside it. Nested forms are invalid HTML: browsers merge or drop the inner form, so "Sync now" can POST to the wrong route (which then flashes "Choose a CSV file"). NetBank CSV import is unreachable from the UI it was built for. Verified: 4 <code>&lt;form</code> opens vs 3 closes on the rendered page; no submit control in the bank-card segment.</p>
+    <p class="ev">templates/spend/import.html:33-71.</p>
+    <div class="rec"><b>Recommend:</b> close the bank form with its own submit button ("Import bank CSV") before the BankSync card opens. Route-level tests passed because they POST directly — add one test asserting the rendered page contains both submit targets.</div></div>
+  <div class="finding crit"><h4>C4 · Add-subscription page 500s: <code>csrf</code> macro never imported <span class="sev crit">Critical</span> <span class="done-badge">DONE · slice 1</span></h4>
+    <p>Found by the new smoke test, same class as C1/C2: <code>subscriptions/form.html</code> calls <code>{{ csrf() }}</code> but only imports <code>form_errors</code> from <code>_macros.html</code> — <code>UndefinedError</code> on every GET of the add/edit page. Fixed by adding <code>csrf</code> to the import; covered by the smoke sweep going forward.</p>
+    <p class="ev">templates/subscriptions/form.html:2 vs :15.</p>
+    <div class="rec"><b>Recommend:</b> done — no further action; the smoke test owns this class now.</div></div>
+</section>
+
+<section class="card">
+  <h2>Findings H — High: wrong numbers and one-way doors</h2>
+  <div class="finding high"><h4>H1 · Fortnight "Groceries (planned)" is the whole plan's cost <span class="sev high">High</span></h4>
+    <p><code>subscription_fortnight</code> totals the <em>entire plan range</em> and labels it this fortnight's groceries. A 4-week plan doubles the apparent fortnight spend and halves the "Spare" figure — the exact number the page exists to show. The dashboard tile repeats the same unscoped total.</p>
+    <p class="ev">routes/subscriptions.py:264-284 → services/budget.py:59-72 · app.py:280-284 (dashboard tile).</p>
+    <div class="rec"><b>Recommend:</b> prorate by plan days overlapped with the fortnight, or label honestly ("whole plan ≈ $X over N days"). Prorating is ~5 lines with the existing <code>date_range</code> overlap.</div></div>
+  <div class="finding high"><h4>H2 · Paused and deleted subscriptions are unrecoverable <span class="sev high">High</span></h4>
+    <p>Delete and Pause do the identical thing (<code>active = 0</code>); the list shows only <code>active = 1</code>; "N paused subscription(s) hidden" has no link, no restore, no true-delete. The Toggle button always reads "Pause" though the route also reactivates — a path no UI can reach. Purging history to fix a typo'd subscription is impossible.</p>
+    <p class="ev">routes/subscriptions.py:192-223 · templates/subscriptions/list.html:57-80.</p>
+    <div class="rec"><b>Recommend:</b> a "Paused" section (or filter tab) listing inactive subs with Resume + Delete-forever; make Delete confirm it hides rather than removes, or split the actions for real.</div></div>
+  <div class="finding high"><h4>H3 · Suggestion engine's bank half can never fire <span class="sev high">High</span></h4>
+    <p>The suggest page and its "How suggestions work" card promise BankSync-based detection, but <code>banksync_unclassified</code> is read from settings and <strong>never written anywhere</strong> — the sync path renders unclassified rows on a result page and drops them. Purchase-history suggestions work; the bank half is documentation for a feature that doesn't exist.</p>
+    <p class="ev">routes/subscriptions.py:306 (sole reference) · templates/subscriptions/suggest.html:63-72.</p>
+    <div class="rec"><b>Recommend:</b> persist the sync's unclassified rows to that setting (cap the list, e.g. last 200) — the reader and matcher already agree on shape (<code>description</code>/<code>amount</code>). Until then, cut the BankSync bullet from the explainer.</div></div>
+</section>
+
+<section class="card">
+  <h2>Findings M — Medium: friction and mistrust</h2>
+  <div class="finding med"><h4>M1 · "Marked as paid" lies when a bill is several cycles overdue <span class="sev med">Medium</span></h4>
+    <p><code>advance_next_due</code> adds exactly one frequency to the stored date. Pay a bill that's 3 months late and the flash claims success while the bill still shows as due. The catch-up logic already exists (<code>next_occurrence</code> walks forward to ≥ today) — mark-paid just doesn't use it.</p>
+    <p class="ev">services/subscriptions.py:161-169 vs 97-109 · routes/subscriptions.py:236-243.</p>
+    <div class="rec"><b>Recommend:</b> advance from <code>max(next_due, today)</code>, or reuse <code>next_occurrence</code>; flash the new due date (already done) and, when catching up multiple cycles, say so.</div></div>
+  <div class="finding med"><h4>M2 · Accepting a suggestion always assumes "due today" <span class="sev med">Medium</span></h4>
+    <p><code>subscription_accept_suggestion</code> hardcodes <code>next_due = today</code>. For a charge detected mid-cycle (or a yearly bill spotted from last quarter's bank line), the first due date is wrong on arrival. The purchase detector already computes the cadence internally but doesn't return the last-seen date the route needs.</p>
+    <p class="ev">routes/subscriptions.py:350-351 · services/subscriptions.py:285-335 (dates computed, not returned).</p>
+    <div class="rec"><b>Recommend:</b> return <code>last_seen</code> in the suggestion dict and default <code>next_due = last_seen + frequency</code>, still editable on the add form (which the accept path currently skips — consider landing on the form prefilled instead of one-click create).</div></div>
+  <div class="finding med"><h4>M3 · Import-page copy describes two import paths; there are now four <span class="sev med">Medium</span></h4>
+    <p>"CSV files import immediately with no review" sits next to a bank-CSV flow whose whole point is review-before-force-import, and the sidebar CSV-format card doesn't mention bank CSVs or BankSync at all. A careful user following the copy will be surprised twice.</p>
+    <p class="ev">templates/spend/import.html:17, 73-90.</p>
+    <div class="rec"><b>Recommend:</b> one line per path with its review behaviour (invoice → review; order-history CSV → direct; bank CSV → review; BankSync → auto + review). Cheap, high-trust.</div></div>
+  <div class="finding med"><h4>M4 · Suggestion cards show raw frequency codes <span class="sev med">Medium</span></h4>
+    <p>Suggestions print <code>{{ s.frequency }}</code> raw ("monthly") while the list and fortnight pages format it ("Monthly"). Same data, three casings across three pages.</p>
+    <p class="ev">templates/subscriptions/suggest.html:42 vs format_frequency (list.html:55, fortnight.html:89).</p>
+    <div class="rec"><b>Recommend:</b> use the shared <code>format_frequency</code> in the suggest template.</div></div>
+  <div class="finding med"><h4>M5 · Bills vs Subscriptions: the feature has two names <span class="sev med">Medium</span></h4>
+    <p>Top nav says "Subscriptions", the mobile bottom nav says "Bills", the pages mix both ("Subscriptions &amp; Bills", "Fortnightly Budget"). Users searching settings or help for either term find half the feature.</p>
+    <p class="ev">templates/base.html:33 vs :116.</p>
+    <div class="rec"><b>Recommend:</b> pick one ("Bills" matches the mental model — rent and electricity aren't subscriptions); keep the other as a subtitle.</div></div>
+</section>
+
+<section class="card">
+  <h2>Findings L — Low polish</h2>
+  <div class="finding low"><h4>L1 · Suggestion scan window starts at a hardcoded 2024-01-01 <span class="sev low">Low</span></h4>
+    <p>Fine today, silently wrong in a year (stale one-off charges re-qualify as "recurring"). Derive it from the newest purchase minus ~13 months.</p>
+    <p class="ev">routes/subscriptions.py:301.</p></div>
+  <div class="finding low"><h4>L2 · Fortnight groceries always render in danger-red <span class="sev low">Low</span></h4>
+    <p><code>text-danger</code> is unconditional on a neutral number — red reads as "over budget" even when spare is healthy. Tie the class to the summary tone.</p>
+    <p class="ev">templates/subscriptions/fortnight.html:37.</p></div>
+</section>
+
+<section class="card">
+  <h2>What's working (don't regress)</h2>
+  <div class="good"><h4>Empty states with next actions</h4><p>Subscriptions list and Suggestions both explain the void and link the fix (add manually / import data). The best onboarding in the app.</p></div>
+  <div class="good"><h4>Subscription forms keep input and show inline errors</h4><p>The add/edit routes re-render with typed values — the B1 pattern from round 1 was actually applied to the new code. Hold this as the template.</p></div>
+  <div class="good"><h4>API key show-once + prefix + last-used</h4><p>The full key displays exactly once, the table keeps an identifying prefix, last-used timestamps on first call. Correct secrets UX.</p></div>
+  <div class="good"><h4>Duplicate review before force-import</h4><p>Bank result page lists possible duplicates with checkboxes instead of silently importing. Right trust model — once C3 lets users reach it.</p></div>
+</section>
+
+<section class="card">
+  <h2>Process finding: the safety net has a hole shaped like pages</h2>
+  <p>CI runs the full pytest suite plus a Docker build whose smoke test hits only <code>/health</code>. C1 and C2 are one-line mistakes that any authenticated <code>GET</code> of the affected page would catch — but no test GETs the dashboard with subscriptions present, or the fortnight page at all. The suite is 441 green and both pages 500.</p>
+  <div class="rec"><b>Recommend:</b> a <code>test_smoke_pages.py</code> that logs in and GETs every blueprint index (dashboard, plan, list, pantry, spend, subscriptions ×4, settings, fortnight) with minimal seed data, asserting 200. ~30 lines, catches this entire class forever. Extend the Docker smoke test past <code>/health</code> the same way.</div>
+</section>
+
+<section class="card">
+  <h2>Roadmap (impact first, shippable slices)</h2>
+  <ol class="road">
+    <li><strong>Hotfix: unbreak the money pages.</strong> C1 (one import), C2 (template pass), C3 (filter hardening + page tests). Half a day; everything else depends on these pages existing.</li>
+    <li><strong>Make the numbers honest.</strong> H1 prorating + L2 tone class. Same area, same tests.</li>
+    <li><strong>Close the subscription loop.</strong> H2 paused-management UI, M1 catch-up mark-paid, M2 prefilled accept. The feature becomes trustworthy.</li>
+    <li><strong>Wire suggestions to the bank feed.</strong> H3 persistence + M4/M5 copy and naming consistency. The advertised feature becomes real.</li>
+    <li><strong>Page-level smoke coverage.</strong> Process fix so round 3 isn't this report again.</li>
+  </ol>
+</section>
+
+<section class="card">
+  <h2>Appendix — what was examined</h2>
+  <p>Seeded local instance (2 ingredients, 1 recipe, 1 rule, 3 subscriptions, 1 purchase) + code walk of <code>routes/subscriptions.py</code>, <code>routes/spend.py</code> (import/banksync), <code>services/subscriptions.py</code>, <code>services/budget.py</code>, <code>services/banksync_client.py</code>, <code>app.py</code> dashboard, and templates <code>subscriptions/*</code>, <code>spend/import.html</code>, <code>spend/bank_result.html</code>, <code>settings.html</code>, <code>base.html</code>. Prior report (<code>ux-audit-report.html</code>, 27 findings, all DONE) deliberately excluded — everything above is new since 10 Oct. No code changed. Verification script: throwaway, not committed.</p>
+</section>
+
+</main>
+<footer>Groceries Spend Visualiser · UX audit round 2 · 16 Oct 2026 · evidence over opinion</footer>
+</body>
+</html>

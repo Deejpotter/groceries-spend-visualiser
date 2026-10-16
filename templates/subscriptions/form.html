@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import form_errors %}
+{% from "_macros.html" import csrf, form_errors %}
 
 {% block title %}{{ 'Edit' if form and form.id else 'Add' }} Subscription — Grocery Visualiser{% endblock %}
 
