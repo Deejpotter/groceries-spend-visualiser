@@ -7,7 +7,6 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 from auth import login_required
 from database import get_db, get_setting, set_setting
 from services.subscriptions import (
-    advance_next_due,
     fortnight_for_date,
     format_frequency,
     FREQUENCY_LABELS,
@@ -38,10 +37,10 @@ def subscription_list():
         cat = s.get("category") or "other"
         by_category.setdefault(cat, []).append(s)
 
-    # Also show inactive count.
-    inactive_count = db.execute(
-        "SELECT COUNT(*) FROM subscriptions WHERE active = 0"
-    ).fetchone()[0]
+    # Inactive subscriptions (paused or soft-deleted) get their own section.
+    inactive = [dict(r) for r in db.execute(
+        "SELECT * FROM subscriptions WHERE active = 0 ORDER BY category, name"
+    ).fetchall()]
 
     return render_template(
         "subscriptions/list.html",
@@ -49,7 +48,8 @@ def subscription_list():
         categories=SUBSCRIPTION_CATEGORIES,
         category_label=subscription_category_label,
         format_frequency=format_frequency,
-        inactive_count=inactive_count,
+        inactive=inactive,
+        inactive_count=len(inactive),
     )
 
 
@@ -207,6 +207,38 @@ def subscription_toggle(sub_id):
     return redirect(url_for("subscriptions.subscription_list"))
 
 
+@subscriptions_bp.route("/subscriptions/<int:sub_id>/resume", methods=["POST"])
+@login_required
+def subscription_resume(sub_id):
+    """Reactivate a paused subscription."""
+    db = get_db()
+    sub = db.execute("SELECT * FROM subscriptions WHERE id = ?", (sub_id,)).fetchone()
+    if not sub:
+        flash("Subscription not found.", "error")
+        return redirect(url_for("subscriptions.subscription_list"))
+
+    db.execute("UPDATE subscriptions SET active = 1 WHERE id = ?", (sub_id,))
+    db.commit()
+    flash(f"Subscription '{sub['name']}' resumed.", "success")
+    return redirect(url_for("subscriptions.subscription_list"))
+
+
+@subscriptions_bp.route("/subscriptions/<int:sub_id>/purge", methods=["POST"])
+@login_required
+def subscription_purge(sub_id):
+    """Permanently delete a paused subscription (it is already hidden)."""
+    db = get_db()
+    sub = db.execute("SELECT * FROM subscriptions WHERE id = ?", (sub_id,)).fetchone()
+    if not sub:
+        flash("Subscription not found.", "error")
+        return redirect(url_for("subscriptions.subscription_list"))
+
+    db.execute("DELETE FROM subscriptions WHERE id = ?", (sub_id,))
+    db.commit()
+    flash(f"Subscription '{sub['name']}' permanently deleted.", "success")
+    return redirect(url_for("subscriptions.subscription_list"))
+
+
 @subscriptions_bp.route("/subscriptions/<int:sub_id>/delete", methods=["POST"])
 @login_required
 def subscription_delete(sub_id):
@@ -226,18 +258,22 @@ def subscription_delete(sub_id):
 @subscriptions_bp.route("/subscriptions/<int:sub_id>/mark-paid", methods=["POST"])
 @login_required
 def subscription_mark_paid(sub_id):
-    """Mark a payment as paid: advance next_due by one frequency."""
+    """Mark a payment as paid: advance one cycle, catching up missed ones."""
+    from services.subscriptions import mark_paid
     db = get_db()
     sub = db.execute("SELECT * FROM subscriptions WHERE id = ?", (sub_id,)).fetchone()
     if not sub:
         flash("Subscription not found.", "error")
         return redirect(url_for("subscriptions.subscription_list"))
 
-    next_due = advance_next_due(dict(sub))
+    next_due, skipped = mark_paid(dict(sub))
     if next_due:
         db.execute("UPDATE subscriptions SET next_due = ? WHERE id = ?", (next_due, sub_id))
         db.commit()
-        flash(f"Marked '{sub['name']}' as paid. Next due: {next_due}.", "success")
+        note = f"Marked '{sub['name']}' as paid. Next due: {next_due}."
+        if skipped:
+            note += f" Caught up {skipped} missed cycle{'s' if skipped != 1 else ''}."
+        flash(note, "success")
     else:
         flash("Couldn't compute next due date.", "error")
     return redirect(url_for("subscriptions.subscription_list"))
@@ -353,8 +389,12 @@ def subscription_accept_suggestion():
     if frequency not in FREQUENCY_LABELS:
         frequency = "monthly"
 
-    # Default next_due to today.
-    next_due = date.today().isoformat()
+    # Next due defaults to the detected cadence, else today.
+    next_due_raw = (request.form.get("next_due") or "").strip()
+    try:
+        next_due = date.fromisoformat(next_due_raw).isoformat()
+    except ValueError:
+        next_due = date.today().isoformat()
 
     db = get_db()
     db.execute(

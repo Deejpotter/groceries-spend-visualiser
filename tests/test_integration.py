@@ -1823,6 +1823,70 @@ class TestSettings:
 
 
 # ============================================================================
+# Subscriptions
+# ============================================================================
+
+class TestSubscriptions:
+    """Pause/resume/purge, catch-up mark-paid, suggestion accept (H2, M1, M2)."""
+
+    def _add(self, client, name="Netflix", amount="18.99", frequency="monthly",
+             next_due="2026-10-20"):
+        return client.post("/subscriptions/add", data={
+            "name": name, "amount": amount, "frequency": frequency,
+            "category": "entertainment", "next_due": next_due, "notes": "",
+        }, follow_redirects=True)
+
+    def test_pause_resume_purge_round_trip(self, client, db):
+        _login(client, "subuser", "test123")
+        assert self._add(client).status_code == 200
+        sub_id = db.execute("SELECT id FROM subscriptions").fetchone()["id"]
+        # Pause moves it to the Paused section.
+        assert client.post(f"/subscriptions/{sub_id}/toggle").status_code == 302
+        resp = client.get("/subscriptions")
+        assert b"Paused" in resp.data
+        assert b"Netflix" in resp.data
+        # Resume brings it back.
+        assert client.post(f"/subscriptions/{sub_id}/resume").status_code == 302
+        assert db.execute("SELECT active FROM subscriptions WHERE id = ?",
+                          (sub_id,)).fetchone()["active"] == 1
+        # Purge deletes the row for good.
+        client.post(f"/subscriptions/{sub_id}/toggle")
+        assert client.post(f"/subscriptions/{sub_id}/purge").status_code == 302
+        assert db.execute("SELECT COUNT(*) FROM subscriptions").fetchone()[0] == 0
+
+    def test_resume_missing_is_404_redirect(self, client, db):
+        _login(client, "subuser", "test123")
+        assert client.post("/subscriptions/9999/resume").status_code == 302
+        assert client.post("/subscriptions/9999/purge").status_code == 302
+
+    def test_mark_paid_catches_up_overdue(self, client, db):
+        _login(client, "subuser", "test123")
+        self._add(client, frequency="weekly", next_due="2026-09-01")
+        sub_id = db.execute("SELECT id FROM subscriptions").fetchone()["id"]
+        client.post(f"/subscriptions/{sub_id}/mark-paid")
+        next_due = db.execute("SELECT next_due FROM subscriptions WHERE id = ?",
+                              (sub_id,)).fetchone()["next_due"]
+        from datetime import date
+        assert next_due >= date.today().isoformat()
+
+    def test_accept_suggestion_uses_detected_date(self, client, db):
+        _login(client, "subuser", "test123")
+        resp = client.post("/subscriptions/suggest/accept", data={
+            "name": "Milk", "amount": "4.2", "frequency": "monthly",
+            "category": "other", "next_due": "2026-11-01",
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+        assert db.execute("SELECT next_due FROM subscriptions").fetchone()["next_due"] == "2026-11-01"
+        # Invalid dates fall back to today rather than 500ing.
+        client.post("/subscriptions/suggest/accept", data={
+            "name": "Bread", "amount": "3.0", "frequency": "monthly",
+            "category": "other", "next_due": "not-a-date",
+        })
+        from datetime import date
+        assert db.execute("SELECT next_due FROM subscriptions WHERE name = 'Bread'").fetchone()["next_due"] == date.today().isoformat()
+
+
+# ============================================================================
 # Helper
 # ============================================================================
 

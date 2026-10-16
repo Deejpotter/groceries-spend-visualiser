@@ -51,6 +51,7 @@
                     <input type="hidden" name="amount" value="{{ s.amount }}">
                     <input type="hidden" name="frequency" value="{{ s.frequency }}">
                     <input type="hidden" name="category" value="{{ s.category }}">
+                    {% if s.next_due %}<input type="hidden" name="next_due" value="{{ s.next_due }}">{% endif %}
                     <button type="submit" class="btn btn-sm btn-outline-success">Add</button>
                 </form>
             </div>
