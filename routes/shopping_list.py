@@ -124,6 +124,8 @@ def shopping_list_toggle(item_id):
                 from flask import render_template
                 return render_template("shopping_lists/_item_row.html", item=item)
             return jsonify({"checked": False}), 404
+        if request.accept_mimetypes.best == "application/json":
+            return jsonify({"checked": False})
         flash("Item not found.", "error")
         return _back()
     state = set_tick(db, item_id, not row["checked"])
@@ -135,6 +137,8 @@ def shopping_list_toggle(item_id):
         if item:
             return render_template("shopping_lists/_item_row.html", item=item)
         return jsonify({"checked": state["checked"]}), 200
+    if request.accept_mimetypes.best == "application/json":
+        return jsonify({"checked": state["checked"]})
     return _back()
 
 
