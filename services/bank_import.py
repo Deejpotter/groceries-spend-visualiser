@@ -123,6 +123,36 @@ def classify_merchant(description: str, patterns) -> Optional[str]:
     return None
 
 
+def remember_unclassified(db, rows: List[Dict], limit: int = 200) -> int:
+    """Merge bank rows no merchant matched into the suggestions pool.
+
+    Stored as JSON in the banksync_unclassified setting (deduped by
+    description + amount, newest last, capped). The suggestions page reads
+    this — without it, bank-data suggestions can never fire.
+    """
+    from database import get_setting, set_setting
+    import json
+    try:
+        stored = json.loads(get_setting("banksync_unclassified") or "[]")
+        if not isinstance(stored, list):
+            stored = []
+    except ValueError:
+        stored = []
+    seen = {(str(r.get("description") or r.get("name") or "").lower(),
+             round(float(r.get("amount") or 0), 2)) for r in stored}
+    for row in rows:
+        key = (str(row.get("description") or row.get("name") or "").lower(),
+               round(float(row.get("amount") or 0), 2))
+        if key[0] and key not in seen:
+            seen.add(key)
+            stored.append({"description": row.get("description") or row.get("name") or "",
+                           "amount": key[1]})
+    stored = stored[-limit:]
+    set_setting("banksync_unclassified", json.dumps(stored))
+    db.commit()
+    return len(stored)
+
+
 def _basket_id(source: str, order_date: str, amount: float, description: str) -> str:
     """Stable id for a bank row: same file re-imports to the same id."""
     key = f"{order_date}|{amount:.2f}|{description}"

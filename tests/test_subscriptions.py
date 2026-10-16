@@ -240,6 +240,34 @@ class TestSuggestionNextDue:
 
 
 # ---------------------------------------------------------------------------
+# remember_unclassified (via bank_import)
+# ---------------------------------------------------------------------------
+
+class TestRememberUnclassified:
+    def test_merge_dedupe_and_recover(self, db):
+        from services.bank_import import remember_unclassified
+        from database import get_setting
+        assert remember_unclassified(db, [
+            {"description": "NETFLIX.COM", "amount": 18.99},
+            {"description": "netflix.com", "amount": 18.99},  # dup
+            {"description": "", "amount": 5},  # skipped
+        ]) == 1
+        assert remember_unclassified(db, [{"description": "AGL", "amount": 120}]) == 2
+        import json
+        stored = json.loads(get_setting("banksync_unclassified"))
+        assert stored[0] == {"description": "NETFLIX.COM", "amount": 18.99}
+        # Corrupt JSON recovers instead of crashing.
+        db.execute("UPDATE settings SET value = 'nope' WHERE key = 'banksync_unclassified'")
+        db.commit()
+        assert remember_unclassified(db, [{"description": "AGL", "amount": 1}]) == 1
+
+    def test_cap(self, db):
+        from services.bank_import import remember_unclassified
+        rows = [{"description": f"Shop {i}", "amount": i + 1} for i in range(10)]
+        assert remember_unclassified(db, rows, limit=5) == 5
+
+
+# ---------------------------------------------------------------------------
 # format_frequency
 # ---------------------------------------------------------------------------
 

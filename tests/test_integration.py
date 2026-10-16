@@ -1885,6 +1885,30 @@ class TestSubscriptions:
         from datetime import date
         assert db.execute("SELECT next_due FROM subscriptions WHERE name = 'Bread'").fetchone()["next_due"] == date.today().isoformat()
 
+    def test_suggest_reads_stored_bank_rows(self, client, db):
+        _login(client, "subuser", "test123")
+        import json
+        db.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+            ("banksync_unclassified", json.dumps([{"description": "NETFLIX.COM", "amount": 18.99}])))
+        db.commit()
+        resp = client.get("/subscriptions/suggest")
+        assert resp.status_code == 200
+        assert b"Netflix" in resp.data
+        assert b"Monthly" in resp.data  # formatted, not the raw code
+
+    def test_suggest_ignores_ancient_purchases(self, client, db):
+        _login(client, "subuser", "test123")
+        for i, d in enumerate(("2020-01-01", "2020-02-01", "2020-03-01")):
+            db.execute(
+                "INSERT INTO purchases (order_date, basket_id, store, product_name,"
+                " quantity, unit_price, line_total, origin)"
+                " VALUES (?, ?, 'Woolworths', 'Old staple', 1, 5.00, 5.00, 'csv')", (d, f"old-{i}"))
+        db.commit()
+        resp = client.get("/subscriptions/suggest")
+        assert resp.status_code == 200
+        assert b"Old staple" not in resp.data
+
 
 # ============================================================================
 # Helper

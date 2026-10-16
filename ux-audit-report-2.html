@@ -101,7 +101,7 @@
     <p>Delete and Pause do the identical thing (<code>active = 0</code>); the list shows only <code>active = 1</code>; "N paused subscription(s) hidden" has no link, no restore, no true-delete. The Toggle button always reads "Pause" though the route also reactivates — a path no UI can reach. Purging history to fix a typo'd subscription is impossible.</p>
     <p class="ev">routes/subscriptions.py:192-223 · templates/subscriptions/list.html:57-80.</p>
     <div class="rec"><b>Recommend:</b> a "Paused" section (or filter tab) listing inactive subs with Resume + Delete-forever; make Delete confirm it hides rather than removes, or split the actions for real.</div></div>
-  <div class="finding high"><h4>H3 · Suggestion engine's bank half can never fire <span class="sev high">High</span></h4>
+  <div class="finding high"><h4>H3 · Suggestion engine's bank half can never fire <span class="sev high">High</span> <span class="done-badge">DONE · slice 4</span></h4>
     <p>The suggest page and its "How suggestions work" card promise BankSync-based detection, but <code>banksync_unclassified</code> is read from settings and <strong>never written anywhere</strong> — the sync path renders unclassified rows on a result page and drops them. Purchase-history suggestions work; the bank half is documentation for a feature that doesn't exist.</p>
     <p class="ev">routes/subscriptions.py:306 (sole reference) · templates/subscriptions/suggest.html:63-72.</p>
     <div class="rec"><b>Recommend:</b> persist the sync's unclassified rows to that setting (cap the list, e.g. last 200) — the reader and matcher already agree on shape (<code>description</code>/<code>amount</code>). Until then, cut the BankSync bullet from the explainer.</div></div>
@@ -117,15 +117,15 @@
     <p><code>subscription_accept_suggestion</code> hardcodes <code>next_due = today</code>. For a charge detected mid-cycle (or a yearly bill spotted from last quarter's bank line), the first due date is wrong on arrival. The purchase detector already computes the cadence internally but doesn't return the last-seen date the route needs.</p>
     <p class="ev">routes/subscriptions.py:350-351 · services/subscriptions.py:285-335 (dates computed, not returned).</p>
     <div class="rec"><b>Recommend:</b> return <code>last_seen</code> in the suggestion dict and default <code>next_due = last_seen + frequency</code>, still editable on the add form (which the accept path currently skips — consider landing on the form prefilled instead of one-click create).</div></div>
-  <div class="finding med"><h4>M3 · Import-page copy describes two import paths; there are now four <span class="sev med">Medium</span></h4>
+  <div class="finding med"><h4>M3 · Import-page copy describes two import paths; there are now four <span class="sev med">Medium</span> <span class="done-badge">DONE · slice 4</span></h4>
     <p>"CSV files import immediately with no review" sits next to a bank-CSV flow whose whole point is review-before-force-import, and the sidebar CSV-format card doesn't mention bank CSVs or BankSync at all. A careful user following the copy will be surprised twice.</p>
     <p class="ev">templates/spend/import.html:17, 73-90.</p>
     <div class="rec"><b>Recommend:</b> one line per path with its review behaviour (invoice → review; order-history CSV → direct; bank CSV → review; BankSync → auto + review). Cheap, high-trust.</div></div>
-  <div class="finding med"><h4>M4 · Suggestion cards show raw frequency codes <span class="sev med">Medium</span></h4>
+  <div class="finding med"><h4>M4 · Suggestion cards show raw frequency codes <span class="sev med">Medium</span> <span class="done-badge">DONE · slice 4</span></h4>
     <p>Suggestions print <code>{{ s.frequency }}</code> raw ("monthly") while the list and fortnight pages format it ("Monthly"). Same data, three casings across three pages.</p>
     <p class="ev">templates/subscriptions/suggest.html:42 vs format_frequency (list.html:55, fortnight.html:89).</p>
     <div class="rec"><b>Recommend:</b> use the shared <code>format_frequency</code> in the suggest template.</div></div>
-  <div class="finding med"><h4>M5 · Bills vs Subscriptions: the feature has two names <span class="sev med">Medium</span></h4>
+  <div class="finding med"><h4>M5 · Bills vs Subscriptions: the feature has two names <span class="sev med">Medium</span> <span class="done-badge">DONE · slice 4</span></h4>
     <p>Top nav says "Subscriptions", the mobile bottom nav says "Bills", the pages mix both ("Subscriptions &amp; Bills", "Fortnightly Budget"). Users searching settings or help for either term find half the feature.</p>
     <p class="ev">templates/base.html:33 vs :116.</p>
     <div class="rec"><b>Recommend:</b> pick one ("Bills" matches the mental model — rent and electricity aren't subscriptions); keep the other as a subtitle.</div></div>
@@ -133,7 +133,7 @@
 
 <section class="card">
   <h2>Findings L — Low polish</h2>
-  <div class="finding low"><h4>L1 · Suggestion scan window starts at a hardcoded 2024-01-01 <span class="sev low">Low</span></h4>
+  <div class="finding low"><h4>L1 · Suggestion scan window starts at a hardcoded 2024-01-01 <span class="sev low">Low</span> <span class="done-badge">DONE · slice 4</span></h4>
     <p>Fine today, silently wrong in a year (stale one-off charges re-qualify as "recurring"). Derive it from the newest purchase minus ~13 months.</p>
     <p class="ev">routes/subscriptions.py:301.</p></div>
   <div class="finding low"><h4>L2 · Fortnight groceries always render in danger-red <span class="sev low">Low</span> <span class="done-badge">DONE · slice 2</span></h4>
