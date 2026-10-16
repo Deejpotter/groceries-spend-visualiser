@@ -75,8 +75,44 @@
 {% endif %}
 {% endfor %}
 
-{% if inactive_count %}
-<div class="text-muted small">{{ inactive_count }} paused subscription(s) hidden.</div>
+{% if inactive %}
+<div class="card mb-4 section-card">
+    <div class="card-header">
+        <span class="section-title">Paused</span>
+        <span class="badge badge-pill badge-secondary ml-2">{{ inactive|length }}</span>
+    </div>
+    <div class="card-body py-2">
+        <table class="table table-sm mb-0">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Amount</th>
+                    <th>Frequency</th>
+                    <th class="text-right">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in inactive %}
+                <tr>
+                    <td>
+                        <strong>{{ s.name }}</strong>
+                        {% if s.notes %}<br><small class="text-muted">{{ s.notes }}</small>{% endif %}
+                    </td>
+                    <td>${{ "%.2f"|format(s.amount) }}</td>
+                    <td>{{ format_frequency(s.frequency) }}</td>
+                    <td class="text-right">
+                        <form method="post" action="{{ url_for('subscriptions.subscription_resume', sub_id=s.id) }}" class="d-inline">
+                            {{ csrf() }}
+                            <button type="submit" class="btn btn-sm btn-outline-success">Resume</button>
+                        </form>
+                        {{ post_button(url_for('subscriptions.subscription_purge', sub_id=s.id), 'Delete forever', confirm='Permanently delete this subscription?') }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
 {% endif %}
 
 <div class="card mt-4">

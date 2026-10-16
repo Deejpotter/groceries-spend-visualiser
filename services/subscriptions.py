@@ -158,6 +158,28 @@ def subscription_category_label(code: str) -> str:
     return SUBSCRIPTION_CATEGORY_LOOKUP.get(code, code)
 
 
+def mark_paid(subscription: Dict, today: Optional[date] = None) -> tuple:
+    """Advance for the paid cycle, forgiving any earlier missed cycles.
+
+    Returns (new_due_iso, skipped): the next due date and how many extra
+    cycles were caught up beyond the one just paid. A bill three cycles
+    overdue lands on the next upcoming date instead of staying overdue.
+    """
+    freq = (subscription.get("frequency") or "").lower()
+    anchor = _as_date(subscription.get("next_due"))
+    if freq not in _FREQUENCY_DAYS and freq not in ("monthly", "quarterly", "yearly"):
+        return subscription.get("next_due") or "", 0
+    if anchor is None:
+        return subscription.get("next_due") or "", 0
+    today = today or date.today()
+    new_due = _advance_by_frequency(anchor, freq)  # the cycle just paid
+    skipped = 0
+    while new_due < today:
+        new_due = _advance_by_frequency(new_due, freq)
+        skipped += 1
+    return new_due.isoformat(), skipped
+
+
 def advance_next_due(subscription: Dict) -> str:
     """Advance next_due by one frequency, returning an ISO date string."""
     freq = (subscription.get("frequency") or "").lower()
@@ -167,6 +189,17 @@ def advance_next_due(subscription: Dict) -> str:
     if current is None:
         return subscription.get("next_due") or ""
     return _advance_by_frequency(current, freq).isoformat()
+
+
+def suggested_next_due(freq: str, last_seen) -> Optional[str]:
+    """Best-guess next due date after a sighting: last seen + one interval."""
+    anchor = _as_date(last_seen)
+    if anchor is None:
+        return None
+    freq = (freq or "").lower()
+    if freq not in _FREQUENCY_DAYS and freq not in ("monthly", "quarterly", "yearly"):
+        return None
+    return _advance_by_frequency(anchor, freq).isoformat()
 
 
 def suggest_from_unclassified(unclassified: List[Dict]) -> List[Dict]:
@@ -230,6 +263,7 @@ def suggest_from_unclassified(unclassified: List[Dict]) -> List[Dict]:
                         "confidence": "high",
                         "source": "banksync",
                         "reason": f"Matches known merchant: {name}",
+                        "next_due": None,  # bank rows carry no usable date here
                     })
                 break
 
@@ -322,6 +356,7 @@ def suggest_from_purchases(purchases: List[Dict]) -> List[Dict]:
         key = (name, round(avg_amount, 2))
         if key not in seen:
             seen.add(key)
+            last_seen = max(dates).isoformat()
             suggestions.append({
                 "name": name.title(),
                 "amount": round(avg_amount, 2),
@@ -330,6 +365,8 @@ def suggest_from_purchases(purchases: List[Dict]) -> List[Dict]:
                 "confidence": "medium",
                 "source": "purchases",
                 "reason": f"Bought {len(dates)} times, ~{avg_interval:.0f} days apart",
+                "last_seen": last_seen,
+                "next_due": suggested_next_due(freq, last_seen),
             })
 
     return sorted(suggestions, key=lambda s: (s["confidence"] != "high", s["name"]))

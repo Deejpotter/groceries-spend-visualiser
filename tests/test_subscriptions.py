@@ -8,11 +8,13 @@ from services.subscriptions import (
     fortnightly_subscription_total,
     format_frequency,
     is_due_in_range,
+    mark_paid,
     next_occurrence,
     subscription_category_label,
     subscriptions_due_in_range,
     suggest_from_purchases,
     suggest_from_unclassified,
+    suggested_next_due,
 )
 
 
@@ -179,6 +181,62 @@ class TestAdvanceNextDue:
     def test_yearly_advance(self):
         sub = {"next_due": "2026-10-14", "frequency": "yearly"}
         assert advance_next_due(sub) == "2027-10-14"
+
+
+# ---------------------------------------------------------------------------
+# mark_paid
+# ---------------------------------------------------------------------------
+
+class TestMarkPaid:
+    def test_on_time_advances_one_cycle(self):
+        sub = {"next_due": "2026-10-14", "frequency": "monthly"}
+        assert mark_paid(sub, date(2026, 10, 14)) == ("2026-11-14", 0)
+
+    def test_overdue_catches_up(self):
+        # Three weekly cycles missed: lands on the next upcoming date.
+        sub = {"next_due": "2026-09-01", "frequency": "weekly"}
+        new_due, skipped = mark_paid(sub, date(2026, 10, 16))
+        assert new_due == "2026-10-20"
+        assert skipped == 6
+
+    def test_bad_input_passes_through(self):
+        assert mark_paid({"next_due": None, "frequency": "monthly"}) == ("", 0)
+        assert mark_paid({"next_due": "2026-10-14", "frequency": "daily"},
+                         date(2026, 10, 20)) == ("2026-10-14", 0)
+
+
+# ---------------------------------------------------------------------------
+# suggested_next_due
+# ---------------------------------------------------------------------------
+
+class TestSuggestedNextDue:
+    def test_monthly_after_sighting(self):
+        assert suggested_next_due("monthly", "2026-09-15") == "2026-10-15"
+
+    def test_no_date_returns_none(self):
+        assert suggested_next_due("monthly", None) is None
+        assert suggested_next_due("daily", "2026-09-15") is None
+
+
+# ---------------------------------------------------------------------------
+# suggestion next_due keys
+# ---------------------------------------------------------------------------
+
+class TestSuggestionNextDue:
+    def test_purchases_carry_next_due(self):
+        rows = [
+            {"store": "Woolworths", "product_name": "Milk 2L",
+             "line_total": 4.2, "order_date": d}
+            for d in ("2026-07-01", "2026-08-01", "2026-09-01", "2026-10-01")
+        ]
+        suggestions = suggest_from_purchases(rows)
+        assert len(suggestions) == 1
+        assert suggestions[0]["next_due"] == "2026-11-01"
+
+    def test_unclassified_carry_null_next_due(self):
+        rows = [{"description": "NETFLIX.COM", "amount": 18.99}]
+        suggestions = suggest_from_unclassified(rows)
+        assert suggestions[0]["next_due"] is None
 
 
 # ---------------------------------------------------------------------------

@@ -97,7 +97,7 @@
     <p><code>subscription_fortnight</code> totals the <em>entire plan range</em> and labels it this fortnight's groceries. A 4-week plan doubles the apparent fortnight spend and halves the "Spare" figure — the exact number the page exists to show. The dashboard tile repeats the same unscoped total.</p>
     <p class="ev">routes/subscriptions.py:264-284 → services/budget.py:59-72 · app.py:280-284 (dashboard tile).</p>
     <div class="rec"><b>Recommend:</b> prorate by plan days overlapped with the fortnight, or label honestly ("whole plan ≈ $X over N days"). Prorating is ~5 lines with the existing <code>date_range</code> overlap.</div></div>
-  <div class="finding high"><h4>H2 · Paused and deleted subscriptions are unrecoverable <span class="sev high">High</span></h4>
+  <div class="finding high"><h4>H2 · Paused and deleted subscriptions are unrecoverable <span class="sev high">High</span> <span class="done-badge">DONE · slice 3</span></h4>
     <p>Delete and Pause do the identical thing (<code>active = 0</code>); the list shows only <code>active = 1</code>; "N paused subscription(s) hidden" has no link, no restore, no true-delete. The Toggle button always reads "Pause" though the route also reactivates — a path no UI can reach. Purging history to fix a typo'd subscription is impossible.</p>
     <p class="ev">routes/subscriptions.py:192-223 · templates/subscriptions/list.html:57-80.</p>
     <div class="rec"><b>Recommend:</b> a "Paused" section (or filter tab) listing inactive subs with Resume + Delete-forever; make Delete confirm it hides rather than removes, or split the actions for real.</div></div>
@@ -109,11 +109,11 @@
 
 <section class="card">
   <h2>Findings M — Medium: friction and mistrust</h2>
-  <div class="finding med"><h4>M1 · "Marked as paid" lies when a bill is several cycles overdue <span class="sev med">Medium</span></h4>
+  <div class="finding med"><h4>M1 · "Marked as paid" lies when a bill is several cycles overdue <span class="sev med">Medium</span> <span class="done-badge">DONE · slice 3</span></h4>
     <p><code>advance_next_due</code> adds exactly one frequency to the stored date. Pay a bill that's 3 months late and the flash claims success while the bill still shows as due. The catch-up logic already exists (<code>next_occurrence</code> walks forward to ≥ today) — mark-paid just doesn't use it.</p>
     <p class="ev">services/subscriptions.py:161-169 vs 97-109 · routes/subscriptions.py:236-243.</p>
     <div class="rec"><b>Recommend:</b> advance from <code>max(next_due, today)</code>, or reuse <code>next_occurrence</code>; flash the new due date (already done) and, when catching up multiple cycles, say so.</div></div>
-  <div class="finding med"><h4>M2 · Accepting a suggestion always assumes "due today" <span class="sev med">Medium</span></h4>
+  <div class="finding med"><h4>M2 · Accepting a suggestion always assumes "due today" <span class="sev med">Medium</span> <span class="done-badge">DONE · slice 3</span></h4>
     <p><code>subscription_accept_suggestion</code> hardcodes <code>next_due = today</code>. For a charge detected mid-cycle (or a yearly bill spotted from last quarter's bank line), the first due date is wrong on arrival. The purchase detector already computes the cadence internally but doesn't return the last-seen date the route needs.</p>
     <p class="ev">routes/subscriptions.py:350-351 · services/subscriptions.py:285-335 (dates computed, not returned).</p>
     <div class="rec"><b>Recommend:</b> return <code>last_seen</code> in the suggestion dict and default <code>next_due = last_seen + frequency</code>, still editable on the add form (which the accept path currently skips — consider landing on the form prefilled instead of one-click create).</div></div>
