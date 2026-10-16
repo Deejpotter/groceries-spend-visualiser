@@ -3,13 +3,14 @@
 import logging
 import os
 import secrets
+from datetime import date, datetime
 from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
 from flask_wtf.csrf import CSRFProtect
 
-from database import init_db, get_db, close_db, get_plan_dates, get_database_path, backup_database, database_stats, set_setting
+from database import init_db, get_db, close_db, get_plan_dates, get_database_path, backup_database, database_stats, set_setting, get_setting
 from auth import login_user, logout_user, get_current_user, is_logged_in, login_required, hash_password, verify_password
 from models import (
     CATEGORIES, UNITS, MEAL_TYPES, DAYS_OF_WEEK,
@@ -99,9 +100,20 @@ def create_app(testing=False):
 
     @application.template_filter("nice_date")
     def format_nice_date(value):
-        """'2026-09-30' -> 'Wed 30 Sep 2026'; unparseable values pass through."""
-        parsed = parse_date(value) if value else None
-        return parsed.strftime("%a %d %b %Y") if parsed else (value or "")
+        """'2026-09-30' -> 'Wed 30 Sep 2026'; unparseable values pass through.
+
+        Accepts date/datetime objects too — several routes pass those straight
+        from the database layer (e.g. the fortnightly view's range).
+        """
+        if value is None or value == "":
+            return ""
+        if isinstance(value, datetime):
+            parsed = value
+        elif hasattr(value, "strftime") and hasattr(value, "year"):
+            parsed = datetime(value.year, value.month, value.day)
+        else:
+            parsed = parse_date(value)
+        return parsed.strftime("%a %d %b %Y") if parsed else value
 
     @application.context_processor
     def inject_common():
