@@ -214,6 +214,13 @@ services/
   spend_analysis.py          Pure spend statistics
   repository.py              Loads DB rows into the dicts the pure services use
 templates/             Jinja templates (Bootstrap 4); _macros.html has CSRF/POST helpers
+   *_item_row.html           Partials for HTMX row updates (shopping_list, pantry, etc.)
+   *_form_status.html        Partials for HTMX form responses
+   *_save_status.html        Partials for HTMX settings save confirmations
+static/
+   js/
+      htmx.min.js             HTMX library (self-hosted)
+      app.js                  Legacy inline event handlers (being migrated)
 tests/                 Unit tests for services, integration tests via the Flask test client
 ```
 
@@ -221,9 +228,19 @@ Routes load data and call the pure functions in `services/`; keep business logic
 stays testable without Flask. Every state-changing action is a POST form carrying a CSRF token
 (`{% from "_macros.html" import csrf, post_button %}`).
 
+### Async page updates (HTMX)
+
+Most forms carry `hx-post`, `hx-target` and `hx-swap` attributes so they submit via AJAX
+and swap only the affected part of the page — no full reload, no scroll-to-top. Routes return
+a small partial (`templates/<area>/_item_row.html` etc.) when the request carries the
+`HX-Request` header, and the full page otherwise. Without JavaScript the forms behave
+exactly as before (normal POST redirect). HTMX is served locally (`static/js/htmx.min.js`)
+and the CSRF token is attached globally via `htmx:configRequest` reading the
+`<meta name="csrf-token">` tag added by `base.html`.
+
 ## Tech stack
 
-Python 3.11 · Flask 3 · Flask-WTF (CSRF) · SQLite · Bootstrap 4 · Chart.js · Gunicorn · Docker
+Python 3.11 · Flask 3 · Flask-WTF (CSRF) · SQLite · Bootstrap 4 · Chart.js · Gunicorn · Docker · HTMX
 
 ## License
 

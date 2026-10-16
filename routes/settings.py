@@ -28,6 +28,8 @@ def _settings_values():
     default_patterns = "\n".join(f"{k}={n}" for k, n in DEFAULT_MERCHANT_PATTERNS)
     user_id = _current_user_id(get_db())
     from services.api_keys import list_keys
+    banksync_key_set = bool(get_setting("banksync_api_key"))
+    banksync_last_sync = get_setting("banksync_last_sync") or ""
     return {
         "plan_start": plan_start,
         "plan_end": plan_end,
@@ -39,6 +41,8 @@ def _settings_values():
         "fortnightly_income": get_setting("fortnightly_income", ""),
         "api_keys": list_keys(get_db(), user_id) if user_id else [],
         "new_api_key": None,
+        "banksync_key_set": banksync_key_set,
+        "banksync_last_sync": banksync_last_sync,
         "errors": None,
         "error_form": None,
     }
