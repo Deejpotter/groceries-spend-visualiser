@@ -150,9 +150,9 @@
 </section>
 
 <section class="card">
-  <h2>Process finding: the safety net has a hole shaped like pages</h2>
-  <p>CI runs the full pytest suite plus a Docker build whose smoke test hits only <code>/health</code>. C1 and C2 are one-line mistakes that any authenticated <code>GET</code> of the affected page would catch — but no test GETs the dashboard with subscriptions present, or the fortnight page at all. The suite is 441 green and both pages 500.</p>
-  <div class="rec"><b>Recommend:</b> a <code>test_smoke_pages.py</code> that logs in and GETs every blueprint index (dashboard, plan, list, pantry, spend, subscriptions ×4, settings, fortnight) with minimal seed data, asserting 200. ~30 lines, catches this entire class forever. Extend the Docker smoke test past <code>/health</code> the same way.</div>
+  <h2>Process finding: the safety net has a hole shaped like pages <span class="done-badge" style="background:var(--low);color:#fff;font-size:.72rem;font-weight:700;border-radius:999px;padding:.12rem .6rem;vertical-align:middle;margin-left:.4rem">DONE · slice 1 + 5</span></h2>
+  <p>CI ran the full pytest suite plus a Docker build whose smoke test hit only <code>/health</code>. C1 and C2 were one-line mistakes that any authenticated <code>GET</code> of the affected page would catch — but no test GET the dashboard with subscriptions present, or the fortnight page at all. Both halves are now covered: <code>tests/test_smoke_pages.py</code> GETs every blueprint index authenticated (slice 1), and the Docker job renders <code>/login</code>, asserts the dashboard redirect, and fails on tracebacks in container logs (slice 5, verified against a local build).</p>
+  <div class="rec"><b>Recommend:</b> shipped — no further action; the smoke layers own this class now.</div>
 </section>
 
 <section class="card">
