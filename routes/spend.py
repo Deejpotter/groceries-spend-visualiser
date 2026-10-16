@@ -78,7 +78,8 @@ def _maybe_auto_sync():
         finally:
             _banksync_lock.release()
 
-    threading.Thread(target=_run, daemon=True).start()
+    threading.Thread(target=_run, daemon=True,
+                     name="banksync-auto-sync").start()
 
 
 @spend_bp.route("/spend")

@@ -1,9 +1,10 @@
 """HTTP API (/api/v1): the app's services over JSON with bearer auth.
 
 Same pure services the web UI and (previously) the stdio MCP server use, so
-agents and humans always see the same numbers. Auth is a single bearer key
-(the `mcp_api_key` setting, rotated with `flask set-api-key`) — this app is
-single-admin, so there are no per-user tokens to manage.
+agents and humans always see the same numbers. Auth is per-account API keys
+(users generate them under Settings → Admin) with the old single global key
+(the `mcp_api_key` setting, rotated with `flask set-api-key`) kept as a
+fallback so existing integrations keep working.
 
 Imports are auto-commit: the agent passes base64 files, the API parses,
 dedupes and applies the skip rules (unavailable/free lines), then commits.
@@ -37,17 +38,24 @@ def _unauthorized():
 
 
 def require_api_key(f):
-    """Decorator: the request must carry the configured bearer key."""
+    """Decorator: the request must carry a valid per-user key or the global key."""
     from functools import wraps
 
     @wraps(f)
     def wrapper(*args, **kwargs):
         header = request.headers.get("Authorization", "")
         key = header[7:].strip() if header.startswith("Bearer ") else ""
-        stored = get_setting("mcp_api_key") or ""
-        if not key or not stored or not secrets.compare_digest(stored, key):
-            return _unauthorized()
-        return f(*args, **kwargs)
+        if key:
+            from services.api_keys import verify_key
+            user_id = verify_key(get_db(), key)
+            if user_id is not None:
+                g.api_user_id = user_id
+                return f(*args, **kwargs)
+            stored = get_setting("mcp_api_key") or ""
+            if stored and secrets.compare_digest(stored, key):
+                g.api_user_id = None  # legacy global key: no owning user
+                return f(*args, **kwargs)
+        return _unauthorized()
 
     return wrapper
 
