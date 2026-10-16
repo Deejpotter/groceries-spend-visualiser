@@ -260,10 +260,12 @@ def subscription_fortnight():
         "SELECT * FROM subscriptions WHERE active = 1 ORDER BY category, name"
     ).fetchall()]
 
-    # Grocery estimate from current plan.
+    # Grocery estimate for the fortnight (current plan, prorated to the overlap).
+    from services.budget import prorate_estimate
     plan_start = get_setting("plan_start_date", "")
     plan_end = get_setting("plan_end_date", "")
     grocery_estimate = 0.0
+    grocery_note = None
     if plan_start and plan_end:
         entries, recipes, recipe_ingredients, ingredients = load_shopping_inputs(plan_start, plan_end)
         unit_pref, subtract_pantry = shopping_preferences()
@@ -272,7 +274,10 @@ def subscription_fortnight():
             unit_preference=unit_pref,
             subtract_pantry=subtract_pantry,
         )
-        grocery_estimate = total_cost(grouped)
+        grocery_estimate, plan_days, overlap_days = prorate_estimate(
+            total_cost(grouped), plan_start, plan_end, start, end)
+        if plan_days and overlap_days != plan_days:
+            grocery_note = f"{plan_days}-day plan, prorated to {overlap_days} days"
 
     # Fortnightly income from settings.
     raw_income = (get_setting("fortnightly_income") or "").strip()
@@ -288,6 +293,7 @@ def subscription_fortnight():
         start=start,
         end=end,
         today=today,
+        grocery_note=grocery_note,
     )
 
 

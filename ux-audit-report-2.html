@@ -93,7 +93,7 @@
 
 <section class="card">
   <h2>Findings H — High: wrong numbers and one-way doors</h2>
-  <div class="finding high"><h4>H1 · Fortnight "Groceries (planned)" is the whole plan's cost <span class="sev high">High</span></h4>
+  <div class="finding high"><h4>H1 · Fortnight "Groceries (planned)" is the whole plan's cost <span class="sev high">High</span> <span class="done-badge">DONE · slice 2</span></h4>
     <p><code>subscription_fortnight</code> totals the <em>entire plan range</em> and labels it this fortnight's groceries. A 4-week plan doubles the apparent fortnight spend and halves the "Spare" figure — the exact number the page exists to show. The dashboard tile repeats the same unscoped total.</p>
     <p class="ev">routes/subscriptions.py:264-284 → services/budget.py:59-72 · app.py:280-284 (dashboard tile).</p>
     <div class="rec"><b>Recommend:</b> prorate by plan days overlapped with the fortnight, or label honestly ("whole plan ≈ $X over N days"). Prorating is ~5 lines with the existing <code>date_range</code> overlap.</div></div>
@@ -136,7 +136,7 @@
   <div class="finding low"><h4>L1 · Suggestion scan window starts at a hardcoded 2024-01-01 <span class="sev low">Low</span></h4>
     <p>Fine today, silently wrong in a year (stale one-off charges re-qualify as "recurring"). Derive it from the newest purchase minus ~13 months.</p>
     <p class="ev">routes/subscriptions.py:301.</p></div>
-  <div class="finding low"><h4>L2 · Fortnight groceries always render in danger-red <span class="sev low">Low</span></h4>
+  <div class="finding low"><h4>L2 · Fortnight groceries always render in danger-red <span class="sev low">Low</span> <span class="done-badge">DONE · slice 2</span></h4>
     <p><code>text-danger</code> is unconditional on a neutral number — red reads as "over budget" even when spare is healthy. Tie the class to the summary tone.</p>
     <p class="ev">templates/subscriptions/fortnight.html:37.</p></div>
 </section>

@@ -1,8 +1,8 @@
 """Monthly grocery budget pacing and fortnightly summary."""
 
 from calendar import monthrange
-from datetime import date
-from typing import Dict, List, Optional
+from datetime import date, datetime
+from typing import Dict, List, Optional, Tuple, Union
 
 from services.subscriptions import (
     fortnight_for_date,
@@ -54,6 +54,42 @@ def budget_status(rows: List[Dict], target: Optional[float],
         "variance": round(variance, 2),
         "tone": tone,
     }
+
+
+def _as_date(value) -> Optional[date]:
+    """ISO string, datetime or date to a date, else None."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value).strip()[:10])
+    except ValueError:
+        return None
+
+
+def prorate_estimate(total: float, range_start, range_end,
+                     window_start, window_end) -> Tuple[float, int, int]:
+    """Prorate a whole-range estimate down to the overlapping window.
+
+    Returns (prorated, range_days, overlap_days). A 4-week plan overlapping
+    a fortnight by 14 of 28 days contributes half its cost. Empty or
+    non-overlapping ranges prorate to zero.
+    """
+    start, end = _as_date(range_start), _as_date(range_end)
+    w_start, w_end = _as_date(window_start), _as_date(window_end)
+    if start is None or end is None or w_start is None or w_end is None:
+        return 0.0, 0, 0
+    if end < start or w_end < w_start:
+        return 0.0, 0, 0
+    range_days = (end - start).days + 1
+    overlap = (min(end, w_end) - max(start, w_start)).days + 1
+    overlap = max(0, overlap)
+    if range_days <= 0 or overlap == 0:
+        return 0.0, range_days, 0
+    return round(float(total or 0) * overlap / range_days, 2), range_days, overlap
 
 
 def fortnightly_summary(subscriptions: List[Dict], grocery_estimate: float,

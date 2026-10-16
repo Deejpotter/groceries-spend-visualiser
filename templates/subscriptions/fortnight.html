@@ -33,8 +33,8 @@
                     </td>
                 </tr>
                 <tr>
-                    <td>Groceries (planned)</td>
-                    <td class="text-right text-danger">-${{ "%.2f"|format(summary.groceries) }}</td>
+                    <td>Groceries (planned){% if grocery_note %} <small class="text-muted">({{ grocery_note }})</small>{% endif %}</td>
+                    <td class="text-right {{ 'text-danger' if summary.tone == 'danger' else ('text-warning' if summary.tone == 'warn' else '') }}">-${{ "%.2f"|format(summary.groceries) }}</td>
                 </tr>
                 <tr>
                     <td>Subscriptions due</td>
