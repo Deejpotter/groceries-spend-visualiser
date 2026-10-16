@@ -47,6 +47,17 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS api_keys (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    name TEXT NOT NULL DEFAULT 'default',
+    key_hash TEXT UNIQUE NOT NULL,
+    prefix TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_used_at TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -286,7 +297,7 @@ def init_db() -> bool:
 
 # Tables reported by database_stats(), in a stable order.
 COUNTED_TABLES = (
-    "users", "ingredients", "recipes", "recipe_ingredients", "meal_rules",
+    "users", "api_keys", "ingredients", "recipes", "recipe_ingredients", "meal_rules",
     "meal_plan_entries", "shopping_list_items", "pantry_items", "purchases",
     "subscriptions", "import_batches", "import_staged_lines",
 )

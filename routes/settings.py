@@ -14,11 +14,20 @@ def settings():
     return render_template("settings.html", **_settings_values())
 
 
+def _current_user_id(db):
+    """The logged-in user's id, or None (e.g. a stale session)."""
+    row = db.execute("SELECT id FROM users WHERE username = ?",
+                     (session.get("username"),)).fetchone()
+    return row["id"] if row else None
+
+
 def _settings_values():
     """Current settings as template values (overridable with submitted input)."""
     from services.bank_import import DEFAULT_MERCHANT_PATTERNS
     plan_start, plan_end = get_plan_dates()
     default_patterns = "\n".join(f"{k}={n}" for k, n in DEFAULT_MERCHANT_PATTERNS)
+    user_id = _current_user_id(get_db())
+    from services.api_keys import list_keys
     return {
         "plan_start": plan_start,
         "plan_end": plan_end,
@@ -28,6 +37,8 @@ def _settings_values():
         "bank_merchant_patterns": get_setting("bank_merchant_patterns") or default_patterns,
         "monthly_budget": get_setting("monthly_budget", ""),
         "fortnightly_income": get_setting("fortnightly_income", ""),
+        "api_keys": list_keys(get_db(), user_id) if user_id else [],
+        "new_api_key": None,
         "errors": None,
         "error_form": None,
     }
@@ -158,6 +169,45 @@ def save():
     else:
         flash("No settings to save.", "error")
 
+    return redirect(url_for("settings.settings"))
+
+
+@settings_bp.route("/settings/api-keys", methods=["POST"])
+@login_required
+def api_key_create():
+    """Generate a per-account API key; the raw key is shown once."""
+    from services.api_keys import create_key
+    db = get_db()
+    user_id = _current_user_id(db)
+    if not user_id:
+        flash("Log in again to manage API keys.", "error")
+        return redirect(url_for("settings.settings"))
+    name = request.form.get("key_name", "").strip() or "default"
+    key = create_key(db, user_id, name)
+    values = _settings_values()
+    values["new_api_key"] = key
+    flash(f"API key “{key['name']}” created — copy it now, it won't be shown again.",
+          "success")
+    return render_template("settings.html", **values)
+
+
+@settings_bp.route("/settings/api-keys/<int:key_id>/revoke", methods=["POST"])
+@login_required
+def api_key_revoke(key_id):
+    """Revoke one of the account's API keys."""
+    from services.api_keys import revoke_key
+    from services.mutations import AgentError
+    db = get_db()
+    user_id = _current_user_id(db)
+    if not user_id:
+        flash("Log in again to manage API keys.", "error")
+        return redirect(url_for("settings.settings"))
+    try:
+        revoke_key(db, user_id, key_id)
+    except AgentError:
+        flash("That API key doesn't exist.", "error")
+        return redirect(url_for("settings.settings"))
+    flash("API key revoked.", "success")
     return redirect(url_for("settings.settings"))
 
 

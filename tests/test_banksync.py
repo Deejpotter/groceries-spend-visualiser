@@ -2,6 +2,7 @@
 
 import io
 import json
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -234,6 +235,9 @@ def test_dashboard_auto_syncs_in_background(client, db, monkeypatch):
     assert db.execute(
         "SELECT COUNT(*) FROM purchases WHERE origin = 'banksync'"
     ).fetchone()[0] == 1
+    for thread in threading.enumerate():
+        if thread.name == "banksync-auto-sync":
+            thread.join(timeout=10)  # don't unlink the DB file mid-sync
 
 
 def test_dashboard_skips_auto_sync_when_fresh(client, db, monkeypatch):
