@@ -71,7 +71,7 @@ def test_get_sends_bearer_and_path():
     assert api.get("/plan") == {"ok": True}
     req, _ = opener.requests[0]
     assert req.get_method() == "GET"
-    assert req.full_url == "https://groceries.example/plan"
+    assert req.full_url == "https://groceries.example/api/v1/plan"
     assert req.get_header("Authorization") == "Bearer gx_test"
 
 
@@ -79,7 +79,7 @@ def test_base_url_trailing_slash_is_trimmed():
     opener = FakeOpener([FakeResponse({})])
     api = _api(base_url="https://groceries.example/", opener=opener)
     api.get("/plan")
-    assert opener.requests[0][0].full_url == "https://groceries.example/plan"
+    assert opener.requests[0][0].full_url == "https://groceries.example/api/v1/plan"
 
 
 def test_post_sends_json_body():

@@ -58,10 +58,13 @@ class GroceriesApi:
     def _request(self, method: str, path: str, body=None) -> dict:
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(
-            self.base_url + path, data=data, method=method,
+            self.base_url + "/api/v1" + path, data=data, method=method,
             headers={
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {self.api_key}",
+                # Cloudflare's browser-integrity check blocks the default
+                # "Python-urllib/..." UA with a 1010 before we reach the app.
+                "User-Agent": "groceries-mcp/1.0",
             },
         )
         try:
