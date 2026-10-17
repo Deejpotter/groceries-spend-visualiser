@@ -18,6 +18,7 @@ from models import (
     category_label, is_http_url, parse_date, label_of,
 )
 from routes import register_all_routes
+from routes.api import api_bp
 
 log = logging.getLogger(__name__)
 csrf = CSRFProtect()
@@ -40,6 +41,9 @@ def create_app(testing=False):
     application.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 
     csrf.init_app(application)
+    # API routes authenticate with a bearer key, not session cookies, so CSRF
+    # does not apply. Exempt the whole blueprint before the first request.
+    csrf.exempt(api_bp)
     if not init_db():
         log.warning(
             "Created a NEW empty database at %s. If you expected existing data, "
