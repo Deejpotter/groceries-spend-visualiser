@@ -169,6 +169,40 @@ def read_recipe(ref: str) -> dict:
 
 
 @mcp.tool()
+def create_ingredient(name: str, display_name: str = "", category: str = "other",
+                     unit: str = "each", price: float = 0.0,
+                     store: str = "", minimum_stock: float = 0.0,
+                     pack_size: float = 0.0) -> dict:
+    """Create a new ingredient (dedupes by exact name)."""
+    body = {"name": name, "display_name": display_name, "category": category,
+            "unit": unit, "price": price, "store": store,
+            "minimum_stock": minimum_stock, "pack_size": pack_size}
+    return _safe(_client().post, path="/ingredients", body=body)
+
+
+@mcp.tool()
+def create_recipe(name: str, description: str = "", servings: int = 4,
+                 prep_time: int = 0, cook_time: int = 0,
+                 covers_days: int = 1, tags: str = "") -> dict:
+    """Create a new recipe (dedupes by exact name)."""
+    body = {"name": name, "description": description, "servings": servings,
+            "prep_time": prep_time, "cook_time": cook_time,
+            "covers_days": covers_days, "tags": tags}
+    return _safe(_client().post, path="/recipes", body=body)
+
+
+@mcp.tool()
+def add_recipe_ingredient(recipe: str, ingredient: str, quantity: float,
+                         unit_override: str = "") -> dict:
+    """Link an ingredient to a recipe (by id or exact name for each)."""
+    body = {"ingredient": ingredient, "quantity": quantity,
+            "unit_override": unit_override}
+    return _safe(_client().post,
+                 path=f"/recipes/{urllib.parse.quote(recipe)}/ingredients",
+                 body=body)
+
+
+@mcp.tool()
 def plan_add_meal(date: str, meal_type: str, recipe: str, servings: int = 0) -> dict:
     """Place a recipe in a plan slot (replaces whatever is there)."""
     body = {"date": date, "meal_type": meal_type, "recipe": recipe}
