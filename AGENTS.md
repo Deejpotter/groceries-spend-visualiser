@@ -136,3 +136,6 @@ mount on `/app/data` configured in the Coolify UI.
 - `README.md` — user-facing features, quick start, configuration.
 - `architecture.md` — detailed architecture, data model, security, deployment.
 - `REFACTOR_PLAN.md` — historical record of the major refactor (all steps complete).
+- `POST_MORTEM_2026-10-18_AGENT_CRUD.md` — what went wrong (and right) while making
+  ingredient/recipe CRUD agent-friendly over the API and MCP. Read before extending
+  the API or MCP server.
