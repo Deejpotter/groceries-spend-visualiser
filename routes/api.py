@@ -13,6 +13,7 @@ That decision logic lives in services/, not here.
 
 import base64
 import secrets
+from datetime import datetime
 
 from flask import Blueprint, current_app, g, jsonify, request
 
@@ -269,6 +270,102 @@ def ingredients():
         rows = [dict(r) for r in get_db().execute(
             "SELECT id, name, display_name, category, unit, price FROM ingredients ORDER BY name")]
     return jsonify({"count": len(rows), "ingredients": rows})
+
+
+@api_bp.route("/ingredients", methods=["POST"])
+@require_api_key
+@_handle
+def ingredients_create():
+    """Create a new ingredient. Body: {name, display_name?, category?, unit?, price?, store?, minimum_stock?, pack_size?}"""
+    body = request.get_json(silent=True) or {}
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise ApiError(400, "validation", "name is required.")
+    db = get_db()
+    # Avoid duplicates by exact name.
+    existing = db.execute("SELECT id FROM ingredients WHERE name = ?", (name,)).fetchone()
+    if existing:
+        return jsonify({"id": existing["id"], "name": name, "note": "already exists."})
+    cur = db.execute(
+        """INSERT INTO ingredients (name, display_name, category, unit, price, store,
+                   minimum_stock, pack_size, created_at, origin)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'api')""",
+        (name,
+         (body.get("display_name") or "").strip() or None,
+         (body.get("category") or "other").strip() or None,
+         (body.get("unit") or "each").strip() or None,
+         float(body.get("price") or 0) if body.get("price") else None,
+         (body.get("store") or "").strip() or None,
+         float(body.get("minimum_stock")) if body.get("minimum_stock") not in (None, "") else None,
+         float(body.get("pack_size")) if body.get("pack_size") not in (None, "") else None,
+         datetime.now().isoformat())
+    )
+    db.commit()
+    return jsonify({"id": cur.lastrowid, "name": name}), 201
+
+
+@api_bp.route("/recipes", methods=["POST"])
+@require_api_key
+@_handle
+def recipes_create():
+    """Create a new recipe. Body: {name, description?, servings?, prep_time?, cook_time?,
+    source_url?, image_url?, instructions?, covers_days?, tags?}"""
+    body = request.get_json(silent=True) or {}
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise ApiError(400, "validation", "name is required.")
+    db = get_db()
+    existing = db.execute("SELECT id FROM recipes WHERE name = ?", (name,)).fetchone()
+    if existing:
+        return jsonify({"id": existing["id"], "name": name, "note": "already exists."})
+    cur = db.execute(
+        """INSERT INTO recipes (name, description, servings, prep_time, cook_time,
+                   source_url, image_url, instructions, covers_days, tags, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (name,
+         (body.get("description") or "").strip() or None,
+         int(body.get("servings")) if body.get("servings") not in (None, "") else None,
+         int(body.get("prep_time")) if body.get("prep_time") not in (None, "") else None,
+         int(body.get("cook_time")) if body.get("cook_time") not in (None, "") else None,
+         (body.get("source_url") or "").strip() or None,
+         (body.get("image_url") or "").strip() or None,
+         (body.get("instructions") or "").strip() or None,
+         int(body.get("covers_days")) if body.get("covers_days") not in (None, "") else None,
+         (body.get("tags") or "").strip() or None,
+         datetime.now().isoformat())
+    )
+    db.commit()
+    return jsonify({"id": cur.lastrowid, "name": name}), 201
+
+
+@api_bp.route("/recipes/<int:recipe_id>/ingredients", methods=["POST"])
+@require_api_key
+@_handle
+def recipe_add_ingredient(recipe_id):
+    """Link an ingredient to a recipe. Body: {ingredient, quantity, unit_override?}"""
+    body = request.get_json(silent=True) or {}
+    db = get_db()
+    # Verify recipe exists.
+    recipe = db.execute("SELECT id FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
+    if not recipe:
+        raise ApiError(404, "not_found", f"No recipe with id {recipe_id}.")
+    ingredient_ref = (body.get("ingredient") or "").strip()
+    if not ingredient_ref:
+        raise ApiError(400, "validation", "ingredient is required.")
+    ingredient_id = _resolve_ingredient_id(db, ingredient_ref)
+    quantity = body.get("quantity")
+    try:
+        quantity = float(quantity) if quantity not in (None, "") else None
+    except (TypeError, ValueError):
+        raise ApiError(400, "validation", "quantity must be a number.")
+    unit_override = (body.get("unit_override") or "").strip() or None
+    cur = db.execute(
+        """INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit_override)
+           VALUES (?, ?, ?, ?)""",
+        (recipe_id, ingredient_id, quantity, unit_override))
+    db.commit()
+    return jsonify({"recipe_id": recipe_id, "ingredient_id": ingredient_id,
+                    "quantity": quantity, "unit_override": unit_override}), 201
 
 
 @api_bp.route("/recipes/<ref>")
