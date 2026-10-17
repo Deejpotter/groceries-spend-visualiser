@@ -6,7 +6,7 @@ A self-hosted Flask 3 + SQLite household app for **meal planning, shopping list 
 
 ## Tech Stack
 
-Python 3.11 · Flask 3 · Flask-WTF (CSRF) · SQLite · Bootstrap 4 · Chart.js · Gunicorn · Docker
+Python 3.11 · Flask 3 · Flask-WTF (CSRF) · SQLite · Bootstrap 4 · Chart.js · Gunicorn · Docker · HTMX
 
 ## Layered Architecture
 
@@ -42,6 +42,8 @@ app.py (factory, auth, dashboard, template filters, CLI)
 │   └── <feature>/        — per-feature templates
 │
 ├── static/          — CSS overrides (style.css) and minimal shared JS (app.js)
+│   └── js/
+│       └── htmx.min.js    — HTMX library (self-hosted, for async page updates)
 └── tests/           — pytest: unit tests for services, integration tests via Flask test client
 ```
 
@@ -187,3 +189,31 @@ python -m pytest
 | `test_review_fixes.py` | Regression tests for PR #1 review findings |
 | `test_regressions.py` | Specific bugs from the refactor |
 | `test_persistence.py` | Fresh-database detection, online backups, database stats |
+
+## Async Page Updates (HTMX)
+
+Most state-changing actions use **HTMX** for partial page updates instead of full page reloads. HTMX is self-hosted at `static/js/htmx.min.js` and loaded in `base.html`. A CSRF meta tag (`<meta name="csrf-token">`) plus a global `htmx:configRequest` listener attach the CSRF token to every HTMX request automatically, so existing Flask-WTF CSRF protection works unchanged.
+
+### Pattern
+
+Every HTMX-enabled action follows the same pattern:
+
+1. **Template** adds `hx-post`, `hx-target`, and `hx-swap` attributes to a form or button.
+2. **Route** checks for the `HX-Request` header. On HTMX requests, it renders a small partial template (in `templates/<feature>/_*.html`) instead of redirecting.
+3. **Without JavaScript**, the same route falls back to a normal POST + redirect (progressive enhancement).
+
+### Partials
+
+| Partial | Purpose |
+|---|---|
+| `templates/shopping_lists/_item_row.html` | Shopping list row (tick toggles in place) |
+| `templates/pantry/_item_row.html` | Pantry row (consume/delete without reload) |
+| `templates/subscriptions/_sub_row.html` | Active subscription row (mark paid / pause) |
+| `templates/subscriptions/_inactive_row.html` | Paused subscription row (resume / purge) |
+| `templates/settings/_save_status.html` | Settings save confirmation ("Saved.") |
+| `templates/meal_plan/_slot_filled.html` | Meal plan slot with recipe (swap/add/remove) |
+| `templates/meal_plan/_slot_empty.html` | Empty meal plan slot (add meal) |
+
+### CSRF
+
+HTMX requests include `X-CSRFToken` header via the global config listener. Non-HTMX POST forms include `{{ csrf() }}` hidden input as before. Both paths are protected by Flask-WTF CSRF validation.
