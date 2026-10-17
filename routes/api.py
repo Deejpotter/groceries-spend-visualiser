@@ -338,17 +338,17 @@ def recipes_create():
     return jsonify({"id": cur.lastrowid, "name": name}), 201
 
 
-@api_bp.route("/recipes/<int:recipe_id>/ingredients", methods=["POST"])
+@api_bp.route("/recipes/<recipe_ref>/ingredients", methods=["POST"])
 @require_api_key
 @_handle
-def recipe_add_ingredient(recipe_id):
-    """Link an ingredient to a recipe. Body: {ingredient, quantity, unit_override?}"""
+def recipe_add_ingredient(recipe_ref):
+    """Link an ingredient to a recipe. Body: {ingredient, quantity, unit_override?}
+
+    Both the recipe and the ingredient accept an id or an exact name.
+    """
     body = request.get_json(silent=True) or {}
     db = get_db()
-    # Verify recipe exists.
-    recipe = db.execute("SELECT id FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
-    if not recipe:
-        raise ApiError(404, "not_found", f"No recipe with id {recipe_id}.")
+    recipe_id = _resolve_recipe_id(db, recipe_ref)
     ingredient_ref = (body.get("ingredient") or "").strip()
     if not ingredient_ref:
         raise ApiError(400, "validation", "ingredient is required.")
