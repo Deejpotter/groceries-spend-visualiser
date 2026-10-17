@@ -22,6 +22,11 @@ from services.mutations import AgentError
 
 api_bp = Blueprint("api", __name__, url_prefix="/api/v1")
 
+# API routes use bearer-token auth, not session cookies, so CSRF does not apply.
+@api_bp.before_request
+def _csrf_exempt():
+    request.csrf_exempt = True
+
 
 class ApiError(Exception):
     """Structured API failure: HTTP status + {code, message} body."""
