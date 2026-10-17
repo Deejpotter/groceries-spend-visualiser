@@ -465,6 +465,17 @@ def test_add_recipe_ingredient_unknown_recipe(api_client):
     assert r.get_json()["error"]["code"] == "not_found"
 
 
+def test_add_recipe_ingredient_by_recipe_name(api_client, db):
+    """The recipe can be referenced by exact name, not just id (MCP sends names)."""
+    api_client.post("/api/v1/ingredients", json={"name": "API Name Link Ing", "unit": "kg"})
+    api_client.post("/api/v1/recipes", json={"name": "API Name Link Recipe"})
+
+    r = api_client.post("/api/v1/recipes/API Name Link Recipe/ingredients",
+                        json={"ingredient": "API Name Link Ing", "quantity": 1.5, "unit_override": "kg"})
+    assert r.status_code == 201, r.get_data(as_text=True)
+    assert r.get_json()["quantity"] == 1.5
+
+
 def test_add_recipe_ingredient_unknown_ingredient(api_client):
     rec = api_client.post("/api/v1/recipes", json={"name": "API Missing Ing Recipe"})
     rec_id = rec.get_json()["id"]
