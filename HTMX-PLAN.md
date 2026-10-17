@@ -1,41 +1,44 @@
-# HTMX Async Conversion Plan
+# HTMX Async Conversion Plan — COMPLETE
 
-## Slice 1: Foundation + Shopping List Tick (Proof of Concept)
-1. Download and save htmx.min.js to static/js/
-2. Add CSRF meta tag to base.html
-3. Add global HTMX config script to base.html
-4. Create partial template for shopping list item row
-5. Modify shopping list tick route to return partial on HTMX request
-6. Update shopping list view.html form to use hx-post/hx-target/hx-swap
-7. Test: tick without page reload
+All slices 1-7 implemented, tested, and merged to dev.
 
-## Slice 2: Pantry Operations
-1. Create partial templates for pantry item rows and form status
-2. Convert pantry consume/add/delete actions to HTMX
-3. Update pantry view templates
-4. Test: pantry operations without reload
+## Slice 1: Foundation + Shopping List Tick ✅ DONE
+- htmx.min.js saved to static/js/
+- CSRF meta tag + global HTMX config in base.html
+- Created _item_row.html partial for shopping list rows
+- Converted shopping list tick to hx-post/hx-target/hx-swap
+- Route returns partial for HX-Request, falls back to normal redirect
 
-## Slice 3: Subscriptions
-1. Create partial template for subscription rows
-2. Convert mark_paid/pause/resume/delete actions to HTMX
-2. Update subscriptions view templates
-3. Test: subscription operations without reload
+## Slice 2: Pantry Operations ✅ DONE
+- Created _item_row.html partial for pantry rows
+- pantry_consume returns updated row partial, 204 when depleted
+- pantry_delete returns 204 on HX-Request (row removed via HTMX)
+- pantry_form returns 204 on HX-Request success
+- list.html renders _item_row.html partial per row with hx-post/hx-target/hx-swap
 
-## Slice 4: Settings
-1. Create partial template for save status
-2. Convert all settings forms to HTMX
-3. Test: settings saves without redirect
+## Slice 3: Subscriptions ✅ DONE
+- Created _sub_row.html and _inactive_row.html partials
+- mark_paid returns updated row partial on HX-Request
+- toggle/pause returns 204 (row removed from active list)
+- resume returns updated row partial on HX-Request
+- delete (soft) and purge return 204 on HX-Request
 
-## Slice 5: Product Linking
-1. Create partial template for product link status
-2. Convert product link actions to HTMX
-3. Test: link status updates inline
+## Slice 4: Settings ✅ DONE
+- Each settings form (dates/prefs/bank/budget) uses hx-post/hx-target/hx-swap
+- Success returns _save_status.html partial (no page reload)
+- test_banksync returns inline success/error alert on HTMX
+- Created _save_status.html partial
 
-## Slice 6: Meal Plan
-1. Create partial templates for meal plan grid and actions
-2. Convert add/swap/remove actions to HTMX
-3. Test: meal plan updates without reload
+## Slice 5: Product Linking ✅ DONE
+- Each product row links via HTMX on ingredient change (instant feedback)
+- spend_link_product returns status partial on HX-Request
+- Save all links button kept with HTMX batch submission
 
-## Slice 7: Documentation
-1. Add HTMX architecture section to README.md
-2. Update any relevant docs
+## Slice 6: Meal Plan ✅ DONE
+- meal_plan_add/swap/remove/edit_servings return slot partials on HX-Request
+- Created _slot_filled.html and _slot_empty.html partials
+- _build_days adds servings_label to entries for aria labels
+
+## Slice 7: Documentation ✅ DONE
+- README.md: HTMX added to tech stack, async page updates section, project structure
+- architecture.md: HTMX in tech stack, layered architecture diagram updated, dedicated HTMX section with pattern + partials table

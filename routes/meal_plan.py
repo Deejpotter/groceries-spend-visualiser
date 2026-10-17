@@ -188,13 +188,20 @@ def _build_days(start, end, entries):
     today = local_today()
     for day in date_range(start, end):
         key = day.strftime("%Y-%m-%d")
+        day_entries = {}
+        for mt in MEAL_TYPES:
+            e = by_slot.get((key, mt))
+            if e:
+                e = dict(e)
+                e["servings_label"] = f'Servings for {mt}'
+            day_entries[mt] = e
         days.append({
             "date": key,
             "label": f"{DAY_LABELS[day.strftime('%a').lower()]} {day.strftime('%d %b')}",
             "weekday": day.strftime("%a"),
             "day_month": day.strftime("%d %b").lstrip("0"),
             "is_today": day.date() == today,
-            "meals": {mt: by_slot.get((key, mt)) for mt in MEAL_TYPES},
+            "meals": day_entries,
         })
     return days
 
@@ -308,8 +315,18 @@ def meal_plan_add():
             default_servings=int(get_setting("default_servings", "2")),
         )
     except ValueError as exc:
+        if request.headers.get("HX-Request"):
+            return f'<div class="text-danger small">{exc}</div>', 400
         flash(str(exc), "error")
         return _back_to_plan()
+    if request.headers.get("HX-Request"):
+        entry = db.execute("SELECT * FROM meal_plan_entries WHERE id = ?", (result["entry_id"],)).fetchone()
+        if entry:
+            entry = dict(entry)
+            entry["servings_label"] = f'Servings for {entry["meal_type"]}'
+            recipes = db.execute("SELECT id, name FROM recipes ORDER BY name").fetchall()
+            return render_template("meal_plan/_slot_filled.html", entry=entry, recipes=recipes)
+        return "", 204
     if result["replaced_continuation"]:
         flash("This slot is a continuation of an earlier meal. Replacing it.", "info")
     flash("Meal added.", "success")
@@ -329,8 +346,19 @@ def meal_plan_swap(entry_id):
             servings=request.form.get("servings", type=int),
         )
     except ValueError as exc:
+        if request.headers.get("HX-Request"):
+            return f'<div class="text-danger small">{exc}</div>', 400
         flash(str(exc), "error")
         return _back_to_plan()
+    if request.headers.get("HX-Request"):
+        db = get_db()
+        entry = db.execute("SELECT * FROM meal_plan_entries WHERE id = ?", (entry_id,)).fetchone()
+        if entry:
+            entry = dict(entry)
+            entry["servings_label"] = f'Servings for {entry["meal_type"]}'
+            recipes = db.execute("SELECT id, name FROM recipes ORDER BY name").fetchall()
+            return render_template("meal_plan/_slot_filled.html", entry=entry, recipes=recipes)
+        return "", 204
     flash("Meal swapped.", "success")
     return _back_to_plan()
 
@@ -340,6 +368,8 @@ def meal_plan_swap(entry_id):
 def meal_plan_remove(entry_id):
     from services.mutations import remove_meal
     remove_meal(get_db(), entry_id)
+    if request.headers.get("HX-Request"):
+        return "", 204
     flash("Meal removed.", "success")
     return _back_to_plan()
 
@@ -349,6 +379,8 @@ def meal_plan_remove(entry_id):
 def meal_plan_edit_servings(entry_id):
     servings = request.form.get("servings", type=int)
     if not servings or servings < 1:
+        if request.headers.get("HX-Request"):
+            return '<div class="text-danger small">Invalid servings value.</div>', 400
         flash("Invalid servings value.", "error")
         return _back_to_plan()
     db = get_db()
@@ -357,6 +389,14 @@ def meal_plan_edit_servings(entry_id):
         (servings, entry_id),
     )
     db.commit()
+    if request.headers.get("HX-Request"):
+        entry = db.execute("SELECT * FROM meal_plan_entries WHERE id = ?", (entry_id,)).fetchone()
+        if entry:
+            entry = dict(entry)
+            entry["servings_label"] = f'Servings for {entry["meal_type"]}'
+            recipes = db.execute("SELECT id, name FROM recipes ORDER BY name").fetchall()
+            return render_template("meal_plan/_slot_filled.html", entry=entry, recipes=recipes)
+        return "", 204
     flash("Servings updated.", "success")
     return _back_to_plan()
 

@@ -26,22 +26,19 @@
 {% if not products %}
 <div class="alert alert-secondary">No products found. <a href="{{ url_for('spend.spend_import') }}">Import purchases</a> first.</div>
 {% else %}
-<form method="post" action="{{ url_for('spend.spend_link_batch') }}">
-    {{ csrf() }}
-    <input type="hidden" name="q" value="{{ search }}">
-    <input type="hidden" name="unlinked" value="{{ '1' if only_unlinked }}">
-    <input type="hidden" name="page" value="{{ page }}">
-    <div class="form-row align-items-end mb-2">
-        <div class="col-md-4 mb-2">
-            <label for="new_category" class="small text-muted mb-0">New ingredients go in</label>
-            <select name="new_category" id="new_category" class="form-control form-control-sm">
-                {% for code, label in categories %}
-                <option value="{{ code }}">{{ label }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="col-auto mb-2"><button type="submit" class="btn btn-primary btn-sm">Save all links</button></div>
+<div class="form-row align-items-end mb-2">
+    <div class="col-md-4 mb-2">
+        <label for="new_category" class="small text-muted mb-0">New ingredients go in</label>
+        <select id="new_category" class="form-control form-control-sm">
+            {% for code, label in categories %}
+            <option value="{{ code }}">{{ label }}</option>
+            {% endfor %}
+        </select>
     </div>
+    <div class="col-auto mb-2">
+        <button type="button" class="btn btn-primary btn-sm" onclick="saveAllLinks()">Save all links</button>
+    </div>
+</div>
 <div class="table-responsive">
 <table class="table table-sm bg-white table-sticky-first">
     <thead class="thead-light">
@@ -49,23 +46,33 @@
     </thead>
     <tbody>
     {% for p in products %}
-        <tr>
+        <tr id="product-row-{{ loop.index0 }}">
             <td>{{ p.product_name }}<div class="small text-muted">last bought {{ p.last_bought }}</div></td>
             <td class="num">{{ p.orders }}</td>
             <td class="num">{{ p.total_spend|money }}</td>
             <td class="num">{{ p.last_price|money }}{% if p.last_cup_price %}<div class="small text-muted">{{ p.last_cup_price }}</div>{% endif %}</td>
             <td>
-                <input type="hidden" name="product_name" value="{{ p.product_name }}">
-                <select name="ingredient_id" class="form-control form-control-sm" aria-label="Ingredient for {{ p.product_name }}">
-                    <option value="">— Not linked —</option>
-                    <option value="new">+ Create new ingredient</option>
-                    {% for i in ingredients %}
-                    <option value="{{ i.id }}" {% if i.id == p.ingredient_id %}selected{% endif %}>{{ i|label }} ({{ i.unit }})</option>
-                    {% endfor %}
-                </select>
-                <div class="custom-control custom-checkbox small mt-1">
-                    <input type="checkbox" class="custom-control-input" id="price-{{ loop.index }}" name="update_price" value="{{ loop.index0 }}" checked>
-                    <label class="custom-control-label" for="price-{{ loop.index }}">Update ingredient price</label>
+                <form method="post" action="{{ url_for('spend.spend_link_product') }}"
+                      hx-post="{{ url_for('spend.spend_link_product') }}"
+                      hx-trigger="change"
+                      hx-include="#new_category"
+                      hx-target="#link-status-{{ loop.index0 }}"
+                      hx-swap="innerHTML">
+                    <input type="hidden" name="product_name" value="{{ p.product_name }}">
+                    <select name="ingredient_id" class="form-control form-control-sm" aria-label="Ingredient for {{ p.product_name }}">
+                        <option value="">— Not linked —</option>
+                        <option value="new">+ Create new ingredient</option>
+                        {% for i in ingredients %}
+                        <option value="{{ i.id }}" {% if i.id == p.ingredient_id %}selected{% endif %}>{{ i|label }} ({{ i.unit }})</option>
+                        {% endfor %}
+                    </select>
+                    <div class="custom-control custom-checkbox small mt-1">
+                        <input type="checkbox" class="custom-control-input" id="price-{{ loop.index }}" name="update_price" value="{{ loop.index0 }}" checked>
+                        <label class="custom-control-label" for="price-{{ loop.index }}">Update ingredient price</label>
+                    </div>
+                </form>
+                <div id="link-status-{{ loop.index0 }}" class="small mt-1">
+                    {% if p.ingredient_id %}<span class="text-success">linked</span>{% else %}<span class="text-muted">not linked</span>{% endif %}
                 </div>
             </td>
         </tr>
@@ -73,7 +80,6 @@
     </tbody>
 </table>
 </div>
-</form>
 {% if total_pages > 1 %}
 <nav aria-label="Product pages">
     <ul class="pagination pagination-sm">
@@ -88,4 +94,31 @@
 </nav>
 {% endif %}
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function saveAllLinks() {
+    const rows = document.querySelectorAll('#product-row-\\d+ form');
+    let saved = 0, failed = 0;
+    rows.forEach(form => {
+        const fd = new FormData(form);
+        htmx.ajax('POST', form.action, {
+            values: fd,
+            headers: { 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content },
+            swap: 'innerHTML',
+            target: '#link-status-' + form.closest('tr').id.split('-')[2]
+        }).then(() => saved++).catch(() => failed++);
+    });
+    // Simple feedback
+    setTimeout(() => {
+        const statusDivs = document.querySelectorAll('[id^="link-status-"]');
+        statusDivs.forEach(d => {
+            if (!d.querySelector('.text-success, .text-danger')) {
+                d.innerHTML = '<span class="text-muted small">saved</span>';
+            }
+        });
+    }, 500);
+}
+</script>
 {% endblock %}

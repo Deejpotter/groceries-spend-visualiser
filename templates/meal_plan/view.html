@@ -112,48 +112,11 @@
         <div class="day-slots">
             {% for mt in shown_types %}
             {% set entry = day.meals[mt] %}
-            <div class="slot {{ 'slot-empty' if not entry }}">
-                <div class="slot-label">{{ meal_type_label(mt) }}</div>
-                {% if entry %}
-                <div class="d-flex justify-content-between align-items-start">
-                    <div class="slot-recipe">{{ entry.recipe_name }}</div>
-                    {{ post_button(url_for('meal_plan.meal_plan_remove', entry_id=entry.id), '', class='btn btn-sm btn-link text-muted p-0 ml-1 slot-remove',
-                                   glyph='times', title='Remove ' ~ entry.recipe_name, confirm='Remove ' ~ entry.recipe_name ~ ' from the plan?') }}
-                </div>
-                <div class="slot-meta">
-                    Serves {{ entry.servings }}
-                    {% if entry.covers_days > 1 and not entry.is_continuation %}<span class="badge badge-warning">Covers {{ entry.covers_days }} days</span>{% endif %}
-                    {% if entry.is_continuation %}<span class="badge badge-light">Leftovers</span>{% endif %}
-                    {% if not entry.is_auto_generated %}<span class="badge badge-info" title="Kept when you regenerate">Manual</span>{% endif %}
-                </div>
-                <details class="slot-edit">
-                    <summary>Change</summary>
-                    <form method="post" action="{{ url_for('meal_plan.meal_plan_swap', entry_id=entry.id) }}" class="mt-1">
-                        {{ csrf() }}
-                        {{ recipe_select(selected=entry.recipe_id, label="Recipe for " ~ day.label ~ " " ~ meal_type_label(mt)) }}
-                        <div class="input-group input-group-sm mt-1">
-                            <input type="number" name="servings" min="1" value="{{ entry.servings }}" class="form-control" aria-label="Servings for {{ day.label }} {{ meal_type_label(mt) }}">
-                            <button class="btn btn-outline-primary" type="submit">Save</button>
-                        </div>
-                    </form>
-                </details>
-                {% elif recipes %}
-                <details class="slot-edit">
-                    <summary>{{ icon('plus') }} Add</summary>
-                    <form method="post" action="{{ url_for('meal_plan.meal_plan_add') }}" class="mt-1">
-                        {{ csrf() }}
-                        <input type="hidden" name="date" value="{{ day.date }}">
-                        <input type="hidden" name="meal_type" value="{{ mt }}">
-                        {{ recipe_select(label="Recipe for " ~ day.label ~ " " ~ meal_type_label(mt)) }}
-                        <input type="number" name="servings" min="1" class="form-control form-control-sm mt-1"
-                               placeholder="Serves (recipe default)" aria-label="Servings for {{ day.label }} {{ meal_type_label(mt) }}">
-                        <button class="btn btn-sm btn-outline-primary btn-block mt-1" type="submit">Add to {{ day.weekday }}</button>
-                    </form>
-                </details>
-                {% else %}
-                <div class="slot-meta">—</div>
-                {% endif %}
-            </div>
+            {% if entry %}
+                {% include "meal_plan/_slot_filled.html" %}
+            {% else %}
+                {% include "meal_plan/_slot_empty.html" %}
+            {% endif %}
             {% endfor %}
             {% if hidden_types and recipes %}
             <details class="slot-edit slot-add-type">

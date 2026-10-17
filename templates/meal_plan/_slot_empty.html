@@ -1,0 +1,29 @@
+{% from "_macros.html" import csrf %}
+
+<div class="slot slot-empty" id="meal-slot-{{ date }}-{{ meal_type }}">
+    <div class="slot-label">{{ meal_type_label(meal_type) }}</div>
+    {% if recipes %}
+    <details class="slot-edit">
+        <summary>{{ icon('plus') }} Add</summary>
+        <form method="post" action="{{ url_for('meal_plan.meal_plan_add') }}"
+              hx-post="{{ url_for('meal_plan.meal_plan_add') }}"
+              hx-target="#meal-slot-{{ date }}-{{ meal_type }}"
+              hx-swap="outerHTML">
+            {{ csrf() }}
+            <input type="hidden" name="date" value="{{ date }}">
+            <input type="hidden" name="meal_type" value="{{ meal_type }}">
+            <select name="recipe_id" class="form-control form-control-sm" required aria-label="Recipe">
+                <option value="">Choose recipe…</option>
+                {% for r in recipes %}
+                <option value="{{ r.id }}">{{ r.name }}</option>
+                {% endfor %}
+            </select>
+            <input type="number" name="servings" min="1" class="form-control form-control-sm mt-1"
+                   placeholder="Serves (recipe default)" aria-label="Servings">
+            <button class="btn btn-sm btn-outline-primary btn-block mt-1" type="submit">Add</button>
+        </form>
+    </details>
+    {% else %}
+    <div class="slot-meta">—</div>
+    {% endif %}
+</div>

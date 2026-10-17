@@ -14,8 +14,12 @@
                 <h5>Meal Plan Dates</h5>
             </div>
             <div class="card-body">
-                <form method="post" action="{{ url_for('settings.save') }}">
+                <form method="post" action="{{ url_for('settings.save') }}"
+                      hx-post="{{ url_for('settings.save') }}"
+                      hx-target="#save-status-dates"
+                      hx-swap="afterend">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="save_dates">
                     {% if error_form == 'dates' %}{{ form_errors(errors) }}{% endif %}
                     <div class="form-row">
                         <div class="form-group col-md-6">
@@ -37,7 +41,8 @@
                             Changing the dates hides entries outside the new range (nothing is deleted).
                         </small>
                     </div>
-                    <button type="submit" name="action" value="save_dates" class="btn btn-primary">Save Dates</button>
+                    <button type="submit" class="btn btn-primary">Save Dates</button>
+                    <div id="save-status-dates"></div>
                     <a href="{{ url_for('meal_plan.meal_plan_view', tab='rules') }}" class="small ml-2">Next: add meal rules →</a>
                 </form>
             </div>
@@ -48,8 +53,12 @@
                 <h5>Preferences</h5>
             </div>
             <div class="card-body">
-                <form method="post" action="{{ url_for('settings.save') }}">
+                <form method="post" action="{{ url_for('settings.save') }}"
+                      hx-post="{{ url_for('settings.save') }}"
+                      hx-target="#save-status-prefs"
+                      hx-swap="afterend">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="save_prefs">
                     {% if error_form == 'prefs' %}{{ form_errors(errors) }}{% endif %}
                     <div class="form-group">
                         <label for="unit_preference">Unit Preference</label>
@@ -90,7 +99,8 @@
                         </small>
                     </div>
 
-                    <button type="submit" name="action" value="save_prefs" class="btn btn-primary">Save Preferences</button>
+                    <button type="submit" class="btn btn-primary">Save Preferences</button>
+                    <div id="save-status-prefs"></div>
                     <a href="{{ url_for('shopping_list.shopping_list_view') }}" class="small ml-2">Next: open the shopping list →</a>
                 </form>
             </div>
@@ -101,8 +111,12 @@
                 <h5>Bank Imports</h5>
             </div>
             <div class="card-body">
-                <form method="post" action="{{ url_for('settings.save') }}">
+                <form method="post" action="{{ url_for('settings.save') }}"
+                      hx-post="{{ url_for('settings.save') }}"
+                      hx-target="#save-status-bank"
+                      hx-swap="afterend">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="save_bank">
                     {% if error_form == 'bank' %}{{ form_errors(errors) }}{% endif %}
                     <div class="form-group">
                         <label for="bank_merchant_patterns">Grocery merchant patterns</label>
@@ -131,8 +145,9 @@
                             API access needs BankSync's Standard plan or higher.
                         </small>
                     </div>
-                    <button type="submit" name="action" value="save_bank" class="btn btn-primary">Save Bank Settings</button>
+                    <button type="submit" class="btn btn-primary">Save Bank Settings</button>
                     <button type="submit" name="action" value="test_banksync" class="btn btn-secondary">Test BankSync Key</button>
+                    <div id="save-status-bank"></div>
                 </form>
             </div>
         </div>
@@ -142,8 +157,12 @@
                 <h5>Budget</h5>
             </div>
             <div class="card-body">
-                <form method="post" action="{{ url_for('settings.save') }}">
+                <form method="post" action="{{ url_for('settings.save') }}"
+                      hx-post="{{ url_for('settings.save') }}"
+                      hx-target="#save-status-budget"
+                      hx-swap="afterend">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="save_budget">
                     {% if error_form == 'budget' %}{{ form_errors(errors) }}{% endif %}
                     <div class="form-group">
                         <label for="monthly_budget">Monthly grocery budget</label>
@@ -163,7 +182,8 @@
                             calculate spare money after groceries and bills. Leave blank to hide.
                         </small>
                     </div>
-                    <button type="submit" name="action" value="save_budget" class="btn btn-primary">Save Budget</button>
+                    <button type="submit" class="btn btn-primary">Save Budget</button>
+                    <div id="save-status-budget"></div>
                 </form>
             </div>
         </div>
