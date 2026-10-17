@@ -386,6 +386,33 @@ def recipe(ref):
     raise AgentError("not_found", f"No recipe found for {ref!r}.")
 
 
+@api_bp.route("/ingredients/<ref>", methods=["DELETE"])
+@require_api_key
+@_handle
+def ingredients_delete(ref):
+    """Delete an ingredient by id or exact name (also drops its recipe links)."""
+    db = get_db()
+    ingredient_id = _resolve_ingredient_id(db, ref)
+    db.execute("DELETE FROM recipe_ingredients WHERE ingredient_id = ?", (ingredient_id,))
+    db.execute("DELETE FROM pantry_items WHERE ingredient_id = ?", (ingredient_id,))
+    db.execute("DELETE FROM ingredients WHERE id = ?", (ingredient_id,))
+    db.commit()
+    return jsonify({"deleted": ingredient_id})
+
+
+@api_bp.route("/recipes/<ref>", methods=["DELETE"])
+@require_api_key
+@_handle
+def recipes_delete(ref):
+    """Delete a recipe by id or exact name (also drops its ingredient links)."""
+    db = get_db()
+    recipe_id = _resolve_recipe_id(db, ref)
+    db.execute("DELETE FROM recipe_ingredients WHERE recipe_id = ?", (recipe_id,))
+    db.execute("DELETE FROM recipes WHERE id = ?", (recipe_id,))
+    db.commit()
+    return jsonify({"deleted": recipe_id})
+
+
 # ---------------------------------------------------------------------------
 # Import — base64 files in, committed purchases out
 # ---------------------------------------------------------------------------

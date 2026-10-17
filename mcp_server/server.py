@@ -203,6 +203,18 @@ def add_recipe_ingredient(recipe: str, ingredient: str, quantity: float,
 
 
 @mcp.tool()
+def delete_ingredient(ref: str) -> dict:
+    """Delete an ingredient by id or exact name (also drops its recipe links)."""
+    return _safe(_client().delete, path=f"/ingredients/{urllib.parse.quote(ref)}")
+
+
+@mcp.tool()
+def delete_recipe(ref: str) -> dict:
+    """Delete a recipe by id or exact name (also drops its ingredient links)."""
+    return _safe(_client().delete, path=f"/recipes/{urllib.parse.quote(ref)}")
+
+
+@mcp.tool()
 def plan_add_meal(date: str, meal_type: str, recipe: str, servings: int = 0) -> dict:
     """Place a recipe in a plan slot (replaces whatever is there)."""
     body = {"date": date, "meal_type": meal_type, "recipe": recipe}
