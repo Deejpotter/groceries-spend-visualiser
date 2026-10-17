@@ -362,21 +362,31 @@ def import_review(token):
 @spend_bp.route("/spend/products/link", methods=["POST"])
 @login_required
 def spend_link_product():
+    """Link one product to an ingredient (HTMX-friendly single-link endpoint)."""
     from services.mutations import link_product
     db = get_db()
     product_name = request.form.get("product_name", "").strip()
-    back = redirect(url_for("spend.spend_products", q=request.form.get("q", ""),
+    ingredient_id = request.form.get("ingredient_id", "").strip()
+    update_price = bool(request.form.get("update_price"))
+    new_category = request.form.get("new_category", "other").strip()
+
+    if not product_name:
+        if request.headers.get("HX-Request"):
+            return '<div class="text-danger small">No product name.</div>', 400
+        return redirect(url_for("spend.spend_products"))
+
+    level, message, _ = link_product(
+        db, product_name, ingredient_id,
+        update_price, new_category,
+    )
+    if request.headers.get("HX-Request"):
+        css = "text-success" if level == "success" else "text-danger"
+        return f'<div class="{css} small">{message}</div>'
+    flash(message, level)
+    return redirect(url_for("spend.spend_products",
+                            q=request.form.get("q", ""),
                             unlinked=request.form.get("unlinked", ""),
                             page=request.form.get("page", "1")))
-    if not product_name:
-        return back
-    level, message, _ = link_product(
-        db, product_name, request.form.get("ingredient_id", "").strip(),
-        bool(request.form.get("update_price")),
-        request.form.get("new_category", "other").strip(),
-    )
-    flash(message, level)
-    return back
 
 
 @spend_bp.route("/spend/products/link-batch", methods=["POST"])
