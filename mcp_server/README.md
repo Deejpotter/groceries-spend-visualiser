@@ -57,6 +57,9 @@ client that uses it.
 | `get_rules` | `GET /rules` | Meal rules in order |
 | `search_ingredients` | `GET /ingredients` | Filter by name |
 | `read_recipe` | `GET /recipes/<ref>` | One recipe with ingredients (id or name) |
+| `create_ingredient` | `POST /ingredients` | New ingredient (dedupes by name) |
+| `create_recipe` | `POST /recipes` | New recipe (dedupes by name) |
+| `add_recipe_ingredient` | `POST /recipes/` | Link ingredient to recipe (qty + unit) |
 | `plan_add_meal` | `POST /plan/meals` | Place a recipe in a slot |
 | `plan_swap_meal` | `POST /plan/entries/<id>/swap` | Replace an entry's recipe |
 | `plan_remove_meal` | `DELETE /plan/entries/<id>` | Remove an entry |
