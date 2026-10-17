@@ -196,6 +196,8 @@ def subscription_toggle(sub_id):
     db = get_db()
     sub = db.execute("SELECT * FROM subscriptions WHERE id = ?", (sub_id,)).fetchone()
     if not sub:
+        if request.headers.get("HX-Request"):
+            return "", 404
         flash("Subscription not found.", "error")
         return redirect(url_for("subscriptions.subscription_list"))
 
@@ -203,6 +205,14 @@ def subscription_toggle(sub_id):
     db.execute("UPDATE subscriptions SET active = ? WHERE id = ?", (new_active, sub_id))
     db.commit()
     status = "activated" if new_active else "deactivated"
+    if request.headers.get("HX-Request"):
+        # Paused: remove row from active list. Resumed: render updated row.
+        if new_active:
+            sub = db.execute("SELECT * FROM subscriptions WHERE id = ?", (sub_id,)).fetchone()
+            if sub:
+                return render_template("subscriptions/_sub_row.html", s=dict(sub),
+                                       format_frequency=format_frequency)
+        return "", 204
     flash(f"Subscription '{sub['name']}' {status}.", "success")
     return redirect(url_for("subscriptions.subscription_list"))
 
@@ -214,11 +224,19 @@ def subscription_resume(sub_id):
     db = get_db()
     sub = db.execute("SELECT * FROM subscriptions WHERE id = ?", (sub_id,)).fetchone()
     if not sub:
+        if request.headers.get("HX-Request"):
+            return "", 404
         flash("Subscription not found.", "error")
         return redirect(url_for("subscriptions.subscription_list"))
 
     db.execute("UPDATE subscriptions SET active = 1 WHERE id = ?", (sub_id,))
     db.commit()
+    if request.headers.get("HX-Request"):
+        sub = db.execute("SELECT * FROM subscriptions WHERE id = ?", (sub_id,)).fetchone()
+        if sub:
+            return render_template("subscriptions/_sub_row.html", s=dict(sub),
+                                   format_frequency=format_frequency)
+        return "", 204
     flash(f"Subscription '{sub['name']}' resumed.", "success")
     return redirect(url_for("subscriptions.subscription_list"))
 
@@ -230,11 +248,15 @@ def subscription_purge(sub_id):
     db = get_db()
     sub = db.execute("SELECT * FROM subscriptions WHERE id = ?", (sub_id,)).fetchone()
     if not sub:
+        if request.headers.get("HX-Request"):
+            return "", 404
         flash("Subscription not found.", "error")
         return redirect(url_for("subscriptions.subscription_list"))
 
     db.execute("DELETE FROM subscriptions WHERE id = ?", (sub_id,))
     db.commit()
+    if request.headers.get("HX-Request"):
+        return "", 204
     flash(f"Subscription '{sub['name']}' permanently deleted.", "success")
     return redirect(url_for("subscriptions.subscription_list"))
 
@@ -246,11 +268,15 @@ def subscription_delete(sub_id):
     db = get_db()
     sub = db.execute("SELECT * FROM subscriptions WHERE id = ?", (sub_id,)).fetchone()
     if not sub:
+        if request.headers.get("HX-Request"):
+            return "", 404
         flash("Subscription not found.", "error")
         return redirect(url_for("subscriptions.subscription_list"))
 
     db.execute("UPDATE subscriptions SET active = 0 WHERE id = ?", (sub_id,))
     db.commit()
+    if request.headers.get("HX-Request"):
+        return "", 204
     flash(f"Subscription '{sub['name']}' deleted.", "success")
     return redirect(url_for("subscriptions.subscription_list"))
 
@@ -263,6 +289,8 @@ def subscription_mark_paid(sub_id):
     db = get_db()
     sub = db.execute("SELECT * FROM subscriptions WHERE id = ?", (sub_id,)).fetchone()
     if not sub:
+        if request.headers.get("HX-Request"):
+            return "", 404
         flash("Subscription not found.", "error")
         return redirect(url_for("subscriptions.subscription_list"))
 
@@ -270,6 +298,12 @@ def subscription_mark_paid(sub_id):
     if next_due:
         db.execute("UPDATE subscriptions SET next_due = ? WHERE id = ?", (next_due, sub_id))
         db.commit()
+        if request.headers.get("HX-Request"):
+            sub = db.execute("SELECT * FROM subscriptions WHERE id = ?", (sub_id,)).fetchone()
+            if sub:
+                return render_template("subscriptions/_sub_row.html", s=dict(sub),
+                                       format_frequency=format_frequency)
+            return "", 204
         note = f"Marked '{sub['name']}' as paid. Next due: {next_due}."
         if skipped:
             note += f" Caught up {skipped} missed cycle{'s' if skipped != 1 else ''}."

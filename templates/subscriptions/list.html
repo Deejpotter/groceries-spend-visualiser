@@ -46,27 +46,7 @@
             </thead>
             <tbody>
                 {% for s in by_category[cat_code] %}
-                <tr>
-                    <td>
-                        <strong>{{ s.name }}</strong>
-                        {% if s.notes %}<br><small class="text-muted">{{ s.notes }}</small>{% endif %}
-                    </td>
-                    <td>${{ "%.2f"|format(s.amount) }}</td>
-                    <td>{{ format_frequency(s.frequency) }}</td>
-                    <td>{{ s.next_due }}</td>
-                    <td class="text-right">
-                        <form method="post" action="{{ url_for('subscriptions.subscription_mark_paid', sub_id=s.id) }}" class="d-inline">
-                            {{ csrf() }}
-                            <button type="submit" class="btn btn-sm btn-outline-success" title="Mark paid & advance">Mark paid</button>
-                        </form>
-                        <a href="{{ url_for('subscriptions.subscription_edit', sub_id=s.id) }}" class="btn btn-sm btn-outline-primary">Edit</a>
-                        <form method="post" action="{{ url_for('subscriptions.subscription_toggle', sub_id=s.id) }}" class="d-inline">
-                            {{ csrf() }}
-                            <button type="submit" class="btn btn-sm btn-outline-warning">Pause</button>
-                        </form>
-                        {{ post_button(url_for('subscriptions.subscription_delete', sub_id=s.id), 'Delete', confirm='Delete this subscription?') }}
-                    </td>
-                </tr>
+                    {% include "subscriptions/_sub_row.html" %}
                 {% endfor %}
             </tbody>
         </table>
@@ -93,21 +73,7 @@
             </thead>
             <tbody>
                 {% for s in inactive %}
-                <tr>
-                    <td>
-                        <strong>{{ s.name }}</strong>
-                        {% if s.notes %}<br><small class="text-muted">{{ s.notes }}</small>{% endif %}
-                    </td>
-                    <td>${{ "%.2f"|format(s.amount) }}</td>
-                    <td>{{ format_frequency(s.frequency) }}</td>
-                    <td class="text-right">
-                        <form method="post" action="{{ url_for('subscriptions.subscription_resume', sub_id=s.id) }}" class="d-inline">
-                            {{ csrf() }}
-                            <button type="submit" class="btn btn-sm btn-outline-success">Resume</button>
-                        </form>
-                        {{ post_button(url_for('subscriptions.subscription_purge', sub_id=s.id), 'Delete forever', confirm='Permanently delete this subscription?') }}
-                    </td>
-                </tr>
+                    {% include "subscriptions/_inactive_row.html" %}
                 {% endfor %}
             </tbody>
         </table>

@@ -1,0 +1,23 @@
+<tr id="sub-{{ s.id }}">
+    <td>
+        <strong>{{ s.name }}</strong>
+        {% if s.notes %}<br><small class="text-muted">{{ s.notes }}</small>{% endif %}
+    </td>
+    <td>${{ "%.2f"|format(s.amount) }}</td>
+    <td>{{ format_frequency(s.frequency) }}</td>
+    <td class="text-right">
+        <form method="post" action="{{ url_for('subscriptions.subscription_resume', sub_id=s.id) }}" class="d-inline"
+              hx-post="{{ url_for('subscriptions.subscription_resume', sub_id=s.id) }}"
+              hx-target="#sub-{{ s.id }}"
+              hx-swap="outerHTML">
+            {{ csrf() }}
+            <button type="submit" class="btn btn-sm btn-outline-success">Resume</button>
+        </form>
+        <a href="#" class="btn btn-sm btn-outline-danger ml-1"
+           hx-post="{{ url_for('subscriptions.subscription_purge', sub_id=s.id) }}"
+           hx-target="#sub-{{ s.id }}"
+           hx-swap="outerHTML"
+           hx-confirm="Permanently delete this subscription?"
+           title="Permanently delete this subscription">Delete forever</a>
+    </td>
+</tr>
