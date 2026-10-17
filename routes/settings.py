@@ -70,10 +70,14 @@ def save():
             values = _settings_values()
             values.update({"plan_start": plan_start, "plan_end": plan_end,
                            "errors": errors, "error_form": "dates"})
+            if request.headers.get("HX-Request"):
+                return render_template("settings.html", **values)
             return render_template("settings.html", **values)
         set_setting("plan_start_date", plan_start)
         set_setting("plan_end_date", plan_end)
         db.commit()
+        if request.headers.get("HX-Request"):
+            return render_template("settings/_save_status.html", action="dates")
         flash("Plan dates saved.", "success")
 
     elif action == "save_prefs":
@@ -90,11 +94,15 @@ def save():
                 "errors": ["Default servings must be at least 1."],
                 "error_form": "prefs",
             })
+            if request.headers.get("HX-Request"):
+                return render_template("settings.html", **values)
             return render_template("settings.html", **values)
         set_setting("unit_preference", unit_preference)
         set_setting("default_servings", default_servings)
         set_setting("subtract_pantry_from_list", 1 if request.form.get("subtract_pantry") else 0)
         db.commit()
+        if request.headers.get("HX-Request"):
+            return render_template("settings/_save_status.html", action="prefs")
         flash("Preferences saved.", "success")
 
     elif action == "save_bank":
@@ -113,12 +121,16 @@ def save():
             values = _settings_values()
             values.update({"bank_merchant_patterns": patterns,
                            "errors": errors, "error_form": "bank"})
+            if request.headers.get("HX-Request"):
+                return render_template("settings.html", **values)
             return render_template("settings.html", **values)
         api_key = request.form.get("banksync_api_key", "").strip()
         if api_key:
             set_setting("banksync_api_key", api_key)
         set_setting("bank_merchant_patterns", patterns.strip())
         db.commit()
+        if request.headers.get("HX-Request"):
+            return render_template("settings/_save_status.html", action="bank")
         flash("Bank import settings saved.", "success")
 
     elif action == "save_budget":
@@ -135,6 +147,8 @@ def save():
                 values.update({"monthly_budget": raw,
                                "errors": ["Enter a dollar amount above zero."],
                                "error_form": "budget"})
+                if request.headers.get("HX-Request"):
+                    return render_template("settings.html", **values)
                 return render_template("settings.html", **values)
 
         income_raw = request.form.get("fortnightly_income", "").strip()
@@ -150,23 +164,33 @@ def save():
                 values.update({"fortnightly_income": income_raw,
                                "errors": ["Fortnightly income must be a dollar amount above zero."],
                                "error_form": "budget"})
+                if request.headers.get("HX-Request"):
+                    return render_template("settings.html", **values)
                 return render_template("settings.html", **values)
 
         db.commit()
+        if request.headers.get("HX-Request"):
+            return render_template("settings/_save_status.html", action="budget")
         flash("Budget target saved.", "success")
 
     elif action == "test_banksync":
         from services.banksync_client import BankSyncClient, BankSyncError
         api_key = request.form.get("banksync_api_key", "").strip()
         if not api_key:
+            if request.headers.get("HX-Request"):
+                return '<div class="alert alert-danger mt-2">Enter a BankSync API key first.</div>', 400
             flash("Enter a BankSync API key first.", "error")
             return redirect(url_for("settings.settings"))
         try:
             who = BankSyncClient(api_key).whoami()
             workspace = who.get("workspace") or {}
             name = workspace.get("name") or who.get("name") or "workspace"
+            if request.headers.get("HX-Request"):
+                return f'<div class="alert alert-success mt-2">Connected to BankSync ({name}).</div>'
             flash(f"Connected to BankSync ({name}).", "success")
         except BankSyncError as exc:
+            if request.headers.get("HX-Request"):
+                return f'<div class="alert alert-danger mt-2">BankSync connection failed: {exc}</div>', 400
             flash(f"BankSync connection failed: {exc}", "error")
         return redirect(url_for("settings.settings"))
 
