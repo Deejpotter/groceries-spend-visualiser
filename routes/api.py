@@ -22,11 +22,6 @@ from services.mutations import AgentError
 
 api_bp = Blueprint("api", __name__, url_prefix="/api/v1")
 
-# API routes use bearer-token auth, not session cookies, so CSRF does not apply.
-@api_bp.before_request
-def _csrf_exempt():
-    request.csrf_exempt = True
-
 
 class ApiError(Exception):
     """Structured API failure: HTTP status + {code, message} body."""
@@ -335,7 +330,7 @@ def recipes_create():
          (body.get("source_url") or "").strip() or None,
          (body.get("image_url") or "").strip() or None,
          (body.get("instructions") or "").strip() or None,
-         int(body.get("covers_days")) if body.get("covers_days") not in (None, "") else None,
+         int(body.get("covers_days")) if body.get("covers_days") not in (None, "") else 1,
          (body.get("tags") or "").strip() or None,
          datetime.now().isoformat())
     )

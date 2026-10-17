@@ -370,3 +370,135 @@ def test_link_product_endpoint(api_client, db):
     assert r.status_code == 200
     body = r.get_json()
     assert body["level"] in ("success", "warning")
+
+
+# ---------------------------------------------------------------------------
+# Write endpoints: ingredients and recipes (agent population)
+# ---------------------------------------------------------------------------
+
+def test_create_ingredient(api_client, db):
+    """POST /ingredients creates an ingredient without a CSRF token."""
+    r = api_client.post("/api/v1/ingredients", json={
+        "name": "API Test Milk", "display_name": "Milk", "category": "dairy",
+        "unit": "L", "price": 2.10, "store": "Woolworths",
+        "minimum_stock": 2.0, "pack_size": 1.0,
+    })
+    assert r.status_code == 201
+    body = r.get_json()
+    assert body["id"] > 0
+    row = db.execute("SELECT * FROM ingredients WHERE id = ?", (body["id"],)).fetchone()
+    assert row["name"] == "API Test Milk"
+    assert row["price"] == 2.10
+    assert row["origin"] == "api"
+
+
+def test_create_ingredient_dedupes_by_name(api_client, db):
+    """A second create with the same name returns the existing row."""
+    first = api_client.post("/api/v1/ingredients", json={"name": "API Dupe"})
+    assert first.status_code == 201
+    second = api_client.post("/api/v1/ingredients", json={"name": "API Dupe"})
+    assert second.status_code == 200
+    assert second.get_json()["id"] == first.get_json()["id"]
+    assert second.get_json()["note"] == "already exists."
+    count = db.execute("SELECT COUNT(*) FROM ingredients WHERE name = 'API Dupe'").fetchone()[0]
+    assert count == 1
+
+
+def test_create_ingredient_requires_name(api_client):
+    r = api_client.post("/api/v1/ingredients", json={"category": "dairy"})
+    assert r.status_code == 400
+    assert r.get_json()["error"]["code"] == "validation"
+
+
+def test_create_recipe(api_client, db):
+    """POST /recipes creates a recipe; covers_days defaults to 1."""
+    r = api_client.post("/api/v1/recipes", json={
+        "name": "API Test Pasta", "description": "Test dish", "servings": 4,
+        "tags": "dinner,quick",
+    })
+    assert r.status_code == 201
+    body = r.get_json()
+    row = db.execute("SELECT * FROM recipes WHERE id = ?", (body["id"],)).fetchone()
+    assert row["name"] == "API Test Pasta"
+    assert row["servings"] == 4
+    assert row["covers_days"] == 1
+    assert row["tags"] == "dinner,quick"
+
+
+def test_create_recipe_dedupes_by_name(api_client, db):
+    first = api_client.post("/api/v1/recipes", json={"name": "API Dupe Recipe"})
+    assert first.status_code == 201
+    second = api_client.post("/api/v1/recipes", json={"name": "API Dupe Recipe"})
+    assert second.status_code == 200
+    assert second.get_json()["id"] == first.get_json()["id"]
+
+
+def test_create_recipe_requires_name(api_client):
+    r = api_client.post("/api/v1/recipes", json={"servings": 4})
+    assert r.status_code == 400
+    assert r.get_json()["error"]["code"] == "validation"
+
+
+def test_add_recipe_ingredient(api_client, db):
+    """POST /recipes/<id>/ingredients links an ingredient by id or name."""
+    ing = api_client.post("/api/v1/ingredients", json={"name": "API Link Ing", "unit": "kg"})
+    ing_id = ing.get_json()["id"]
+    rec = api_client.post("/api/v1/recipes", json={"name": "API Link Recipe"})
+    rec_id = rec.get_json()["id"]
+
+    r = api_client.post(f"/api/v1/recipes/{rec_id}/ingredients",
+                        json={"ingredient": "API Link Ing", "quantity": 0.5, "unit_override": "kg"})
+    assert r.status_code == 201
+    assert r.get_json()["ingredient_id"] == ing_id
+
+    row = db.execute(
+        "SELECT * FROM recipe_ingredients WHERE recipe_id = ? AND ingredient_id = ?",
+        (rec_id, ing_id)).fetchone()
+    assert row["quantity"] == 0.5
+    assert row["unit_override"] == "kg"
+
+
+def test_add_recipe_ingredient_unknown_recipe(api_client):
+    r = api_client.post("/api/v1/recipes/99999/ingredients",
+                        json={"ingredient": "anything", "quantity": 1})
+    assert r.status_code == 404
+    assert r.get_json()["error"]["code"] == "not_found"
+
+
+def test_add_recipe_ingredient_unknown_ingredient(api_client):
+    rec = api_client.post("/api/v1/recipes", json={"name": "API Missing Ing Recipe"})
+    rec_id = rec.get_json()["id"]
+    r = api_client.post(f"/api/v1/recipes/{rec_id}/ingredients",
+                        json={"ingredient": "Does Not Exist", "quantity": 1})
+    assert r.status_code == 404
+    assert r.get_json()["error"]["code"] == "not_found"
+
+
+def test_write_endpoints_require_auth(client):
+    """Creating ingredients and recipes still needs a valid key."""
+    assert client.post("/api/v1/ingredients", json={"name": "x"}).status_code == 401
+    assert client.post("/api/v1/recipes", json={"name": "x"}).status_code == 401
+
+
+def test_api_blueprint_is_csrf_exempt(app):
+    """The API blueprint is registered as CSRF-exempt (bearer auth, not cookies)."""
+    from routes.api import api_bp
+    csrf = app.extensions["csrf"]
+    assert api_bp in csrf._exempt_blueprints
+
+
+def test_api_post_works_with_csrf_enabled(app, db):
+    """With CSRF enforcement ON, a token-less API POST still succeeds.
+
+    This is the production case: agents send JSON with a bearer key and no
+    CSRF token, so the API blueprint must bypass Flask-WTF's protection.
+    """
+    from database import get_db, set_setting
+    app.config["WTF_CSRF_ENABLED"] = True
+    with app.app_context():
+        set_setting("mcp_api_key", "csrf-test-key")
+        get_db().commit()
+    client = app.test_client()
+    client.environ_base["HTTP_AUTHORIZATION"] = "Bearer csrf-test-key"
+    r = client.post("/api/v1/ingredients", json={"name": "CSRF Test Ingredient"})
+    assert r.status_code == 201, r.get_data(as_text=True)
