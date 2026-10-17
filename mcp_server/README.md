@@ -60,6 +60,8 @@ client that uses it.
 | `create_ingredient` | `POST /ingredients` | New ingredient (dedupes by name) |
 | `create_recipe` | `POST /recipes` | New recipe (dedupes by name) |
 | `add_recipe_ingredient` | `POST /recipes/` | Link ingredient to recipe (qty + unit) |
+| `delete_ingredient` | `DELETE /ingredients/` | Delete ingredient (id or name) |
+| `delete_recipe` | `DELETE /recipes/` | Delete recipe (id or name) |
 | `plan_add_meal` | `POST /plan/meals` | Place a recipe in a slot |
 | `plan_swap_meal` | `POST /plan/entries/<id>/swap` | Replace an entry's recipe |
 | `plan_remove_meal` | `DELETE /plan/entries/<id>` | Remove an entry |

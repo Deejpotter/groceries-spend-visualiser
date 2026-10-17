@@ -491,6 +491,37 @@ def test_write_endpoints_require_auth(client):
     assert client.post("/api/v1/recipes", json={"name": "x"}).status_code == 401
 
 
+def test_delete_ingredient_by_name(api_client, db):
+    api_client.post("/api/v1/ingredients", json={"name": "API Delete Me"})
+    r = api_client.delete("/api/v1/ingredients/API Delete Me")
+    assert r.status_code == 200
+    assert r.get_json()["deleted"] > 0
+    assert db.execute("SELECT COUNT(*) FROM ingredients WHERE name = 'API Delete Me'").fetchone()[0] == 0
+
+
+def test_delete_ingredient_drops_recipe_links(api_client, db):
+    ing = api_client.post("/api/v1/ingredients", json={"name": "API Linked Delete"})
+    rec = api_client.post("/api/v1/recipes", json={"name": "API Link Owner"})
+    api_client.post(f"/api/v1/recipes/{rec.get_json()['id']}/ingredients",
+                    json={"ingredient": "API Linked Delete", "quantity": 1})
+    api_client.delete("/api/v1/ingredients/API Linked Delete")
+    remaining = db.execute("SELECT COUNT(*) FROM recipe_ingredients WHERE ingredient_id = ?",
+                           (ing.get_json()["id"],)).fetchone()[0]
+    assert remaining == 0
+
+
+def test_delete_recipe_by_name(api_client, db):
+    api_client.post("/api/v1/recipes", json={"name": "API Recipe Delete"})
+    r = api_client.delete("/api/v1/recipes/API Recipe Delete")
+    assert r.status_code == 200
+    assert db.execute("SELECT COUNT(*) FROM recipes WHERE name = 'API Recipe Delete'").fetchone()[0] == 0
+
+
+def test_delete_missing_is_404(api_client):
+    assert api_client.delete("/api/v1/ingredients/Nope").status_code == 404
+    assert api_client.delete("/api/v1/recipes/Nope").status_code == 404
+
+
 def test_api_blueprint_is_csrf_exempt(app):
     """The API blueprint is registered as CSRF-exempt (bearer auth, not cookies)."""
     from routes.api import api_bp

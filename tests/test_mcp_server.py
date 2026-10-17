@@ -198,6 +198,7 @@ def test_tool_registry_matches_expectation():
         "get_server_info", "get_week_plan", "get_shopping_list", "get_pantry_status",
         "get_spend_summary", "get_rules", "search_ingredients", "read_recipe",
         "create_ingredient", "create_recipe", "add_recipe_ingredient",
+        "delete_ingredient", "delete_recipe",
         "plan_add_meal", "plan_swap_meal", "plan_remove_meal", "plan_generate",
         "tick_item", "tick_items", "add_shopping_item", "add_pantry_stock",
         "use_pantry", "link_spend_product", "import_files",
