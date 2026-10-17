@@ -1,0 +1,35 @@
+{% from "_macros.html" import csrf, post_button, icon %}
+
+<div class="slot" id="meal-slot-{{ entry.id }}">
+    <div class="slot-label">{{ meal_type_label(entry.meal_type) }}</div>
+    <div class="d-flex justify-content-between align-items-start">
+        <div class="slot-recipe">{{ entry.recipe_name }}</div>
+        {{ post_button(url_for('meal_plan.meal_plan_remove', entry_id=entry.id), '', class='btn btn-sm btn-link text-muted p-0 ml-1 slot-remove',
+                       glyph='times', title='Remove ' ~ entry.recipe_name, confirm='Remove ' ~ entry.recipe_name ~ ' from the plan?') }}
+    </div>
+    <div class="slot-meta">
+        Serves {{ entry.servings }}
+        {% if entry.covers_days > 1 and not entry.is_continuation %}<span class="badge badge-warning">Covers {{ entry.covers_days }} days</span>{% endif %}
+        {% if entry.is_continuation %}<span class="badge badge-light">Leftovers</span>{% endif %}
+        {% if not entry.is_auto_generated %}<span class="badge badge-info" title="Kept when you regenerate">Manual</span>{% endif %}
+    </div>
+    <details class="slot-edit">
+        <summary>Change</summary>
+        <form method="post" action="{{ url_for('meal_plan.meal_plan_swap', entry_id=entry.id) }}"
+              hx-post="{{ url_for('meal_plan.meal_plan_swap', entry_id=entry.id) }}"
+              hx-target="#meal-slot-{{ entry.id }}"
+              hx-swap="outerHTML">
+            {{ csrf() }}
+            <select name="recipe_id" class="form-control form-control-sm" required aria-label="Recipe">
+                <option value="">Choose recipe…</option>
+                {% for r in recipes %}
+                <option value="{{ r.id }}" {% if r.id == entry.recipe_id %}selected{% endif %}>{{ r.name }}</option>
+                {% endfor %}
+            </select>
+            <div class="input-group input-group-sm mt-1">
+                <input type="number" name="servings" min="1" value="{{ entry.servings }}" class="form-control" aria-label="{{ entry.servings_label or 'Servings' }}">
+                <button class="btn btn-outline-primary" type="submit">Save</button>
+            </div>
+        </form>
+    </details>
+</div>
