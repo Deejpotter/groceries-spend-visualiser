@@ -97,6 +97,23 @@ is a thin stdio client that calls `/api/v1`, so `GROCERIES_URL` alone selects lo
 dev, staging or production. The API key is therefore a real remote credential —
 HTTPS only, stored in the secrets store like any other.
 
+The API is a full read/write surface so agents can manage the app end to end:
+
+| Group | Endpoints |
+|---|---|
+| Read | `GET /server-info`, `/plan`, `/shopping-list`, `/pantry`, `/spend/summary`, `/rules`, `/ingredients`, `/recipes/<ref>` |
+| Ingredients | `POST /ingredients`, `DELETE /ingredients/<ref>` (id or exact name) |
+| Recipes | `POST /recipes`, `DELETE /recipes/<ref>`, `POST /recipes/<ref>/ingredients` (link) |
+| Plan | `POST /plan/meals`, `POST /plan/entries/<id>/swap`, `DELETE /plan/entries/<id>`, `POST /plan/generate` |
+| Shopping list | `POST /shopping-list/items`, `POST /shopping-list/tick` |
+| Pantry | `POST /pantry/stock`, `POST /pantry/items/<id>/use` |
+| Spend | `POST /spend/links`, `POST /import` |
+
+The API blueprint is **CSRF-exempt** (`csrf.exempt(api_bp)` in `create_app`): it
+authenticates with a bearer key rather than session cookies, so Flask-WTF's
+cookie-based CSRF check does not apply. Deleting an ingredient or recipe cascades
+to its link rows (`recipe_ingredients`, and `pantry_items` for ingredients).
+
 ## Security Measures
 
 - CSRF protection on every form via Flask-WTF; enforced by a `csrf()` macro in `_macros.html`.
