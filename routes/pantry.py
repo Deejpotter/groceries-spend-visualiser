@@ -104,9 +104,14 @@ def pantry_form(item_id=None):
             return render_template("pantry/form.html", item=submitted,
                                    ingredients=ingredients, errors=exc.messages)
         except ValueError as exc:
+            if request.headers.get("HX-Request"):
+                return render_template("pantry/form.html", item=submitted,
+                                       ingredients=ingredients, errors=[str(exc)]), 400
             return render_template("pantry/form.html", item=submitted,
                                    ingredients=ingredients, errors=[str(exc)])
         db.commit()
+        if request.headers.get("HX-Request"):
+            return "", 204
         return redirect(url_for("pantry.pantry_list"))
 
     return render_template("pantry/form.html", item=existing, ingredients=ingredients)
@@ -118,6 +123,8 @@ def pantry_delete(item_id):
     db = get_db()
     db.execute("DELETE FROM pantry_items WHERE id = ?", (item_id,))
     db.commit()
+    if request.headers.get("HX-Request"):
+        return "", 204
     flash("Pantry item removed.", "success")
     return redirect(url_for("pantry.pantry_list"))
 
@@ -131,13 +138,40 @@ def pantry_consume(item_id):
     try:
         amount = float(amount_str)
     except ValueError:
+        if request.headers.get("HX-Request"):
+            return "Invalid amount.", 400
         flash("Invalid amount.", "error")
         return redirect(url_for("pantry.pantry_list"))
     try:
         result = consume_stock(get_db(), item_id, amount)
     except ValueError as exc:
+        if request.headers.get("HX-Request"):
+            return str(exc), 400
         flash(str(exc), "error")
         return redirect(url_for("pantry.pantry_list"))
+    if request.headers.get("HX-Request"):
+        if result["depleted"]:
+            return "", 204
+        db = get_db()
+        item = db.execute("""
+            SELECT p.*, i.name as ingredient_name, i.display_name, i.category, i.unit as ingredient_unit
+            FROM pantry_items p JOIN ingredients i ON p.ingredient_id = i.id WHERE p.id = ?
+        """, (item_id,)).fetchone()
+        if item:
+            entry = dict(item)
+            from models import today as local_today
+            from datetime import datetime
+            today = local_today()
+            if item["expiry_date"]:
+                try:
+                    exp_date = datetime.strptime(item["expiry_date"], "%Y-%m-%d").date()
+                    days_left = (exp_date - today).days
+                    entry["days_until_expiry"] = days_left
+                except ValueError:
+                    entry["days_until_expiry"] = None
+            entry["expiry_status"] = "ok"
+            return render_template("pantry/_item_row.html", item=entry)
+        return "", 204
     if result["depleted"]:
         flash(f"Used {result['used']} {result['unit']}. Item depleted.", "info")
     else:

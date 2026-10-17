@@ -1,0 +1,55 @@
+<tr class="{{ 'row-expired' if item.expiry_status == 'expired' else 'row-soon' if item.expiry_status == 'soon' else '' }}" id="pantry-item-{{ item.id }}">
+    <td>
+        <strong>{{ item|label }}</strong>
+        <div class="text-muted small">{{ item.category_label or item.category or '' }}</div>
+    </td>
+    <td style="text-align: right;">{{ item.quantity }}</td>
+    <td>{{ item.unit }}</td>
+    <td>
+        {% if item.expiry_date %}
+            {{ item.expiry_date }}
+            {% if item.days_until_expiry is not none %}
+            <span class="badge {% if item.expiry_status == 'expired' %}badge-danger{% elif item.expiry_status == 'soon' %}badge-warning{% else %}badge-success{% endif %}">
+                {{ item.days_until_expiry }} days
+            </span>
+            {% endif %}
+        {% else %}
+            <span class="text-muted">No date</span>
+        {% endif %}
+    </td>
+    <td>
+        <span class="badge badge-{% if item.location == 'fridge' %}primary{% elif item.location == 'freezer' %}info{% else %}light{% endif %}">
+            {{ item.location|title }}
+        </span>
+    </td>
+    <td>
+        {% if item.expiry_status == 'expired' %}
+        <span class="status-badge danger">{{ icon('circle-alert') }} Expired</span>
+        {% elif item.expiry_status == 'soon' %}
+        <span class="status-badge warn">{{ icon('hourglass') }} Use soon</span>
+        {% elif item.expiry_status == 'no_date' %}
+        <span class="status-badge neutral">No date</span>
+        {% else %}
+        <span class="status-badge fresh">{{ icon('check') }} Fresh</span>
+        {% endif %}
+    </td>
+    <td>
+        <div class="btn-group btn-group-sm">
+            <a href="{{ url_for('pantry.pantry_form', item_id=item.id) }}" class="btn btn-outline-secondary">Edit</a>
+        </div>
+        <form method="post" action="{{ url_for('pantry.pantry_consume', item_id=item.id) }}" class="form-inline d-inline-flex ml-1"
+              hx-post="{{ url_for('pantry.pantry_consume', item_id=item.id) }}"
+              hx-target="#pantry-item-{{ item.id }}"
+              hx-swap="outerHTML">
+            <input type="number" name="amount" step="any" min="0.01" class="form-control form-control-sm" style="width: 5rem"
+                   placeholder="Qty ({{ item.unit }})" aria-label="Amount in {{ item.unit }} to use from {{ item|label }}" required>
+            <button type="submit" class="btn btn-sm btn-outline-primary ml-1">Use</button>
+        </form>
+        <a href="#" class="btn btn-sm btn-outline-danger ml-1"
+           hx-post="{{ url_for('pantry.pantry_delete', item_id=item.id) }}"
+           hx-target="#pantry-item-{{ item.id }}"
+           hx-swap="outerHTML"
+           hx-confirm="Remove {{ item|label }}?"
+           title="Remove this item">Delete</a>
+    </td>
+</tr>
