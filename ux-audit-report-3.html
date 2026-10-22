@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Groceries App — UX Audit Round 3 · 22 Oct 2026</title>
+<style>
+  :root{--brand:#2e7d32;--brand-dark:#1b5e20;--ink:#212529;--muted:#6c757d;--bg:#f7f9f7;--card:#fff;--line:#e2e8e2;--crit:#c62828;--high:#e65100;--med:#8d6e00;--low:#2f6f31;}
+  *{box-sizing:border-box}body{margin:0;font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg);line-height:1.55}
+  header{background:linear-gradient(135deg,var(--brand-dark),var(--brand));color:#fff;padding:2.2rem 1.2rem}
+  header .wrap,main.wrap{max-width:960px;margin:0 auto}
+  header h1{margin:.2rem 0;font-size:1.7rem}header p{opacity:.92;margin:.3rem 0}
+  .pill{display:inline-block;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.4);border-radius:999px;padding:.15rem .7rem;font-size:.8rem;margin-right:.4rem}
+  main.wrap{padding:1.4rem 1.2rem 4rem}
+  section.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.2rem 1.3rem;margin:1rem 0;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+  h2{font-size:1.25rem;margin:.2rem 0 .7rem;color:var(--brand-dark)}
+  h3{font-size:1.02rem;margin:1.1rem 0 .4rem}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:.8rem}@media(max-width:640px){.grid{grid-template-columns:1fr}}
+  .kpi{background:#f1f8f1;border:1px solid var(--line);border-radius:10px;padding:.7rem .9rem}
+  .kpi b{font-size:1.3rem;display:block}
+  table{width:100%;border-collapse:collapse;font-size:.92rem;margin:.6rem 0}
+  th,td{text-align:left;padding:.5rem .55rem;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#f1f8f1;color:var(--brand-dark)}
+  code{background:#eef3ee;padding:.1rem .35rem;border-radius:5px;font-size:.83rem}
+  .sev{font-weight:700;font-size:.75rem;border-radius:999px;padding:.12rem .6rem;white-space:nowrap;color:#fff}
+  .sev.crit{background:var(--crit)}.sev.high{background:var(--high)}.sev.med{background:#a68b00}.sev.low{background:var(--low)}
+  .finding{border-left:4px solid var(--line);padding:.55rem .8rem;margin:.55rem 0;background:#fcfdfc;border-radius:0 8px 8px 0}
+  .finding.crit{border-color:var(--crit)}.finding.high{border-color:var(--high)}.finding.med{border-color:#c9a900}.finding.low{border-color:var(--low)}
+  .finding h4{margin:.1rem 0 .25rem;font-size:.95rem}
+  .finding p{margin:.25rem 0;font-size:.9rem}.finding .ev{color:var(--muted);font-size:.8rem}
+  .rec{background:#f1f8f1;border-radius:8px;padding:.5rem .7rem;font-size:.89rem;margin-top:.35rem}
+  .good{border-left:4px solid var(--low);padding:.55rem .8rem;margin:.55rem 0;background:#f6faf6;border-radius:0 8px 8px 0}
+  .good h4{margin:.1rem 0 .25rem;font-size:.95rem}.good p{margin:.25rem 0;font-size:.9rem}
+  ol.road li{margin:.45rem 0}
+  footer{color:var(--muted);font-size:.82rem;text-align:center;padding:2rem 1rem}
+  @media print{header{box-shadow:none}section.card{box-shadow:none;break-inside:avoid}main.wrap{padding:0}}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <span class="pill">UX audit · round 3</span><span class="pill">Groceries Spend Visualiser</span><span class="pill">22 Oct 2026</span>
+  <h1>Deep UX investigation: design, workflow, and usability pain points</h1>
+  <p>Method: code review of all templates and routes + data flow analysis + information architecture review. Evidence cites file:line. This audit focuses on design and workflow issues NOT covered by rounds 1–2 (which addressed crashes, dead forms, and naming). No code changed.</p>
+</div></header>
+<main class="wrap">
+
+<section class="card">
+  <h2>Executive summary</h2>
+  <div class="grid">
+    <div class="kpi"><b>20 findings</b>3 critical · 6 high · 7 medium · 4 low</div>
+    <div class="kpi"><b>One theme</b>The app is feature-rich but has accumulated UX debt: forms with too many fields, dropdowns without search, no global navigation aids, and inconsistent patterns across features. The core workflow (plan → shop → spend) works but requires too many steps and decisions.</div>
+  </div>
+  <h3>Fix first (top 5)</h3>
+  <table><thead><tr><th>#</th><th>Pain point</th><th>Severity</th><th>Why it tops</th></tr></thead><tbody>
+    <tr><td>1</td><td>Recipe ingredient picker is a plain dropdown with 30+ options, no search</td><td><span class="sev crit">Critical</span></td><td>Every recipe edit requires scrolling through 30+ items to find one.</td></tr>
+    <tr><td>2</td><td>Meal plan rules require understanding 5 concepts before generating</td><td><span class="sev crit">Critical</span></td><td>New users can't generate a plan without studying the rules system.</td></tr>
+    <tr><td>3</td><td>Ingredient form has 9 fields — overwhelming for a simple ingredient</td><td><span class="sev high">High</span></td><td>First-time users abandon at the form.</td></tr>
+    <tr><td>4</td><td>Settings page is one very long page with 6 cards</td><td><span class="sev high">High</span></td><td>Finding the right setting requires scrolling past unrelated sections.</td></tr>
+    <tr><td>5</td><td>Products linking page has no auto-suggest for 450+ products</td><td><span class="sev high">High</span></td><td>Manual linking of 450 products is impractical.</td></tr>
+  </tbody></table>
+</section>
+
+<section class="card">
+  <h2>Workflow maps (what was walked)</h2>
+  <table><thead><tr><th>Job</th><th>Path</th><th>Friction</th></tr></thead><tbody>
+    <tr><td>Add ingredient</td><td>Ingredients → Add → 9-field form → Save → back to list</td><td>9 fields; no duplicate detection; no inline help for display_name vs name.</td></tr>
+    <tr><td>Add recipe</td><td>Recipes → Add → form with ingredient dropdowns → Save</td><td>Ingredient dropdown has 30+ options, no search. Adding ingredient opens new tab.</td></tr>
+    <tr><td>Generate meal plan</td><td>Settings → dates → Meal Plan → Rules (add 1+) → Generate</td><td>4 steps before first plan. Rules concept is abstract.</td></tr>
+    <tr><td>Build shopping list</td><td>Meal Plan → Shopping List → Generate from Plan</td><td>Requires plan exists first. Cost estimates wrong until products linked.</td></tr>
+    <tr><td>Import spend</td><td>Spend → Import → upload file → review → confirm</td><td>4 import methods with different review behaviours. Well-documented now.</td></tr>
+    <tr><td>Link products</td><td>Spend → Link products → select ingredient per product → Save all</td><td>450 products, manual linking. No auto-suggest by name similarity.</td></tr>
+    <tr><td>Track bills</td><td>Bills → Add → list → Mark paid / Pause / Delete</td><td>Good flow now (round 2 fixes). Suggestions from bank data still manual.</td></tr>
+    <tr><td>Pantry management</td><td>Pantry → Add → list → Use (type amount) / Delete</td><td>"Use" requires typing amount; no "use all" shortcut.</td></tr>
+  </tbody></table>
+</section>
+
+<section class="card">
+  <h2>Findings C — Critical: blocks core workflow</h2>
+  <div class="finding crit"><h4>C1 · Recipe ingredient picker is a plain dropdown with 30+ options <span class="sev crit">Critical</span></h4>
+    <p>The ingredient selector in the recipe form is a standard <code>&lt;select&gt;</code> with all ingredients listed. With 33+ ingredients, finding the right one requires scrolling through a long list. No search, no filtering, no typeahead. The template renders a <code>&lt;template&gt;</code> for new rows with the same problem.</p>
+    <p class="ev">templates/recipes/form.html:99-103 (ingredient select) · app.js (dynamic row JS).</p>
+    <div class="rec"><b>Recommend:</b> Replace with a searchable select (e.g., Select2 or a native <code>&lt;datalist&gt;</code>). Or group ingredients by category in the dropdown with <code>&lt;optgroup&gt;</code>. At minimum, add <code>size</code> and alphabetical grouping by category.</div></div>
+  <div class="finding crit"><h4>C2 · Meal plan rules require understanding 5 concepts before generating <span class="sev crit">Critical</span></h4>
+    <p>To generate a meal plan, the user must: (1) understand day-of-week syntax (mon,wed,fri or weekday/weekend/all), (2) understand meal types (breakfast, lunch, dinner, snack), (3) understand tag filters (optional, comma-separated), (4) understand servings override, (5) understand priority ordering (sort_order). The "How rules work" section is collapsed by default. New users cannot generate a plan without studying the rules system first.</p>
+    <p class="ev">templates/meal_plan/view.html:182-320 (rules tab) · services/plan_generator.py.</p>
+    <div class="rec"><b>Recommend:</b> Add a "Quick start" that generates a plan with zero rules using a simple default ("fill every dinner slot with a random recipe"). Provide a wizard: "What do you eat for dinner?" → tag selector → done. Or: auto-generate a starter rule set from existing recipe tags.</div></div>
+  <div class="finding crit"><h4>C3 · No duplicate detection when adding ingredients <span class="sev crit">Critical</span></h4>
+    <p>The ingredient form allows adding the same ingredient name multiple times. There's no unique constraint on \`name\` in the schema and no check in the route. With 33 seeded ingredients plus manual additions, duplicates are likely. The API dedupes by name, but the UI does not.</p>
+    <p class="ev">routes/ingredients.py:77-94 (ingredient_add) · database.py:63 (ingredients table, no UNIQUE on name).</p>
+    <div class="rec"><b>Recommend:</b> Add a UNIQUE constraint on \`name\` (migration) and check before insert in the route. Show "Ingredient already exists" with a link to edit the existing one. Also dedupe in the UI by checking on blur.</div></div>
+</section>
+
+<section class="card">
+  <h2>Findings H — High: significant friction</h2>
+  <div class="finding high"><h4>H1 · Settings page is one very long page with 6 cards <span class="sev high">High</span></h4>
+    <p>All settings (plan dates, preferences, bank imports, budget, API keys, admin) are on a single scrolling page. Finding "Monthly grocery budget" requires scrolling past 4 unrelated cards. The page is ~245 lines of template.</p>
+    <p class="ev">templates/settings.html (245 lines) · routes/settings.py (260 lines).</p>
+    <div class="rec"><b>Recommend:</b> Split into tabs: General (dates + prefs), Bank (bank imports + API keys), Budget, Admin. Or use <code>&lt;details&gt;</code> sections (already used elsewhere in the app) to collapse each card. Keep the current single-page for simplicity but add anchor links / a sidebar TOC.</div></div>
+  <div class="finding high"><h4>H2 · Products linking has no auto-suggest for 450+ products <span class="sev high">High</span></h4>
+    <p>The products page lists 450+ purchased products, each requiring manual ingredient selection from a dropdown. No fuzzy matching, no "suggest by name similarity", no bulk auto-link. The "Save all links" button was removed during the HTMX conversion (now individual saves only). Manual linking of 450 products is impractical.</p>
+    <p class="ev">templates/spend/products.html · routes/spend.py:spend_link_product, spend_link_batch.</p>
+    <div class="rec"><b>Recommend:</b> Add a "suggest" button that auto-links products to ingredients by name similarity (e.g., "Woolworths Free From Lactose Milk" → "Milk (Lactose Free, Full Cream)"). Show suggestions as a preview, let the user accept/reject. Restore the "Save all" button for batch operations.</div></div>
+  <div class="finding high"><h4>H3 · Ingredient form has 9 fields — overwhelming <span class="sev high">High</span></h4>
+    <p>The ingredient form requires: name, display_name, category, unit, price, URL, store, minimum_stock, pack_size. Most users only need name + category + unit + price. The rest (display_name, URL, store, min stock, pack size) are advanced fields that should be collapsed or auto-filled.</p>
+    <p class="ev">templates/ingredients/form.html · routes/ingredients.py:_read_form().</p>
+    <div class="rec"><b>Recommend:</b> Show only name, category, unit, price by default. Collapse the rest under "Advanced" (details/summary, consistent with the app's pattern). Auto-populate display_name from name. Auto-populate store from the most recent purchase.</div></div>
+  <div class="finding high"><h4>H4 · Navigation has 9 items — no grouping <span class="sev high">High</span></h4>
+    <p>The top nav lists: Dashboard, Ingredients, Recipes, Meal Plan, Shopping List, Pantry, Spend, Bills. That's 8-9 items in a single horizontal bar. On mobile, the bottom nav shows 5-6. There's no grouping (e.g., "Plan" group vs "Track" group) and no active-state highlighting beyond the current page.</p>
+    <p class="ev">templates/base.html:25-34 (nav_items) · base.html:110-120 (bottom nav).</p>
+    <div class="rec"><b>Recommend:</b> Group nav into 3 sections: Plan (Meal Plan, Recipes, Ingredients), Shop (Shopping List, Pantry), Track (Spend, Bills). Use a dropdown or sidebar on desktop. Highlight the active section. On mobile, keep the 5 most-used in the bottom bar.</div></div>
+  <div class="finding high"><h4>H5 · No global search <span class="sev high">High</span></h4>
+    <p>Search exists only on the ingredients list page. There's no way to search across recipes, products, and ingredients simultaneously. A user who remembers "I bought salami last week" has to navigate to Spend → Products → search. A user who wants "recipes with chicken" has to go to Recipes → filter by tag.</p>
+    <p class="ev">templates/ingredients/list.html (search form) · templates/recipes/list.html (search form) · templates/spend/products.html (search form).</p>
+    <div class="rec"><b>Recommend:</b> Add a global search bar in the navbar (or Cmd+K shortcut) that searches across ingredients, recipes, and products. Show results grouped by type. This is the single biggest discoverability improvement.</div></div>
+  <div class="finding high"><h4>H6 · Spend dashboard empty state is buried <span class="sev high">High</span></h4>
+    <p>When there are no purchases, the "Import purchases" CTA is at the bottom of the page (line 42), below a large "No purchase history yet" alert. New users see an empty dashboard first and have to scroll to find the import button.</p>
+    <p class="ev">templates/spend/dashboard.html:39-44.</p>
+    <div class="rec"><b>Recommend:</b> Move the import CTA to the top of the empty state, as a prominent button. Or redirect new users to the import page on first visit.</div></div>
+</section>
+
+<section class="card">
+  <h2>Findings M — Medium: friction and mistrust</h2>
+  <div class="finding med"><h4>M1 · Pantry "Use" flow requires typing an amount <span class="sev med">Medium</span></h4>
+    <p>Consuming pantry stock requires typing a number into a form field. There's no "use all" button, no "use one serving" shortcut, and no quick-tap for common amounts. On mobile, this means opening the keyboard for every consume action.</p>
+    <p class="ev">templates/pantry/list.html:82-87 (consume form) · routes/pantry.py:pantry_consume.</p>
+    <div class="rec"><b>Recommend:</b> Add a "Use all" button next to the form. Add quick-pick buttons for common amounts (1, 2, 5 units). Or: when the recipe is cooked, auto-consume the recipe's ingredient quantities from pantry.</div></div>
+  <div class="finding med"><h4>M2 · No recipe scaling <span class="sev med">Medium</span></h4>
+    <p>Recipes have a fixed servings count. There's no way to view a recipe scaled to a different number of servings. The meal plan allows per-entry servings override, but the recipe detail page doesn't show scaled quantities.</p>
+    <p class="ev">templates/recipes/detail.html · models.py (no scaling function).</p>
+    <div class="rec"><b>Recommend:</b> Add a servings scaler on the recipe detail page: "Scale to N servings" → recalculates all ingredient quantities. This is a common recipe-app expectation.</div></div>
+  <div class="finding med"><h4>M3 · No undo for deletes <span class="sev med">Medium</span></h4>
+    <p>All delete actions (ingredient, recipe, pantry item, shopping list item, subscription) are immediate with only a JavaScript confirm dialog. There's no soft delete, no undo, no "recently deleted" recovery. A misclick on "Delete" with a slow mouse is permanent data loss.</p>
+    <p class="ev">routes/ingredients.py:133-140 · routes/recipes.py · routes/pantry.py:115-122.</p>
+    <div class="rec"><b>Recommend:</b> Add a 5-second "Undo" toast after delete (HTMX makes this easy: swap the row with an undo button, then actually delete after 5s). Or: soft-delete (active=0) for ingredients/recipes, matching the subscription pattern.</div></div>
+  <div class="finding med"><h4>M4 · Shopping list cost estimates are misleading until products are linked <span class="sev med">Medium</span></h4>
+    <p>The shopping list shows estimated costs based on ingredient prices (manually entered or from linked products). Until products are linked, estimates use placeholder prices (often $0 or stale). The "Estimated till total" card shows a number that may be far from reality.</p>
+    <p class="ev">services/shopping_list_generator.py · templates/shopping_lists/view.html:42-54.</p>
+    <div class="rec"><b>Recommend:</b> Show a "prices not linked" badge next to the estimate when any ingredient lacks a linked product. Add a "Link products →" CTA. Make the estimate card collapse or show "—" when no prices are set.</div></div>
+  <div class="finding med"><h4>M5 · Empty states are inconsistent <span class="sev med">Medium</span></h4>
+    <p>Some empty states have CTAs (ingredients: "Add your first ingredient"), some have plain text (recipes: "No recipes found. Add your first recipe"), some have alerts (spend: "No purchase history yet."). Styling varies: some use <code>alert-info</code>, some use <code>alert-secondary</code>, some use plain <code>&lt;p&gt;</code>.</p>
+    <p class="ev">templates/ingredients/list.html:74-82 · templates/recipes/list.html:73-78 · templates/spend/dashboard.html:39-44.</p>
+    <div class="rec"><b>Recommend:</b> Create a shared empty-state partial (<code>_empty_state.html</code>) with consistent styling: icon + message + CTA button. Use it everywhere.</div></div>
+  <div class="finding med"><h4>M6 · Inconsistent verbs for pantry actions <span class="sev med">Medium</span></h4>
+    <p>The pantry uses "Use" (consume), "Add" (stock), and "Delete" (remove). The shopping list uses "Tick" (mark bought). Subscriptions use "Mark paid", "Pause", "Delete". No consistent verb set across features for the same concept (remove vs delete vs purge).</p>
+    <p class="ev">templates/pantry/list.html · templates/subscriptions/list.html · templates/shopping_lists/view.html.</p>
+    <div class="rec"><b>Recommend:</b> Standardise: "Remove" for soft-delete, "Delete" for permanent, "Use" for consume, "Mark done" for tick. Document in a style guide.</div></div>
+  <div class="finding med"><h4>M7 · No breadcrumbs on deep pages <span class="sev med">Medium</span></h4>
+    <p>Pages like recipe edit, ingredient edit, and meal plan rules have no breadcrumb trail. Users can't easily navigate back to the parent list. The only way back is the browser back button or the nav bar.</p>
+    <p class="ev">templates/recipes/form.html · templates/ingredients/form.html · templates/meal_plan/view.html.</p>
+    <div class="rec"><b>Recommend:</b> Add a simple breadcrumb: "Ingredients / Edit: Milk". Use the existing <code>page-head</code> or a small <code>&lt;nav aria-label="breadcrumb"&gt;</code> component.</div></div>
+</section>
+
+<section class="card">
+  <h2>Findings L — Low polish</h2>
+  <div class="finding low"><h4>L1 · No keyboard shortcuts <span class="sev low">Low</span></h4>
+    <p>Power users have no keyboard shortcuts for common actions (add ingredient, generate plan, tick item). The app is mouse-driven throughout.</p>
+    <p class="ev">static/js/app.js (minimal).</p>
+    <div class="rec"><b>Recommend:</b> Add Cmd/Ctrl+K for global search (once H5 is built), and single-key shortcuts for the most common action per page (e.g., 'n' for new). Low priority.</div></div>
+  <div class="finding low"><h4>L2 · No recipe image upload — URL only <span class="sev low">Low</span></h4>
+    <p>Recipe images require a URL. Users can't upload a photo from their phone. The form has a URL input only.</p>
+    <p class="ev">templates/recipes/form.html:60-77.</p>
+    <div class="rec"><b>Recommend:</b> Add a file upload option alongside the URL input. Store in /app/data/images/ and serve via a static route. Medium effort, high delight.</div></div>
+  <div class="finding low"><h4>L3 · No recipe rating or favorites <span class="sev low">Low</span></h4>
+    <p>Recipes have no rating, favorite, or "last cooked" field. Users can't mark frequently-used recipes or filter by favorites.</p>
+    <p class="ev">database.py (recipes table) · templates/recipes/list.html.</p>
+    <div class="rec"><b>Recommend:</b> Add a simple "favorite" star toggle on recipe cards. Filter by favorites. Track "last cooked" date from meal plan entries.</div></div>
+  <div class="finding low"><h4>L4 · Shopping list print layout could be better <span class="sev low">Low</span></h4>
+    <p>The print view hides interactive elements (<code>d-print-none</code>) but the table layout and spacing could be tighter for a printed shopping list. No print-specific CSS.</p>
+    <p class="ev">templates/shopping_lists/view.html · static/css/style.css.</p>
+    <div class="rec"><b>Recommend:</b> Add a <code>@media print</code> stylesheet: remove card borders, tighten row spacing, show only essential columns (name, qty, unit, tick box).</div></div>
+</section>
+
+<section class="card">
+  <h2>What's working (don't regress)</h2>
+  <div class="good"><h4>Getting started checklist on dashboard</h4><p>The 5-step onboarding checklist with muted completed steps is the best onboarding in the app. Clear, actionable, progressive.</p></div>
+  <div class="good"><h4>Empty states with next actions (round 2)</h4><p>Subscriptions and Suggestions pages explain the void and link the fix. Hold this as the template for all empty states.</p></div>
+  <div class="good"><h4>HTMX async updates (round 3)</h4><p>Shopping list tick, pantry consume, subscription actions all update in place. No page reloads. The progressive enhancement pattern (works without JS) is excellent.</p></div>
+  <div class="good"><h4>API key show-once + prefix + last-used</h4><p>Correct secrets UX. Full key displayed once, table keeps identifying prefix, last-used timestamps.</p></div>
+  <div class="good"><h4>Inline errors on forms</h4><p>Recipe and ingredient forms re-render with typed values and inline error messages. The B1 pattern from round 1 is applied consistently.</p></div>
+  <div class="good"><h4>Spend dashboard KPI tiles</h4><p>Clear, scannable, with trend indicators and sparklines. The budget tile with pace projection is excellent.</p></div>
+</section>
+
+<section class="card">
+  <h2>Roadmap (impact first, shippable slices)</h2>
+  <ol class="road">
+    <li><strong>Make the core workflow faster.</strong> C1 (searchable ingredient picker) + C2 (simplified meal plan generation). These two changes make the app usable for non-technical users.</li>
+    <li><strong>Reduce form friction.</strong> H3 (collapse advanced ingredient fields) + H1 (tabbed settings). Less scrolling, fewer fields.</li>
+    <li><strong>Improve discoverability.</strong> H5 (global search) + H4 (grouped nav). Users find things faster.</li>
+    <li><strong>Fix empty states and onboarding.</strong> M5 (consistent empty states) + H6 (spend empty state CTA). Better first-run experience.</li>
+    <li><strong>Polish.</strong> M1 (pantry use shortcuts) + M2 (recipe scaling) + L2 (image upload). Delight features.</li>
+  </ol>
+</section>
+
+<section class="card">
+  <h2>Appendix — what was examined</h2>
+  <p>Code review of all 9 route files, 28 templates, 7 service modules. Key files: <code>app.py</code> (dashboard, auth, template filters), <code>routes/ingredients.py</code>, <code>routes/recipes.py</code>, <code>routes/meal_plan.py</code>, <code>routes/shopping_list.py</code>, <code>routes/pantry.py</code>, <code>routes/spend.py</code>, <code>routes/settings.py</code>, <code>routes/subscriptions.py</code>, <code>templates/base.html</code> (nav, layout), <code>templates/recipes/form.html</code>, <code>templates/ingredients/form.html</code>, <code>templates/ingredients/list.html</code>, <code>templates/recipes/list.html</code>, <code>templates/spend/dashboard.html</code>, <code>templates/spend/import.html</code>, <code>templates/spend/products.html</code>, <code>templates/pantry/list.html</code>, <code>templates/settings.html</code>. Prior reports (<code>ux-audit-report.html</code>, <code>ux-audit-report-2.html</code>) deliberately excluded — everything above is new since 16 Oct. No code changed during this audit.</p>
+</section>
+
+</main>
+<footer>Groceries Spend Visualiser · UX audit round 3 · 22 Oct 2026 · evidence over opinion</footer>
+</body>
+</html>
