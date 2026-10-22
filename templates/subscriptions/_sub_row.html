@@ -26,7 +26,7 @@
            hx-post="{{ url_for('subscriptions.subscription_delete', sub_id=s.id) }}"
            hx-target="#sub-{{ s.id }}"
            hx-swap="outerHTML"
-           hx-confirm="Delete this subscription?"
-           title="Delete this subscription">Delete</a>
+           hx-confirm="Remove this subscription? (You can restore it from the Paused section.)"
+           title="Remove this subscription">Remove</a>
     </td>
 </tr>
