@@ -39,8 +39,8 @@
 {% if not stats %}
 <div class="alert alert-secondary">
     <p class="mb-2">No purchase history yet.</p>
-    <p class="mb-0">Import a Woolworths PDF tax invoice or order-history CSV to see what you spend each month and which products you buy most.
-        <a href="{{ url_for('spend.spend_import') }}">Import purchases</a></p>
+    <p class="mb-2"><a href="{{ url_for('spend.spend_import') }}" class="btn btn-primary btn-sm">{{ icon('import') }} Import purchases</a></p>
+    <p class="mb-0 small text-muted">Import a Woolworths PDF tax invoice or order-history CSV to see what you spend each month and which products you buy most.</p>
 </div>
 {% else %}
 <ul class="nav nav-pills mb-3">

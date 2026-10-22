@@ -49,6 +49,7 @@
             {% if totals.exact_total and totals.exact_total < totals.packs_total %}
             <div class="small text-muted">{{ totals.exact_total|money }} for just what the recipes use</div>
             {% endif %}
+            <div class="small text-muted mt-1">Estimates use ingredient prices. <a href="{{ url_for('spend.spend_products') }}">Link products</a> for accurate costs.</div>
         </div></div>
     </div>
     {% endif %}

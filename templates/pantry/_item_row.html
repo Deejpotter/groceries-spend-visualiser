@@ -45,6 +45,13 @@
                    placeholder="Qty ({{ item.unit }})" aria-label="Amount in {{ item.unit }} to use from {{ item|label }}" required>
             <button type="submit" class="btn btn-sm btn-outline-primary ml-1">Use</button>
         </form>
+        <form method="post" action="{{ url_for('pantry.pantry_consume', item_id=item.id) }}" class="d-inline ml-1"
+              hx-post="{{ url_for('pantry.pantry_consume', item_id=item.id) }}"
+              hx-target="#pantry-item-{{ item.id }}"
+              hx-swap="outerHTML">
+            <input type="hidden" name="amount" value="{{ item.quantity }}">
+            <button type="submit" class="btn btn-sm btn-outline-secondary" title="Use all remaining stock">Use all</button>
+        </form>
         <a href="#" class="btn btn-sm btn-outline-danger ml-1"
            hx-post="{{ url_for('pantry.pantry_delete', item_id=item.id) }}"
            hx-target="#pantry-item-{{ item.id }}"
