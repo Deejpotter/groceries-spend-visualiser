@@ -4,6 +4,8 @@
 {% block title %}Recipes — Grocery Visualiser{% endblock %}
 
 {% block content %}
+{% set undo_kind = 'recipe' %}
+{% include "_undo_banner.html" %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1>Recipes</h1>
     <div>
@@ -30,6 +32,14 @@
             <a href="{{ url_for('recipes.recipe_list') }}" class="btn btn-link">Clear</a>
         </div>
     </div>
+    <div class="mt-2">
+        <a href="{{ url_for('recipes.recipe_list', favourites='1' if not only_favourites else None) }}"
+           class="btn btn-sm {{ 'btn-warning' if only_favourites else 'btn-outline-secondary' }}">
+            {{ '★ Showing favourites' if only_favourites else '☆ Favourites' }}
+            {% if favourite_count %}<span class="badge badge-light">{{ favourite_count }}</span>{% endif %}
+        </a>
+        {% if only_favourites %}<a href="{{ url_for('recipes.recipe_list') }}" class="btn btn-sm btn-link">Show all</a>{% endif %}
+    </div>
 </form>
 
 {% if recipes %}
@@ -38,13 +48,16 @@
     <div class="col-md-4 mb-3">
         <div class="card h-100">
             {% if recipe.image_url %}
-            {% set safe_image = recipe.image_url|http_url %}
+            {% set safe_image = recipe.image_url|image_src %}
             {% if safe_image %}
             <img src="{{ safe_image }}" class="card-img-top" alt="{{ recipe.name }}" style="height: 160px; object-fit: cover;">
             {% endif %}
             {% endif %}
             <div class="card-body">
-                <h5 class="card-title">{{ recipe.name }}</h5>
+                <h5 class="card-title d-flex justify-content-between align-items-start">
+                    <span>{{ recipe.name }}</span>
+                    {% include "recipes/_favourite_button.html" %}
+                </h5>
                 {% if recipe.description %}
                 <p class="card-text text-muted small">{{ recipe.description[:100] }}{% if recipe.description|length > 100 %}...{% endif %}</p>
                 {% endif %}

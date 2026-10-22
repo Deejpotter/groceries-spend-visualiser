@@ -136,6 +136,56 @@ def meal_rule_move(rule_id, direction):
     return _back_to_rules()
 
 
+QUICK_START_TEMPLATES = {
+    "dinners": {
+        "label": "Dinners every night",
+        "rules": [("all", "dinner")],
+    },
+    "weeknights": {
+        "label": "Weeknight dinners",
+        "rules": [("weekday", "dinner")],
+    },
+    "three_meals": {
+        "label": "Three meals a day",
+        "rules": [("all", "breakfast"), ("all", "lunch"), ("all", "dinner")],
+    },
+}
+
+
+@meal_bp.route("/meal-plan/rules/quick-start", methods=["POST"])
+@login_required
+def meal_rule_quick_start():
+    """Create a starter rule set so a plan can be generated without learning the rules system."""
+    template = QUICK_START_TEMPLATES.get(request.form.get("template", "dinners"))
+    if not template:
+        flash("Unknown template.", "error")
+        return _back_to_rules()
+
+    db = get_db()
+    if db.execute("SELECT COUNT(*) FROM meal_rules").fetchone()[0]:
+        flash("You already have meal rules. Edit or delete those instead.", "warning")
+        return _back_to_rules()
+    if not db.execute("SELECT COUNT(*) FROM recipes").fetchone()[0]:
+        flash("Add a recipe first — rules need recipes to choose from.", "error")
+        return _back_to_rules()
+
+    for position, (days, meal_type) in enumerate(template["rules"], start=1):
+        db.execute(
+            """INSERT INTO meal_rules
+               (day_of_week, meal_type, tag_filter, servings_override, is_active, sort_order)
+               VALUES (?, ?, '', NULL, 1, ?)""",
+            (days, meal_type, position),
+        )
+    db.commit()
+    flash(
+        "Added {} rule(s): {}. Press Generate to fill the plan.".format(
+            len(template["rules"]), template["label"]
+        ),
+        "success",
+    )
+    return _back_to_plan()
+
+
 @meal_bp.route("/meal-rules/delete/<int:rule_id>", methods=["POST"])
 @login_required
 def meal_rule_delete(rule_id):

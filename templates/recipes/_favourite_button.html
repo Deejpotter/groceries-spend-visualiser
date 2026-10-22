@@ -1,0 +1,12 @@
+{% from "_macros.html" import csrf %}
+<form method="post" action="{{ url_for('recipes.recipe_toggle_favourite', recipe_id=recipe.id) }}"
+      hx-post="{{ url_for('recipes.recipe_toggle_favourite', recipe_id=recipe.id) }}"
+      hx-target="this" hx-swap="outerHTML" class="d-inline">
+    {{ csrf() }}
+    <button type="submit" class="btn btn-sm btn-link px-1 fav-star"
+            title="{{ 'Remove from favourites' if recipe.is_favourite else 'Add to favourites' }}"
+            aria-pressed="{{ 'true' if recipe.is_favourite else 'false' }}"
+            aria-label="{{ 'Remove ' ~ recipe.name ~ ' from favourites' if recipe.is_favourite else 'Add ' ~ recipe.name ~ ' to favourites' }}">
+        {{ '★' if recipe.is_favourite else '☆' }}
+    </button>
+</form>

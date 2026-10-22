@@ -1,12 +1,61 @@
 """Routes for recipe management."""
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash
-from database import get_db, get_setting
+import os
+import uuid
+
+from flask import Blueprint, render_template, request, redirect, url_for, flash, send_from_directory
+from database import get_db, get_setting, get_database_path
 from auth import login_required
 from models import UNIT_LOOKUP, is_http_url
 from services.plan_generator import parse_tags
 
 recipes_bp = Blueprint("recipes", __name__)
+
+IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "gif"}
+MAX_IMAGE_BYTES = 5 * 1024 * 1024
+
+
+def _images_dir():
+    """Uploaded recipe images live beside the database, on the persistent volume."""
+    return os.path.join(os.path.dirname(get_database_path()), "images")
+
+
+def _looks_like_image(data):
+    """Cheap signature check — no image library needed."""
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return True
+    if data.startswith(b"\xff\xd8\xff"):
+        return True
+    if data.startswith(b"GIF87a") or data.startswith(b"GIF89a"):
+        return True
+    return data[:4] == b"RIFF" and data[8:12] == b"WEBP"
+
+
+def _save_uploaded_image(file_storage):
+    """Store an uploaded recipe image. Returns (url, error); both empty when no file."""
+    if not file_storage or not file_storage.filename:
+        return None, None
+    filename = file_storage.filename
+    extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if extension not in IMAGE_EXTENSIONS:
+        return None, "Recipe images must be PNG, JPG, WEBP or GIF."
+    data = file_storage.read(MAX_IMAGE_BYTES + 1)
+    if len(data) > MAX_IMAGE_BYTES:
+        return None, "Recipe images must be 5 MB or smaller."
+    if not _looks_like_image(data):
+        return None, "That file is not a recognised image."
+    folder = _images_dir()
+    os.makedirs(folder, exist_ok=True)
+    stored_name = "{}.{}".format(uuid.uuid4().hex, extension)
+    with open(os.path.join(folder, stored_name), "wb") as handle:
+        handle.write(data)
+    return url_for("recipes.recipe_image", filename=stored_name), None
+
+
+@recipes_bp.route("/recipe-images/<path:filename>")
+@login_required
+def recipe_image(filename):
+    return send_from_directory(_images_dir(), filename)
 
 
 def get_recipe_with_ingredients(recipe_id):
@@ -102,6 +151,7 @@ def recipe_list():
     db = get_db()
     search = request.args.get("search", "").strip()
     tag_filter = request.args.get("tag", "").strip()
+    only_favourites = request.args.get("favourites") == "1"
 
     query = "SELECT * FROM recipes WHERE 1=1"
     params = []
@@ -109,6 +159,8 @@ def recipe_list():
     if search:
         query += " AND (name LIKE ? OR description LIKE ?)"
         params.extend([f"%{search}%", f"%{search}%"])
+    if only_favourites:
+        query += " AND COALESCE(is_favourite, 0) = 1"
 
     query += " ORDER BY name"
     recipes = db.execute(query, params).fetchall()
@@ -122,7 +174,11 @@ def recipe_list():
             continue
         result.append(item)
 
-    return render_template("recipes/list.html", recipes=result)
+    return render_template("recipes/list.html", recipes=result,
+                           only_favourites=only_favourites,
+                           favourite_count=db.execute(
+                               "SELECT COUNT(*) FROM recipes WHERE COALESCE(is_favourite, 0) = 1"
+                           ).fetchone()[0])
 
 
 @recipes_bp.route("/recipes/add", methods=["GET", "POST"])
@@ -153,8 +209,14 @@ def recipe_form(recipe_id=None):
         instructions = request.form.get("instructions", "").strip()
         tags = ", ".join(dict.fromkeys(parse_tags(request.form.get("tags", ""))))
 
+        uploaded_url, image_error = _save_uploaded_image(request.files.get("image_file"))
+        if uploaded_url:
+            image_url = uploaded_url
+
         rows, row_errors, skipped_rows = _read_ingredient_rows()
         errors = []
+        if image_error:
+            errors.append(image_error)
         if not name:
             errors.append("Recipe name is required.")
         if servings < 1:
@@ -167,7 +229,7 @@ def recipe_form(recipe_id=None):
             errors.append("Cook time can't be negative.")
         if source_url and not is_http_url(source_url):
             errors.append("Source link must start with http:// or https://.")
-        if image_url and not is_http_url(image_url):
+        if image_url and not is_http_url(image_url) and not image_url.startswith("/recipe-images/"):
             errors.append("Image link must start with http:// or https://.")
         errors.extend(row_errors)
 
@@ -217,20 +279,57 @@ def recipe_form(recipe_id=None):
 @recipes_bp.route("/recipes/<int:recipe_id>")
 @login_required
 def recipe_detail(recipe_id):
-    recipe, recipe_ingredients = get_recipe_with_ingredients(recipe_id)
+    from services.scaling import normalise_servings, scale_ingredients
+
+    recipe, _ = get_recipe_with_ingredients(recipe_id)
     if not recipe:
         flash("Recipe not found.", "error")
         return redirect(url_for("recipes.recipe_list"))
-    return render_template("recipes/detail.html", recipe=recipe)
+
+    base_servings = recipe["servings"] or 1
+    target_servings = normalise_servings(request.args.get("servings"), base_servings)
+    recipe["recipe_ingredients"] = scale_ingredients(
+        recipe["recipe_ingredients"], base_servings, target_servings
+    )
+    return render_template(
+        "recipes/detail.html",
+        recipe=recipe,
+        base_servings=base_servings,
+        target_servings=target_servings,
+        is_scaled=target_servings != base_servings,
+    )
+
+
+@recipes_bp.route("/recipes/<int:recipe_id>/favourite", methods=["POST"])
+@login_required
+def recipe_toggle_favourite(recipe_id):
+    """Star or unstar a recipe."""
+    db = get_db()
+    row = db.execute("SELECT is_favourite FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
+    if not row:
+        flash("Recipe not found.", "error")
+        return redirect(url_for("recipes.recipe_list"))
+    new_value = 0 if row["is_favourite"] else 1
+    db.execute("UPDATE recipes SET is_favourite = ? WHERE id = ?", (new_value, recipe_id))
+    db.commit()
+    if request.headers.get("HX-Request"):
+        return render_template("recipes/_favourite_button.html", recipe={"id": recipe_id, "is_favourite": new_value})
+    flash("Added to favourites." if new_value else "Removed from favourites.", "success")
+    return redirect(request.referrer or url_for("recipes.recipe_list"))
 
 
 @recipes_bp.route("/recipes/delete/<int:recipe_id>", methods=["POST"])
 @login_required
 def recipe_delete(recipe_id):
+    from services import undo as undo_service
+
     db = get_db()
-    db.execute("DELETE FROM recipes WHERE id = ?", (recipe_id,))
+    token = undo_service.delete_recipe(db, recipe_id)
     db.commit()
-    flash("Recipe deleted.", "success")
+    if token:
+        flash("Recipe deleted.", "success")
+        return redirect(url_for("recipes.recipe_list", undo=token))
+    flash("Recipe not found.", "error")
     return redirect(url_for("recipes.recipe_list"))
 
 

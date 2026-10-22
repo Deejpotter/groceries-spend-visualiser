@@ -21,7 +21,23 @@
         </div>
     </div>
     <div class="col-auto mb-2"><button class="btn btn-secondary" type="submit">Filter</button></div>
+    <div class="col-auto mb-2">
+        <a class="btn btn-outline-primary"
+           href="{{ url_for('spend.spend_products', q=search, suggest=1, **({'unlinked': '1'} if only_unlinked else {})) }}">
+            Suggest links
+        </a>
+    </div>
 </form>
+
+{% if suggestions %}
+<div class="alert alert-info d-flex flex-wrap justify-content-between align-items-center">
+    <span>Pre-selected {{ suggestions|length }} likely match{{ '' if suggestions|length == 1 else 'es' }}.
+        Check them, then use <strong>Save all links</strong>.</span>
+    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('spend.spend_products', q=search, **({'unlinked': '1'} if only_unlinked else {})) }}">Clear suggestions</a>
+</div>
+{% elif request.args.get('suggest') == '1' %}
+<div class="alert alert-secondary">No likely matches found on this page. Link these products by hand, or check the next page.</div>
+{% endif %}
 
 {% if not products %}
 <div class="alert alert-secondary">No products found. <a href="{{ url_for('spend.spend_import') }}">Import purchases</a> first.</div>
@@ -36,7 +52,8 @@
         </select>
     </div>
     <div class="col-auto mb-2">
-        <button type="button" class="btn btn-primary btn-sm" onclick="saveAllLinks()">Save all links</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="saveAllLinks(this)">Save all links</button>
+        <span id="save-all-status" class="small text-muted ml-2" role="status"></span>
     </div>
 </div>
 <div class="table-responsive">
@@ -46,6 +63,7 @@
     </thead>
     <tbody>
     {% for p in products %}
+        {% set suggestion = suggestions.get(p.product_name) %}
         <tr id="product-row-{{ loop.index0 }}">
             <td>{{ p.product_name }}<div class="small text-muted">last bought {{ p.last_bought }}</div></td>
             <td class="num">{{ p.orders }}</td>
@@ -63,7 +81,7 @@
                         <option value="">— Not linked —</option>
                         <option value="new">+ Create new ingredient</option>
                         {% for i in ingredients %}
-                        <option value="{{ i.id }}" {% if i.id == p.ingredient_id %}selected{% endif %}>{{ i|label }} ({{ i.unit }})</option>
+                        <option value="{{ i.id }}" {% if i.id == p.ingredient_id %}selected{% elif suggestion and i.id == suggestion.ingredient_id %}selected{% endif %}>{{ i|label }} ({{ i.unit }}){% if suggestion and i.id == suggestion.ingredient_id and not p.ingredient_id %} — suggested {{ (suggestion.score * 100)|round|int }}%{% endif %}</option>
                         {% endfor %}
                     </select>
                     <div class="custom-control custom-checkbox small mt-1">
@@ -72,7 +90,7 @@
                     </div>
                 </form>
                 <div id="link-status-{{ loop.index0 }}" class="small mt-1">
-                    {% if p.ingredient_id %}<span class="text-success">linked</span>{% else %}<span class="text-muted">not linked</span>{% endif %}
+                    {% if p.ingredient_id %}<span class="text-success">linked</span>{% elif suggestion %}<span class="text-info">suggested — check and save</span>{% else %}<span class="text-muted">not linked</span>{% endif %}
                 </div>
             </td>
         </tr>
@@ -98,27 +116,41 @@
 
 {% block scripts %}
 <script>
-function saveAllLinks() {
-    const rows = document.querySelectorAll('#product-row-\\d+ form');
+async function saveAllLinks(button) {
+    const status = document.getElementById('save-all-status');
+    const forms = Array.from(document.querySelectorAll('tr[id^="product-row-"] form'))
+        .filter(form => form.querySelector('select[name="ingredient_id"]').value);
+    if (!forms.length) {
+        status.textContent = 'Pick an ingredient for at least one row first.';
+        return;
+    }
+    button.disabled = true;
+    status.textContent = 'Saving…';
+    const token = document.querySelector('meta[name="csrf-token"]').content;
+
     let saved = 0, failed = 0;
-    rows.forEach(form => {
-        const fd = new FormData(form);
-        htmx.ajax('POST', form.action, {
-            values: fd,
-            headers: { 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content },
-            swap: 'innerHTML',
-            target: '#link-status-' + form.closest('tr').id.split('-')[2]
-        }).then(() => saved++).catch(() => failed++);
-    });
-    // Simple feedback
-    setTimeout(() => {
-        const statusDivs = document.querySelectorAll('[id^="link-status-"]');
-        statusDivs.forEach(d => {
-            if (!d.querySelector('.text-success, .text-danger')) {
-                d.innerHTML = '<span class="text-muted small">saved</span>';
-            }
-        });
-    }, 500);
+    for (const form of forms) {
+        const body = new FormData(form);
+        const category = document.getElementById('new_category');
+        if (category) body.append('new_category', category.value);
+        try {
+            const response = await fetch(form.action, {
+                method: 'POST',
+                body,
+                headers: { 'X-CSRFToken': token, 'HX-Request': 'true' },
+                credentials: 'same-origin',
+            });
+            if (!response.ok) throw new Error(response.status);
+            const index = form.closest('tr').id.split('-')[2];
+            const target = document.getElementById('link-status-' + index);
+            if (target) target.innerHTML = await response.text();
+            saved++;
+        } catch (err) {
+            failed++;
+        }
+    }
+    button.disabled = false;
+    status.textContent = saved + ' saved' + (failed ? ', ' + failed + ' failed' : '') + '.';
 }
 </script>
 {% endblock %}

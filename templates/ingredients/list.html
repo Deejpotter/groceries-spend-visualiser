@@ -4,6 +4,8 @@
 {% block title %}Ingredients — Grocery Visualiser{% endblock %}
 
 {% block content %}
+{% set undo_kind = 'ingredient' %}
+{% include "_undo_banner.html" %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1>Ingredients</h1>
     <a href="{{ url_for('ingredients.ingredient_add') }}" class="btn btn-primary">

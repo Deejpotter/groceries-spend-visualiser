@@ -16,13 +16,16 @@
     <div class="col-md-8">
         <div class="card mb-4">
             {% if recipe.image_url %}
-            {% set safe_image = recipe.image_url|http_url %}
+            {% set safe_image = recipe.image_url|image_src %}
             {% if safe_image %}
             <img src="{{ safe_image }}" class="card-img-top" alt="{{ recipe.name }}" style="height: 250px; object-fit: cover;">
             {% endif %}
             {% endif %}
             <div class="card-body">
-                <h1 class="card-title">{{ recipe.name }}</h1>
+                <h1 class="card-title d-flex justify-content-between align-items-start">
+                    <span>{{ recipe.name }}</span>
+                    {% include "recipes/_favourite_button.html" %}
+                </h1>
                 {% if recipe.description %}
                 <p class="text-muted">{{ recipe.description }}</p>
                 {% endif %}
@@ -35,7 +38,7 @@
                         <strong>Cook:</strong> {{ recipe.cook_time ~ ' min' if recipe.cook_time else '—' }}
                     </div>
                     <div class="col-md-3">
-                        <strong>Serves:</strong> {{ recipe.servings }}
+                        <strong>Serves:</strong> {% if is_scaled %}{{ target_servings }} <span class="small">(scaled)</span>{% else %}{{ recipe.servings }}{% endif %}
                     </div>
                     <div class="col-md-3">
                         {% if recipe.covers_days > 1 %}
@@ -55,10 +58,24 @@
         </div>
 
         <div class="card mb-4">
-            <div class="card-header">
-                <h5>Ingredients</h5>
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap">
+                <h5 class="mb-0">Ingredients</h5>
+                <form method="get" class="form-inline mt-2 mt-sm-0">
+                    <label class="small text-muted mr-2 mb-0" for="scale-servings">Scale to</label>
+                    <input type="number" id="scale-servings" name="servings" min="1" max="100"
+                           value="{{ target_servings }}" class="form-control form-control-sm mr-2"
+                           style="width: 5rem" aria-label="Scale recipe to this many servings">
+                    <span class="small text-muted mr-2">servings</span>
+                    <button type="submit" class="btn btn-sm btn-outline-secondary">Scale</button>
+                    {% if is_scaled %}
+                    <a href="{{ url_for('recipes.recipe_detail', recipe_id=recipe.id) }}" class="btn btn-sm btn-link">Reset</a>
+                    {% endif %}
+                </form>
             </div>
             <div class="card-body">
+                {% if is_scaled %}
+                <p class="small text-muted">Quantities scaled from {{ base_servings }} to {{ target_servings }} servings.</p>
+                {% endif %}
                 <ul class="list-group list-group-flush">
                     {% for ri in recipe.recipe_ingredients %}
                     <li class="list-group-item d-flex justify-content-between align-items-center">

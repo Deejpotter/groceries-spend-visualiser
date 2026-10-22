@@ -260,11 +260,17 @@ def spend_products():
         (*params, per_page, (page - 1) * per_page),
     ).fetchall()
     ingredients = db.execute("SELECT id, name, display_name, unit, price FROM ingredients ORDER BY name").fetchall()
+    product_rows = [dict(p) for p in products]
+    suggestions = {}
+    if request.args.get("suggest") == "1":
+        from services.product_matching import suggest_links
+        suggestions = suggest_links(product_rows, [dict(i) for i in ingredients])
     return render_template(
         "spend/products.html",
-        products=products,
+        products=product_rows,
         ingredients=ingredients,
         ingredient_names={i["id"]: label_of(i) for i in ingredients},
+        suggestions=suggestions,
         search=search,
         only_unlinked=only_unlinked,
         page=page,

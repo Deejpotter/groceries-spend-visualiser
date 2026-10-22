@@ -17,13 +17,13 @@
 </div>
 
 {% if not by_category %}
-<div class="card mb-4 section-card">
-    <div class="card-body">
-        <p class="text-muted mb-2">No subscriptions yet. Add your first one to start tracking regular payments.</p>
-        <a href="{{ url_for('subscriptions.subscription_add') }}" class="btn btn-outline-primary btn-sm">Add a subscription</a>
-        <a href="{{ url_for('subscriptions.subscription_suggest') }}" class="btn btn-outline-secondary btn-sm ml-2">See suggestions</a>
-    </div>
-</div>
+{% set message = "No bills yet. Add one to start tracking regular payments." %}
+{% set icon = "🧾" %}
+{% set cta_url = url_for('subscriptions.subscription_add') %}
+{% set cta_label = "Add a subscription" %}
+{% set secondary_url = url_for('subscriptions.subscription_suggest') %}
+{% set secondary_label = "See suggestions" %}
+{% include "_empty_state.html" %}
 {% endif %}
 
 {% for cat_code, cat_label in categories %}

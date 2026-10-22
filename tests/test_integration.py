@@ -1933,3 +1933,414 @@ def _login(client, username, password):
         "username": username,
         "password": password,
     }, follow_redirects=True)
+
+# ============================================================================
+# Meal plan quick start
+# ============================================================================
+
+class TestMealQuickStart:
+    """Starter rule sets so a plan can be generated without learning rules."""
+
+    def test_quick_start_creates_rules(self, client, db):
+        _login(client, "quickuser", "test123")
+        db.execute("INSERT INTO recipes (name, servings) VALUES ('Quick Recipe', 2)")
+        db.commit()
+
+        resp = client.post(
+            "/meal-plan/rules/quick-start",
+            data={"template": "three_meals"},
+            follow_redirects=True,
+        )
+        assert resp.status_code == 200
+
+        rules = db.execute(
+            "SELECT meal_type, day_of_week, is_active FROM meal_rules ORDER BY sort_order"
+        ).fetchall()
+        assert [r["meal_type"] for r in rules] == ["breakfast", "lunch", "dinner"]
+        assert all(r["day_of_week"] == "all" and r["is_active"] == 1 for r in rules)
+
+    def test_quick_start_refuses_when_rules_exist(self, client, db):
+        _login(client, "quickuser2", "test123")
+        db.execute("INSERT INTO recipes (name, servings) VALUES ('Quick Recipe', 2)")
+        db.execute(
+            "INSERT INTO meal_rules (day_of_week, meal_type, tag_filter, is_active, sort_order)"
+            " VALUES ('mon', 'dinner', '', 1, 1)"
+        )
+        db.commit()
+
+        client.post(
+            "/meal-plan/rules/quick-start",
+            data={"template": "dinners"},
+            follow_redirects=True,
+        )
+        count = db.execute("SELECT COUNT(*) FROM meal_rules").fetchone()[0]
+        assert count == 1
+
+    def test_quick_start_requires_a_recipe(self, client, db):
+        _login(client, "quickuser3", "test123")
+        client.post(
+            "/meal-plan/rules/quick-start",
+            data={"template": "dinners"},
+            follow_redirects=True,
+        )
+        count = db.execute("SELECT COUNT(*) FROM meal_rules").fetchone()[0]
+        assert count == 0
+
+    def test_quick_start_ignores_unknown_template(self, client, db):
+        _login(client, "quickuser4", "test123")
+        db.execute("INSERT INTO recipes (name, servings) VALUES ('Quick Recipe', 2)")
+        db.commit()
+
+        client.post(
+            "/meal-plan/rules/quick-start",
+            data={"template": "nonsense"},
+            follow_redirects=True,
+        )
+        count = db.execute("SELECT COUNT(*) FROM meal_rules").fetchone()[0]
+        assert count == 0
+
+# ============================================================================
+# Recipe scaling
+# ============================================================================
+
+class TestRecipeScaling:
+    """The recipe detail page can be scaled to a different serving count."""
+
+    def _make_recipe(self, db, servings=2, quantity=200):
+        db.execute(
+            "INSERT INTO recipes (name, servings) VALUES ('Scalable Stew', ?)", (servings,)
+        )
+        recipe_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+        db.execute("INSERT INTO ingredients (name, category, unit) VALUES ('Rice', 'pantry', 'g')")
+        ing_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+        db.execute(
+            "INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity) VALUES (?, ?, ?)",
+            (recipe_id, ing_id, quantity),
+        )
+        db.commit()
+        return recipe_id
+
+    def test_detail_shows_base_quantities(self, client, db):
+        _login(client, "scaleuser", "test123")
+        recipe_id = self._make_recipe(db)
+        resp = client.get(f"/recipes/{recipe_id}")
+        assert resp.status_code == 200
+        assert b"200" in resp.data
+
+    def test_detail_scales_up(self, client, db):
+        _login(client, "scaleuser2", "test123")
+        recipe_id = self._make_recipe(db)
+        resp = client.get(f"/recipes/{recipe_id}?servings=4")
+        assert resp.status_code == 200
+        assert b"400" in resp.data
+        assert b"scaled" in resp.data
+
+    def test_detail_scales_down(self, client, db):
+        _login(client, "scaleuser3", "test123")
+        recipe_id = self._make_recipe(db, servings=4, quantity=400)
+        resp = client.get(f"/recipes/{recipe_id}?servings=2")
+        assert resp.status_code == 200
+        assert b"200" in resp.data
+
+    def test_detail_tolerates_bad_servings(self, client, db):
+        _login(client, "scaleuser4", "test123")
+        recipe_id = self._make_recipe(db)
+        resp = client.get(f"/recipes/{recipe_id}?servings=abc")
+        assert resp.status_code == 200
+        assert b"200" in resp.data
+
+# ============================================================================
+# Undo deletes
+# ============================================================================
+
+class TestUndoDelete:
+    """Deletes can be undone for a few minutes."""
+
+    @staticmethod
+    def _token(resp):
+        import re
+        match = re.search(r"undo=(\d+)", resp.headers.get("Location", ""))
+        return int(match.group(1)) if match else None
+
+    def _ingredient(self, db, name="Undo Carrot"):
+        db.execute("INSERT INTO ingredients (name, category, unit) VALUES (?, 'produce', 'g')", (name,))
+        ing_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+        db.execute("INSERT INTO recipes (name, servings) VALUES ('Undo Recipe', 2)")
+        recipe_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+        db.execute(
+            "INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity) VALUES (?, ?, 100)",
+            (recipe_id, ing_id),
+        )
+        db.execute(
+            "INSERT INTO pantry_items (ingredient_id, quantity, unit) VALUES (?, 50, 'g')", (ing_id,)
+        )
+        db.commit()
+        return ing_id
+
+    def test_ingredient_delete_returns_undo_token(self, client, db):
+        _login(client, "undouser", "test123")
+        ing_id = self._ingredient(db)
+        resp = client.post(f"/ingredients/delete/{ing_id}")
+        assert resp.status_code == 302
+        assert self._token(resp) is not None
+        assert db.execute("SELECT COUNT(*) FROM ingredients WHERE id = ?", (ing_id,)).fetchone()[0] == 0
+
+    def test_undo_restores_ingredient_links_and_stock(self, client, db):
+        _login(client, "undouser2", "test123")
+        ing_id = self._ingredient(db)
+        token = self._token(client.post(f"/ingredients/delete/{ing_id}"))
+
+        resp = client.post(f"/undo/{token}", data={"kind": "ingredient"}, follow_redirects=True)
+        assert resp.status_code == 200
+        assert db.execute("SELECT COUNT(*) FROM ingredients WHERE id = ?", (ing_id,)).fetchone()[0] == 1
+        assert db.execute(
+            "SELECT COUNT(*) FROM recipe_ingredients WHERE ingredient_id = ?", (ing_id,)
+        ).fetchone()[0] == 1
+        assert db.execute(
+            "SELECT COUNT(*) FROM pantry_items WHERE ingredient_id = ?", (ing_id,)
+        ).fetchone()[0] == 1
+
+    def test_undo_restores_recipe(self, client, db):
+        _login(client, "undouser3", "test123")
+        ing_id = self._ingredient(db)
+        recipe_id = db.execute("SELECT id FROM recipes WHERE name = 'Undo Recipe'").fetchone()[0]
+        token = self._token(client.post(f"/recipes/delete/{recipe_id}"))
+
+        client.post(f"/undo/{token}", data={"kind": "recipe"}, follow_redirects=True)
+        assert db.execute("SELECT COUNT(*) FROM recipes WHERE id = ?", (recipe_id,)).fetchone()[0] == 1
+        assert db.execute(
+            "SELECT COUNT(*) FROM recipe_ingredients WHERE recipe_id = ?", (recipe_id,)
+        ).fetchone()[0] == 1
+
+    def test_undo_restores_pantry_item(self, client, db):
+        _login(client, "undouser4", "test123")
+        ing_id = self._ingredient(db)
+        item_id = db.execute("SELECT id FROM pantry_items WHERE ingredient_id = ?", (ing_id,)).fetchone()[0]
+        token = self._token(client.post(f"/pantry/delete/{item_id}"))
+
+        client.post(f"/undo/{token}", data={"kind": "pantry"}, follow_redirects=True)
+        assert db.execute("SELECT COUNT(*) FROM pantry_items WHERE id = ?", (item_id,)).fetchone()[0] == 1
+
+    def test_bad_token_is_reported_not_crashed(self, client, db):
+        _login(client, "undouser5", "test123")
+        resp = client.post("/undo/999999", data={"kind": "ingredient"}, follow_redirects=True)
+        assert resp.status_code == 200
+        assert b"can no longer be undone" in resp.data
+
+    def test_expired_token_is_not_restored(self, client, db):
+        _login(client, "undouser6", "test123")
+        ing_id = self._ingredient(db)
+        token = self._token(client.post(f"/ingredients/delete/{ing_id}"))
+        db.execute(
+            "UPDATE deleted_items SET deleted_at = '2000-01-01 00:00:00' WHERE id = ?", (token,)
+        )
+        db.commit()
+
+        client.post(f"/undo/{token}", data={"kind": "ingredient"}, follow_redirects=True)
+        assert db.execute("SELECT COUNT(*) FROM ingredients WHERE id = ?", (ing_id,)).fetchone()[0] == 0
+
+    def test_list_page_shows_undo_button(self, client, db):
+        _login(client, "undouser7", "test123")
+        ing_id = self._ingredient(db)
+        resp = client.post(f"/ingredients/delete/{ing_id}", follow_redirects=True)
+        assert b"Undo delete" in resp.data
+
+# ============================================================================
+# Product link suggestions
+# ============================================================================
+
+class TestProductSuggestions:
+    """The products page can pre-select likely ingredient matches."""
+
+    def _seed(self, db):
+        db.execute(
+            "INSERT INTO ingredients (name, category, unit) VALUES ('Milk (Full Cream)', 'dairy', 'L')"
+        )
+        db.execute(
+            """INSERT INTO purchases
+               (order_date, basket_id, store, product_name, quantity, unit_price, line_total)
+               VALUES ('2026-10-01', 'basket-1', 'Woolworths',
+                       'Woolworths Full Cream Milk 2L', 1, 3.5, 3.5)"""
+        )
+        db.commit()
+
+    def test_suggest_flag_preselects_a_match(self, client, db):
+        _login(client, "suggestuser", "test123")
+        self._seed(db)
+        resp = client.get("/spend/products?suggest=1")
+        assert resp.status_code == 200
+        assert b"suggested" in resp.data
+
+    def test_page_without_suggest_has_no_suggestion_badge(self, client, db):
+        _login(client, "suggestuser2", "test123")
+        self._seed(db)
+        resp = client.get("/spend/products")
+        assert resp.status_code == 200
+        assert b"Pre-selected" not in resp.data
+
+    def test_htmx_csrf_hook_is_registered_on_document(self, client, db):
+        """The hook runs in <head>, where document.body is null — regression guard."""
+        _login(client, "suggestuser3", "test123")
+        resp = client.get("/spend/products")
+        assert b"document.addEventListener('htmx:configRequest'" in resp.data
+        assert b"document.body.addEventListener('htmx:configRequest'" not in resp.data
+
+# ============================================================================
+# Global search
+# ============================================================================
+
+class TestGlobalSearch:
+    """Search finds ingredients, recipes, products and bills in one place."""
+
+    def _seed(self, db):
+        db.execute("INSERT INTO ingredients (name, category, unit) VALUES ('Cheddar Cheese', 'dairy', 'g')")
+        db.execute("INSERT INTO recipes (name, servings, tags) VALUES ('Cheese Toastie', 1, 'lunch, quick')")
+        db.execute(
+            """INSERT INTO purchases
+               (order_date, basket_id, store, product_name, quantity, unit_price, line_total)
+               VALUES ('2026-10-02', 'basket-9', 'Woolworths', 'Tasty Cheese Block 500g', 1, 6.0, 6.0)"""
+        )
+        db.execute(
+            "INSERT INTO subscriptions (name, amount, frequency) VALUES ('Cheese Club', 9.99, 'monthly')"
+        )
+        db.commit()
+
+    def test_search_page_without_query(self, client, db):
+        _login(client, "searchuser", "test123")
+        resp = client.get("/search")
+        assert resp.status_code == 200
+        assert b"Search ingredients, recipes" in resp.data
+
+    def test_search_matches_all_groups(self, client, db):
+        _login(client, "searchuser2", "test123")
+        self._seed(db)
+        resp = client.get("/search?q=cheese")
+        assert resp.status_code == 200
+        assert b"Cheddar Cheese" in resp.data
+        assert b"Cheese Toastie" in resp.data
+        assert b"Tasty Cheese Block 500g" in resp.data
+        assert b"Cheese Club" in resp.data
+
+    def test_search_no_results_message(self, client, db):
+        _login(client, "searchuser3", "test123")
+        resp = client.get("/search?q=zzzznothing")
+        assert resp.status_code == 200
+        assert b"Nothing matched" in resp.data
+
+    def test_search_requires_login(self, client, db):
+        resp = client.get("/search?q=cheese")
+        assert resp.status_code in (301, 302)
+
+    def test_navbar_has_search_and_shortcut_hint(self, client, db):
+        _login(client, "searchuser4", "test123")
+        resp = client.get("/")
+        assert b'id="navbar-search"' in resp.data
+        assert b"Ctrl+K" in resp.data
+        assert b"'k'" in resp.data
+
+# ============================================================================
+# Recipe favourites and image upload
+# ============================================================================
+
+class TestRecipeFavourites:
+    def test_toggle_marks_favourite(self, client, db):
+        _login(client, "favuser", "test123")
+        db.execute("INSERT INTO recipes (name, servings) VALUES ('Fav Dish', 2)")
+        db.commit()
+        recipe_id = db.execute("SELECT id FROM recipes WHERE name = 'Fav Dish'").fetchone()[0]
+
+        resp = client.post(f"/recipes/{recipe_id}/favourite", follow_redirects=True)
+        assert resp.status_code == 200
+        assert db.execute("SELECT is_favourite FROM recipes WHERE id = ?", (recipe_id,)).fetchone()[0] == 1
+
+        client.post(f"/recipes/{recipe_id}/favourite", follow_redirects=True)
+        assert db.execute("SELECT is_favourite FROM recipes WHERE id = ?", (recipe_id,)).fetchone()[0] == 0
+
+    def test_favourites_filter_lists_only_starred(self, client, db):
+        _login(client, "favuser2", "test123")
+        db.execute("INSERT INTO recipes (name, servings, is_favourite) VALUES ('Starred', 1, 1)")
+        db.execute("INSERT INTO recipes (name, servings, is_favourite) VALUES ('Plain', 1, 0)")
+        db.commit()
+
+        resp = client.get("/recipes?favourites=1")
+        assert resp.status_code == 200
+        assert b"Starred" in resp.data
+        assert b"Plain" not in resp.data
+
+    def test_toggle_missing_recipe_is_handled(self, client, db):
+        _login(client, "favuser3", "test123")
+        resp = client.post("/recipes/999999/favourite", follow_redirects=True)
+        assert resp.status_code == 200
+        assert b"Recipe not found" in resp.data
+
+
+class TestRecipeImageUpload:
+    PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 64
+
+    def test_upload_stores_image_and_serves_it(self, client, db):
+        import io
+        _login(client, "imguser", "test123")
+        data = {
+            "name": "Photo Dish",
+            "servings": "2",
+            "image_file": (io.BytesIO(self.PNG), "dish.png"),
+        }
+        resp = client.post("/recipes/add", data=data, content_type="multipart/form-data",
+                           follow_redirects=True)
+        assert resp.status_code == 200
+
+        row = db.execute("SELECT id, image_url FROM recipes WHERE name = 'Photo Dish'").fetchone()
+        assert row["image_url"].startswith("/recipe-images/")
+
+        image = client.get(row["image_url"])
+        assert image.status_code == 200
+        assert image.data == self.PNG
+
+    def test_rejects_non_image_file(self, client, db):
+        import io
+        _login(client, "imguser2", "test123")
+        data = {
+            "name": "Bad Image Dish",
+            "servings": "2",
+            "image_file": (io.BytesIO(b"not an image"), "notes.txt"),
+        }
+        resp = client.post("/recipes/add", data=data, content_type="multipart/form-data")
+        assert resp.status_code == 200
+        assert b"must be PNG, JPG, WEBP or GIF" in resp.data
+        assert db.execute("SELECT COUNT(*) FROM recipes WHERE name = 'Bad Image Dish'").fetchone()[0] == 0
+
+    def test_rejects_spoofed_extension(self, client, db):
+        import io
+        _login(client, "imguser3", "test123")
+        data = {
+            "name": "Spoof Dish",
+            "servings": "2",
+            "image_file": (io.BytesIO(b"still not an image"), "fake.png"),
+        }
+        resp = client.post("/recipes/add", data=data, content_type="multipart/form-data")
+        assert resp.status_code == 200
+        assert b"not a recognised image" in resp.data
+
+    def test_image_route_requires_login(self, client, db):
+        resp = client.get("/recipe-images/whatever.png")
+        assert resp.status_code in (301, 302)
+
+    def test_rules_tab_offers_quick_start_when_empty(self, client, db):
+        _login(client, "quickuser5", "test123")
+        db.execute("INSERT INTO recipes (name, servings) VALUES ('Quick Recipe', 2)")
+        db.commit()
+        resp = client.get("/meal-plan?tab=rules")
+        assert resp.status_code == 200
+        assert b"Quick start" in resp.data
+        assert b"Dinners every night" in resp.data
+
+    def test_rules_tab_hides_quick_start_once_rules_exist(self, client, db):
+        _login(client, "quickuser6", "test123")
+        db.execute(
+            "INSERT INTO meal_rules (day_of_week, meal_type, tag_filter, is_active, sort_order)"
+            " VALUES ('all', 'dinner', '', 1, 1)"
+        )
+        db.commit()
+        resp = client.get("/meal-plan?tab=rules")
+        assert resp.status_code == 200
+        assert b"Create rules" not in resp.data

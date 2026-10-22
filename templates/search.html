@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+
+{% block title %}{% if query %}Search: {{ query }}{% else %}Search{% endif %} — Grocery Visualiser{% endblock %}
+
+{% block content %}
+<div class="page-head mb-3">
+    <div>
+        <h1 class="mb-0">Search</h1>
+        <p class="page-sub">
+            {% if query %}
+            {{ total }} result{{ '' if total == 1 else 's' }} for “{{ query }}”
+            {% else %}
+            Search ingredients, recipes, purchased products and bills.
+            {% endif %}
+        </p>
+    </div>
+</div>
+
+<form method="get" action="{{ url_for('search.search') }}" class="form-row mb-4">
+    <div class="col-md-8 mb-2">
+        <label class="sr-only" for="global-search-input">Search everything</label>
+        <input type="search" id="global-search-input" name="q" value="{{ query }}" class="form-control"
+               placeholder="Search everything…" autofocus>
+    </div>
+    <div class="col-auto mb-2">
+        <button type="submit" class="btn btn-primary">Search</button>
+    </div>
+</form>
+
+{% if query and not total %}
+<div class="alert alert-secondary">
+    Nothing matched “{{ query }}”. Try a shorter word, or check the spelling.
+</div>
+{% endif %}
+
+{% if results.ingredients %}
+<div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Ingredients</h5>
+        <a href="{{ url_for('ingredients.ingredient_list', search=query) }}" class="small">Open in Ingredients →</a>
+    </div>
+    <ul class="list-group list-group-flush">
+        {% for i in results.ingredients %}
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+            <span>
+                <strong>{{ i.display_name or i.name }}</strong>
+                {% if i.display_name %}<span class="text-muted small">{{ i.name }}</span>{% endif %}
+            </span>
+            <a href="{{ url_for('ingredients.ingredient_edit', ingredient_id=i.id) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+{% if results.recipes %}
+<div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Recipes</h5>
+        <a href="{{ url_for('recipes.recipe_list', search=query) }}" class="small">Open in Recipes →</a>
+    </div>
+    <ul class="list-group list-group-flush">
+        {% for r in results.recipes %}
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+            <span>
+                <strong>{{ r.name }}</strong>
+                {% if r.tags %}<span class="text-muted small">{{ r.tags }}</span>{% endif %}
+            </span>
+            <a href="{{ url_for('recipes.recipe_detail', recipe_id=r.id) }}" class="btn btn-sm btn-outline-secondary">View</a>
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+{% if results.products %}
+<div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Purchased products</h5>
+        <a href="{{ url_for('spend.spend_products', q=query) }}" class="small">Open in Link products →</a>
+    </div>
+    <ul class="list-group list-group-flush">
+        {% for p in results.products %}
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+            <span>
+                <strong>{{ p.product_name }}</strong>
+                <span class="text-muted small">{{ p.orders }} order{{ '' if p.orders == 1 else 's' }} · {{ p.spend|money }}</span>
+                {% if p.ingredient_id %}<span class="badge badge-light border">linked</span>{% endif %}
+            </span>
+            <a href="{{ url_for('spend.spend_products', q=p.product_name) }}" class="btn btn-sm btn-outline-secondary">Open</a>
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+{% if results.bills %}
+<div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Bills</h5>
+        <a href="{{ url_for('subscriptions.subscription_list') }}" class="small">Open Bills →</a>
+    </div>
+    <ul class="list-group list-group-flush">
+        {% for b in results.bills %}
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+            <span>
+                <strong>{{ b.name }}</strong>
+                <span class="text-muted small">{{ b.amount|money }} · {{ b.frequency }}</span>
+                {% if not b.active %}<span class="badge badge-light border">paused</span>{% endif %}
+            </span>
+            <a href="{{ url_for('subscriptions.subscription_edit', sub_id=b.id) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+{% endblock %}
