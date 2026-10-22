@@ -71,9 +71,10 @@
     {% endfor %}
 </div>
 {% else %}
-<div class="alert alert-info text-center">
-    <p>No recipes found.</p>
-    <a href="{{ url_for('recipes.recipe_form') }}" class="btn btn-primary">Add your first recipe</a>
-</div>
+{% set message = "No recipes found." %}
+{% set icon = "📖" %}
+{% set cta_url = url_for('recipes.recipe_form') %}
+{% set cta_label = "Add your first recipe" %}
+{% include "_empty_state.html" %}
 {% endif %}
 {% endblock %}
