@@ -1,0 +1,10 @@
+<div class="text-center py-5">
+    <div class="mb-3" style="font-size:2.5rem;opacity:.4">{{ icon if icon else '📦' }}</div>
+    <h5 class="text-muted">{{ message }}</h5>
+    {% if cta_url and cta_label %}
+    <a href="{{ cta_url }}" class="btn btn-primary mt-2">{{ cta_label }}</a>
+    {% endif %}
+    {% if secondary_url and secondary_label %}
+    <a href="{{ secondary_url }}" class="btn btn-outline-secondary mt-2 ml-2">{{ secondary_label }}</a>
+    {% endif %}
+</div>
