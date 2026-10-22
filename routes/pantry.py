@@ -120,12 +120,17 @@ def pantry_form(item_id=None):
 @pantry_bp.route("/pantry/delete/<int:item_id>", methods=["POST"])
 @login_required
 def pantry_delete(item_id):
+    from services import undo as undo_service
+
     db = get_db()
-    db.execute("DELETE FROM pantry_items WHERE id = ?", (item_id,))
+    token = undo_service.delete_pantry_item(db, item_id)
     db.commit()
     if request.headers.get("HX-Request"):
         return "", 204
-    flash("Pantry item removed.", "success")
+    if token:
+        flash("Pantry item removed.", "success")
+        return redirect(url_for("pantry.pantry_list", undo=token))
+    flash("Pantry item not found.", "error")
     return redirect(url_for("pantry.pantry_list"))
 
 

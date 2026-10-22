@@ -7,12 +7,10 @@
 <div class="row">
     <div class="col-md-8">
         <h1>Settings</h1>
-        <p class="text-muted">Configure your meal plan dates, unit preferences, and other options.</p>
+        <p class="text-muted">Click a section title to collapse or expand it.</p>
 
-        <div class="card mb-4">
-            <div class="card-header">
-                <h5>Meal Plan Dates</h5>
-            </div>
+        <details class="card mb-4 settings-section" open>
+            <summary class="card-header"><h5 class="mb-0 d-inline">Meal Plan Dates</h5></summary>
             <div class="card-body">
                 <form method="post" action="{{ url_for('settings.save') }}"
                       hx-post="{{ url_for('settings.save') }}"
@@ -46,12 +44,10 @@
                     <a href="{{ url_for('meal_plan.meal_plan_view', tab='rules') }}" class="small ml-2">Next: add meal rules →</a>
                 </form>
             </div>
-        </div>
+        </details>
 
-        <div class="card mb-4">
-            <div class="card-header">
-                <h5>Preferences</h5>
-            </div>
+        <details class="card mb-4 settings-section" open>
+            <summary class="card-header"><h5 class="mb-0 d-inline">Preferences</h5></summary>
             <div class="card-body">
                 <form method="post" action="{{ url_for('settings.save') }}"
                       hx-post="{{ url_for('settings.save') }}"
@@ -104,12 +100,44 @@
                     <a href="{{ url_for('shopping_list.shopping_list_view') }}" class="small ml-2">Next: open the shopping list →</a>
                 </form>
             </div>
-        </div>
+        </details>
 
-        <div class="card mb-4">
-            <div class="card-header">
-                <h5>Bank Imports</h5>
+        <details class="card mb-4 settings-section" open>
+            <summary class="card-header"><h5 class="mb-0 d-inline">Budget</h5></summary>
+            <div class="card-body">
+                <form method="post" action="{{ url_for('settings.save') }}"
+                      hx-post="{{ url_for('settings.save') }}"
+                      hx-target="#save-status-budget"
+                      hx-swap="afterend">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="save_budget">
+                    {% if error_form == 'budget' %}{{ form_errors(errors) }}{% endif %}
+                    <div class="form-group">
+                        <label for="monthly_budget">Monthly grocery budget</label>
+                        <input type="text" inputmode="decimal" class="form-control" id="monthly_budget"
+                               name="monthly_budget" value="{{ monthly_budget }}" placeholder="e.g. 800">
+                        <small class="text-muted">
+                            The spend dashboard paces this month's spend against the target
+                            and projects where you'll land by month end. Leave blank to hide the budget tile.
+                        </small>
+                    </div>
+                    <div class="form-group">
+                        <label for="fortnightly_income">Fortnightly income</label>
+                        <input type="text" inputmode="decimal" class="form-control" id="fortnightly_income"
+                               name="fortnightly_income" value="{{ fortnightly_income }}" placeholder="e.g. 2400">
+                        <small class="text-muted">
+                            Your take-home pay each fortnight. Used on the subscriptions page to
+                            calculate spare money after groceries and bills. Leave blank to hide.
+                        </small>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Save Budget</button>
+                    <div id="save-status-budget"></div>
+                </form>
             </div>
+        </details>
+
+        <details class="card mb-4 settings-section">
+            <summary class="card-header"><h5 class="mb-0 d-inline">Bank Imports</h5></summary>
             <div class="card-body">
                 <form method="post" action="{{ url_for('settings.save') }}"
                       hx-post="{{ url_for('settings.save') }}"
@@ -150,48 +178,10 @@
                     <div id="save-status-bank"></div>
                 </form>
             </div>
-        </div>
+        </details>
 
-        <div class="card mb-4">
-            <div class="card-header">
-                <h5>Budget</h5>
-            </div>
-            <div class="card-body">
-                <form method="post" action="{{ url_for('settings.save') }}"
-                      hx-post="{{ url_for('settings.save') }}"
-                      hx-target="#save-status-budget"
-                      hx-swap="afterend">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="action" value="save_budget">
-                    {% if error_form == 'budget' %}{{ form_errors(errors) }}{% endif %}
-                    <div class="form-group">
-                        <label for="monthly_budget">Monthly grocery budget</label>
-                        <input type="text" inputmode="decimal" class="form-control" id="monthly_budget"
-                               name="monthly_budget" value="{{ monthly_budget }}" placeholder="e.g. 800">
-                        <small class="text-muted">
-                            The spend dashboard paces this month's spend against the target
-                            and projects where you'll land by month end. Leave blank to hide the budget tile.
-                        </small>
-                    </div>
-                    <div class="form-group">
-                        <label for="fortnightly_income">Fortnightly income</label>
-                        <input type="text" inputmode="decimal" class="form-control" id="fortnightly_income"
-                               name="fortnightly_income" value="{{ fortnightly_income }}" placeholder="e.g. 2400">
-                        <small class="text-muted">
-                            Your take-home pay each fortnight. Used on the subscriptions page to
-                            calculate spare money after groceries and bills. Leave blank to hide.
-                        </small>
-                    </div>
-                    <button type="submit" class="btn btn-primary">Save Budget</button>
-                    <div id="save-status-budget"></div>
-                </form>
-            </div>
-        </div>
-
-        <div class="card mb-4">
-            <div class="card-header">
-                <h5>API Keys</h5>
-            </div>
+        <details class="card mb-4 settings-section">
+            <summary class="card-header"><h5 class="mb-0 d-inline">API Keys</h5></summary>
             <div class="card-body">
                 <p class="text-muted">
                     Keys for this account to access the data over
@@ -233,19 +223,17 @@
                     <button type="submit" class="btn btn-primary">Generate key</button>
                 </form>
             </div>
-        </div>
+        </details>
 
-        <div class="card">
-            <div class="card-header bg-danger text-white">
-                <h5>Admin</h5>
-            </div>
+        <details class="card settings-section">
+            <summary class="card-header"><h5 class="mb-0 d-inline">Admin</h5></summary>
             <div class="card-body">
                 <p class="mb-3">Change your password or manage your account.</p>
                 <a href="{{ url_for('settings.change_password') }}" class="btn btn-secondary">
                     Change Password
                 </a>
             </div>
-        </div>
+        </details>
     </div>
 
     <div class="col-md-4">

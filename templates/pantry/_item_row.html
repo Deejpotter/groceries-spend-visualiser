@@ -56,7 +56,7 @@
            hx-post="{{ url_for('pantry.pantry_delete', item_id=item.id) }}"
            hx-target="#pantry-item-{{ item.id }}"
            hx-swap="outerHTML"
-           hx-confirm="Remove {{ item|label }}?"
-           title="Remove this item">Delete</a>
+           hx-confirm="Delete {{ item|label }}?"
+           title="Delete this item">Delete</a>
     </td>
 </tr>

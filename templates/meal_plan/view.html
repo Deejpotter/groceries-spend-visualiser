@@ -164,6 +164,27 @@
     </div>
 </details>
 
+{% if not rules %}
+<div class="card mb-3">
+    <div class="card-header"><h5 class="mb-0">Quick start</h5></div>
+    <div class="card-body">
+        <p class="text-muted mb-2">
+            Pick a starting point and the rules are created for you. You can edit or delete them afterwards.
+        </p>
+        <form method="post" action="{{ url_for('meal_plan.meal_rule_quick_start') }}" class="form-inline flex-wrap">
+            {{ csrf() }}
+            <label class="sr-only" for="quick-start-template">Starting point</label>
+            <select id="quick-start-template" name="template" class="form-control mr-2 mb-2" style="max-width: 24rem">
+                <option value="dinners">Dinners every night — one dinner per day, any recipe</option>
+                <option value="weeknights">Weeknight dinners — Monday to Friday only</option>
+                <option value="three_meals">Three meals a day — breakfast, lunch and dinner</option>
+            </select>
+            <button type="submit" class="btn btn-primary mb-2">{{ icon('plus') }} Create rules</button>
+        </form>
+    </div>
+</div>
+{% endif %}
+
 {% if rules %}
 <div class="rule-grid mb-2">
     {% for rule in rules %}

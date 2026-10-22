@@ -89,6 +89,7 @@ CREATE TABLE IF NOT EXISTS recipes (
     image_url TEXT,
     instructions TEXT,
     covers_days INTEGER NOT NULL DEFAULT 1,
+    is_favourite INTEGER NOT NULL DEFAULT 0,
     tags TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -217,6 +218,14 @@ CREATE TABLE IF NOT EXISTS import_staged_lines (
 );
 
 CREATE INDEX IF NOT EXISTS idx_staged_lines_batch ON import_staged_lines(batch_id);
+
+CREATE TABLE IF NOT EXISTS deleted_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL,
+    label TEXT NOT NULL DEFAULT '',
+    payload TEXT NOT NULL,
+    deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 # Columns added after the first release: (table, column, definition).
@@ -226,6 +235,7 @@ MIGRATIONS = [
     ("meal_plan_entries", "is_continuation", "INTEGER DEFAULT 0"),
     ("meal_plan_entries", "continuation_of", "INTEGER"),
     ("recipes", "covers_days", "INTEGER NOT NULL DEFAULT 1"),
+    ("recipes", "is_favourite", "INTEGER NOT NULL DEFAULT 0"),
     ("ingredients", "pack_size", "REAL"),
     ("ingredients", "display_name", "TEXT"),
     ("shopping_list_items", "pack_pick", "TEXT"),

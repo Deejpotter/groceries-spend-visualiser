@@ -139,3 +139,6 @@ mount on `/app/data` configured in the Coolify UI.
 - `POST_MORTEM_2026-10-18_AGENT_CRUD.md` — what went wrong (and right) while making
   ingredient/recipe CRUD agent-friendly over the API and MCP. Read before extending
   the API or MCP server.
+- `ux-audit-report-2.html` / `ux-audit-report-3.html` — UX audits with evidence and
+  recommendations. Round 3 records the design/workflow fixes (undo, search, scaling,
+  favourites, image upload, quick-start rules).

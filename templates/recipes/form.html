@@ -15,7 +15,7 @@
                 <h4>{{ 'Edit' if recipe and recipe.id else 'Add' }} Recipe</h4>
             </div>
             <div class="card-body">
-                <form method="post">
+                <form method="post" enctype="multipart/form-data">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     {{ form_errors(errors) }}
 
@@ -64,7 +64,7 @@
                     <div class="form-group">
                         <label>Recipe Image</label>
                         {% if recipe and recipe.image_url %}
-                        {% set safe_image = recipe.image_url|http_url %}
+                        {% set safe_image = recipe.image_url|image_src %}
                         {% if safe_image %}
                         <div class=" mb-2">
                             <img src="{{ safe_image }}" alt="{{ recipe.name }}" style="max-height: 200px;">
@@ -73,11 +73,18 @@
                         {% endif %}
                         <div class="input-group">
                             <span class="input-group-text">URL</span>
-                            <input type="url" class="form-control" id="image_url" name="image_url"
+                            <input type="text" class="form-control" id="image_url" name="image_url"
                                    value="{{ recipe.image_url if recipe else '' }}"
                                    placeholder="https://...">
                         </div>
-                        <small class="text-muted">Leave blank if there is no image.</small>
+                        <div class="input-group mt-2">
+                            <div class="custom-file">
+                                <input type="file" class="custom-file-input" id="image_file" name="image_file"
+                                       accept="image/png,image/jpeg,image/webp,image/gif">
+                                <label class="custom-file-label" for="image_file">Or upload a photo…</label>
+                            </div>
+                        </div>
+                        <small class="text-muted">Upload overrides the URL. PNG, JPG, WEBP or GIF up to 5 MB.</small>
                     </div>
 
                     <div class="form-group">

@@ -97,6 +97,15 @@ def create_app(testing=False):
         """Only http(s) URLs are rendered as links."""
         return value if is_http_url(value) else None
 
+    @application.template_filter("image_src")
+    def filter_image_src(value):
+        """Absolute http(s) images and local uploads; anything else is refused."""
+        if is_http_url(value):
+            return value
+        if isinstance(value, str) and value.startswith("/recipe-images/"):
+            return value
+        return None
+
     @application.template_filter("label")
     def filter_label(value):
         """Short display name for an ingredient-like dict."""

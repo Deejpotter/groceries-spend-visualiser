@@ -152,10 +152,15 @@ def ingredient_edit(ingredient_id):
 @ingredients_bp.route("/ingredients/delete/<int:ingredient_id>", methods=["POST"])
 @login_required
 def ingredient_delete(ingredient_id):
+    from services import undo as undo_service
+
     db = get_db()
-    db.execute("DELETE FROM ingredients WHERE id = ?", (ingredient_id,))
+    token = undo_service.delete_ingredient(db, ingredient_id)
     db.commit()
-    flash("Ingredient deleted.", "success")
+    if token:
+        flash("Ingredient deleted.", "success")
+        return redirect(url_for("ingredients.ingredient_list", undo=token))
+    flash("Ingredient not found.", "error")
     return redirect(url_for("ingredients.ingredient_list"))
 
 
