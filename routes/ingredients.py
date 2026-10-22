@@ -83,6 +83,14 @@ def ingredient_add():
             return render_template("ingredients/form.html", ingredient=values, errors=errors)
 
         db = get_db()
+        # Duplicate check (case-insensitive)
+        existing = db.execute(
+            "SELECT id FROM ingredients WHERE LOWER(name) = LOWER(?)", (values["name"],)
+        ).fetchone()
+        if existing:
+            errors = ["An ingredient named '{}' already exists.".format(values["name"])]
+            return render_template("ingredients/form.html", ingredient=values, errors=errors)
+
         db.execute(
             """INSERT INTO ingredients (name, display_name, category, unit, price, url, store, minimum_stock, pack_size)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -111,6 +119,17 @@ def ingredient_edit(ingredient_id):
     if request.method == "POST":
         values, errors = _read_form()
         if errors:
+            return render_template("ingredients/form.html",
+                                   ingredient={**dict(ingredient), **values}, errors=errors)
+
+        # Duplicate check (case-insensitive, excluding current ingredient)
+        db = get_db()
+        existing = db.execute(
+            "SELECT id FROM ingredients WHERE LOWER(name) = LOWER(?) AND id != ?",
+            (values["name"], ingredient_id)
+        ).fetchone()
+        if existing:
+            errors = ["An ingredient named '{}' already exists.".format(values["name"])]
             return render_template("ingredients/form.html",
                                    ingredient={**dict(ingredient), **values}, errors=errors)
 

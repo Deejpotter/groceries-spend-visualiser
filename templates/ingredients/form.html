@@ -20,14 +20,6 @@
                                value="{{ ingredient.name if ingredient else '' }}" required>
                     </div>
 
-                    <div class="form-group">
-                        <label for="display_name">Short name <span class="text-muted font-weight-normal">(optional)</span></label>
-                        <input type="text" class="form-control" id="display_name" name="display_name"
-                               value="{{ ingredient.display_name if ingredient else '' }}"
-                               placeholder="Shown on lists, e.g. Carrots">
-                        <small class="text-muted">Leave blank to shorten the name automatically (drops a trailing size like 1.5kg).</small>
-                    </div>
-
                     <div class="form-row">
                         <div class="form-group col-md-4">
                             <label for="category">Category</label>
@@ -53,35 +45,48 @@
                         </div>
                     </div>
 
-                    <div class="form-row">
-                        <div class="form-group col-md-6">
-                            <label for="minimum_stock">Minimum Stock Level</label>
-                            <input type="number" class="form-control" id="minimum_stock" name="minimum_stock"
-                                   step="any" min="0"
-                                   value="{{ ingredient.minimum_stock if ingredient else '' }}">
-                        </div>
-                        <div class="form-group col-md-6">
-                            <label for="store">Store</label>
-                            <input type="text" class="form-control" id="store" name="store"
-                                   value="{{ ingredient.store if ingredient else '' }}"
-                                   placeholder="e.g. Coles, Woolworths">
-                        </div>
-                    </div>
+                    <details class="mb-3">
+                        <summary class="text-muted" style="cursor:pointer">Advanced (display name, store, stock, pack size, link)</summary>
+                        <div class="mt-2">
+                            <div class="form-group">
+                                <label for="display_name">Short name <span class="text-muted font-weight-normal">(optional)</span></label>
+                                <input type="text" class="form-control" id="display_name" name="display_name"
+                                       value="{{ ingredient.display_name if ingredient else '' }}"
+                                       placeholder="Shown on lists, e.g. Carrots">
+                                <small class="text-muted">Leave blank to shorten the name automatically (drops a trailing size like 1.5kg).</small>
+                            </div>
 
-                    <div class="form-group">
-                        <label for="pack_size">Pack size <span class="text-muted font-weight-normal">(optional, in the unit above)</span></label>
-                        <input type="number" class="form-control" id="pack_size" name="pack_size" min="0" step="any"
-                               value="{{ ingredient.pack_size if ingredient and ingredient.pack_size else '' }}"
-                               placeholder="Worked out from the name when blank, e.g. 500g → 0.5 kg">
-                        <small class="text-muted">Used to show how many packs to buy on the shopping list.</small>
-                    </div>
+                            <div class="form-row">
+                                <div class="form-group col-md-6">
+                                    <label for="minimum_stock">Minimum Stock Level</label>
+                                    <input type="number" class="form-control" id="minimum_stock" name="minimum_stock"
+                                           step="any" min="0"
+                                           value="{{ ingredient.minimum_stock if ingredient else '' }}">
+                                </div>
+                                <div class="form-group col-md-6">
+                                    <label for="store">Store</label>
+                                    <input type="text" class="form-control" id="store" name="store"
+                                           value="{{ ingredient.store if ingredient else '' }}"
+                                           placeholder="e.g. Coles, Woolworths">
+                                </div>
+                            </div>
 
-                    <div class="form-group">
-                        <label for="url">Product URL</label>
-                        <input type="url" class="form-control" id="url" name="url"
-                               value="{{ ingredient.url if ingredient else '' }}"
-                               placeholder="https://...">
-                    </div>
+                            <div class="form-group">
+                                <label for="pack_size">Pack size <span class="text-muted font-weight-normal">(optional, in the unit above)</span></label>
+                                <input type="number" class="form-control" id="pack_size" name="pack_size" min="0" step="any"
+                                       value="{{ ingredient.pack_size if ingredient and ingredient.pack_size else '' }}"
+                                       placeholder="Worked out from the name when blank, e.g. 500g → 0.5 kg">
+                                <small class="text-muted">Used to show how many packs to buy on the shopping list.</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="url">Product URL</label>
+                                <input type="url" class="form-control" id="url" name="url"
+                                       value="{{ ingredient.url if ingredient else '' }}"
+                                       placeholder="https://...">
+                            </div>
+                        </div>
+                    </details>
 
                     <div class="form-group text-right">
                         <a href="{{ url_for('ingredients.ingredient_list') }}" class="btn btn-secondary">Cancel</a>

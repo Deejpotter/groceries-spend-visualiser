@@ -110,9 +110,7 @@
                                 <div class="col-md-3">
                                     <select class="form-control" name="unit_overrides" aria-label="Unit">
                                         <option value="">Ingredient's unit</option>
-                                        {% for code, label in units %}
-                                        <option value="{{ code }}" {% if ri and ri.unit_override == code %}selected{% endif %}>{{ label }}</option>
-                                        {% endfor %}
+                                        {% for code, label in units %}<option value="{{ code }}" {% if ri and ri.unit_override == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
                                     </select>
                                 </div>
                                 <div class="col-md-1">
@@ -193,6 +191,9 @@
         </div>
     </div>
 </template>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" crossorigin="anonymous">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js" crossorigin="anonymous"></script>
 <script>
 (function () {
     const optionsUrl = {{ url_for('ingredients.ingredient_options')|tojson }};
@@ -201,7 +202,6 @@
     let ingredientsPromise = null;
 
     function loadIngredients() {
-        // Fetch fresh each time the page loads, so ingredients added in another tab show up.
         if (!ingredientsPromise) {
             ingredientsPromise = fetch(optionsUrl, { credentials: 'same-origin' }).then(r => r.json());
         }
@@ -217,9 +217,11 @@
             if (String(ing.id) === String(selected)) opt.selected = true;
             select.add(opt);
         });
+        if (window.jQuery && window.jQuery.fn.select2) {
+            window.jQuery(select).select2({ width: '100%', placeholder: 'Search ingredients...' });
+        }
     }
 
-    // Upgrade the server-rendered rows to full dropdowns so the ingredient can be changed.
     loadIngredients().then(list => {
         container.querySelectorAll('.ingredient-select').forEach(sel => fillSelect(sel, list));
     });
@@ -230,7 +232,12 @@
             const row = template.content.firstElementChild.cloneNode(true);
             fillSelect(row.querySelector('.ingredient-select'), list);
             container.appendChild(row);
-            row.querySelector('.ingredient-select').focus();
+            const sel = row.querySelector('.ingredient-select');
+            if (window.jQuery && window.jQuery.fn.select2) {
+                window.jQuery(sel).select2('open');
+            } else {
+                sel.focus();
+            }
         });
     });
 
