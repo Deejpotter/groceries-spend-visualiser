@@ -619,3 +619,70 @@ def spend_link():
         bool(body.get("update_price", True)),
         (body.get("new_category") or "other").strip() or "other", origin="mcp")
     return jsonify({"level": level, "message": message, "price_updated": price_updated})
+
+
+# ---------------------------------------------------------------------------
+# BankSync — status and a manual pull, so an agent can finish or repair setup
+# ---------------------------------------------------------------------------
+
+def _banksync_status_payload():
+    import json as _json
+
+    from services.bank_import import load_merchant_patterns
+
+    db = get_db()
+    try:
+        cursors = _json.loads(get_setting("banksync_cursors") or "{}")
+    except ValueError:
+        cursors = {}
+    try:
+        unclassified = _json.loads(get_setting("banksync_unclassified") or "[]")
+    except ValueError:
+        unclassified = []
+    last_purchase = db.execute(
+        "SELECT MAX(order_date) FROM purchases WHERE origin = 'banksync'"
+    ).fetchone()[0]
+    return {
+        "configured": bool(get_setting("banksync_api_key")),
+        "last_sync": get_setting("banksync_last_sync") or None,
+        "accounts_tracked": len(cursors),
+        "account_cursors": cursors,
+        "merchant_patterns": len(load_merchant_patterns(db)),
+        "unclassified_count": len(unclassified),
+        "purchases_imported": db.execute(
+            "SELECT COUNT(*) FROM purchases WHERE origin = 'banksync'"
+        ).fetchone()[0],
+        "latest_purchase_date": last_purchase,
+    }
+
+
+@api_bp.route("/banksync")
+@require_api_key
+@_handle
+def banksync_status():
+    """Whether BankSync is configured, how far each account has synced, what's pending."""
+    return jsonify(_banksync_status_payload())
+
+
+@api_bp.route("/banksync/sync", methods=["POST"])
+@require_api_key
+@_handle
+def banksync_sync():
+    """Pull new BankSync transactions now and report what happened."""
+    from services.banksync_client import BankSyncError, run_sync
+
+    if not get_setting("banksync_api_key"):
+        raise ApiError(400, "banksync_not_configured",
+                       "No BankSync API key saved. Add one under Settings → Bank imports.")
+    try:
+        result = run_sync(get_db())
+    except BankSyncError as exc:
+        # The message explains what to do (reconnect the bank, fix scopes, wait).
+        raise ApiError(502, "banksync_failed", str(exc))
+    return jsonify({
+        "added": result["added"],
+        "duplicates": len(result["duplicates"]),
+        "unclassified": len(result["unclassified"]),
+        "errors": result["errors"],
+        "status": _banksync_status_payload(),
+    })
