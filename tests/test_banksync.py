@@ -1,5 +1,6 @@
 """BankSync integration: transaction mapping, client, sync orchestration."""
 
+import email.message
 import io
 import json
 import threading
@@ -12,7 +13,8 @@ import pytest
 
 from conftest import login
 from services.banksync_client import (
-    BankSyncClient, BankSyncError, map_banksync_transaction, sync_accounts,
+    BankSyncClient, BankSyncError, describe_credential,
+    map_banksync_transaction, sync_accounts,
 )
 
 PATTERNS = [("woolworths", "Woolworths"), ("coles", "Coles"),
@@ -96,6 +98,205 @@ def test_client_get_network_error(monkeypatch):
     monkeypatch.setattr(urllib.request, "urlopen", fake)
     with pytest.raises(BankSyncError, match="Couldn't reach"):
         BankSyncClient("k")._get("/v1/whoami")
+
+
+class _FakeResponse:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def read(self):
+        return self._payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+
+def _http_error(url, code, retry_after=None):
+    headers = email.message.Message()
+    if retry_after is not None:
+        headers["Retry-After"] = str(retry_after)
+    return urllib.error.HTTPError(url, code, "Error", headers, io.BytesIO(b"detail"))
+
+
+def test_client_retries_after_rate_limit(monkeypatch):
+    delays = []
+    calls = {"n": 0}
+    monkeypatch.setattr(
+        "services.banksync_client.time.sleep", lambda seconds: delays.append(seconds))
+
+    def fake(request, timeout=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise _http_error(request.full_url, 429, retry_after=7)
+        return _FakeResponse(b'{"ok": 1}')
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake)
+    assert BankSyncClient("k")._get("/v1/whoami") == {"ok": 1}
+    assert delays == [7.0]
+
+
+def test_client_gives_up_after_repeated_rate_limits(monkeypatch):
+    monkeypatch.setattr("services.banksync_client.time.sleep", lambda seconds: None)
+
+    def fake(request, timeout=None):
+        raise _http_error(request.full_url, 429, retry_after=1)
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake)
+    with pytest.raises(BankSyncError, match="rate limit"):
+        BankSyncClient("k", max_retries=2)._get("/v1/whoami")
+
+
+def test_client_caps_absurd_retry_after(monkeypatch):
+    delays = []
+    calls = {"n": 0}
+    monkeypatch.setattr(
+        "services.banksync_client.time.sleep", lambda seconds: delays.append(seconds))
+
+    def fake(request, timeout=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise _http_error(request.full_url, 429, retry_after=99999)
+        return _FakeResponse(b"{}")
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake)
+    BankSyncClient("k")._get("/v1/whoami")
+    assert delays == [65.0]
+
+
+def test_client_explains_consent_and_scope_errors(monkeypatch):
+    _fake_urlopen(monkeypatch, b"no", status=503)
+    with pytest.raises(BankSyncError, match="reconnect"):
+        BankSyncClient("k")._get("/v1/banks")
+    _fake_urlopen(monkeypatch, b"no", status=403)
+    with pytest.raises(BankSyncError, match="permission"):
+        BankSyncClient("k")._get("/v1/banks")
+    _fake_urlopen(monkeypatch, b"no", status=401)
+    with pytest.raises(BankSyncError, match="rejected the API key"):
+        BankSyncClient("k")._get("/v1/banks")
+
+
+def test_list_transactions_follows_the_cursor(monkeypatch):
+    pages = [
+        {"success": True, "data": [TXN_WOOLWORTHS],
+         "meta": {"hasMore": True, "cursor": "abc"}},
+        {"success": True, "data": [TXN_COLES], "meta": {"hasMore": False}},
+    ]
+    urls = []
+
+    def fake(request, timeout=None):
+        urls.append(request.full_url)
+        return _FakeResponse(json.dumps(pages.pop(0)).encode())
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake)
+    rows = BankSyncClient("k").list_transactions(
+        "b1", "a1", from_date="2026-09-01")
+    assert [row.get("id") or row.get("transactionId") for row in rows] == [
+        "txn-1", "txn-2"]
+    assert "from=2026-09-01" in urls[0]
+    assert "cursor=abc" in urls[1]
+
+
+def test_list_transactions_stops_without_a_cursor(monkeypatch):
+    payload = {"success": True, "data": [TXN_WOOLWORTHS], "meta": {"hasMore": False}}
+    calls = {"n": 0}
+
+    def fake(request, timeout=None):
+        calls["n"] += 1
+        return _FakeResponse(json.dumps(payload).encode())
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake)
+    rows = BankSyncClient("k").list_transactions("b1", "a1")
+    assert len(rows) == 1
+    assert calls["n"] == 1
+
+
+def test_describe_credential_reads_the_workspace():
+    info = describe_credential({
+        "workspace": {"name": "Frankston Home"},
+        "plan": "Standard",
+        "scopes": ["banks:read", "transactions:read"],
+    })
+    assert info["name"] == "Frankston Home"
+    assert info["plan"] == "Standard"
+    assert info["scopes"] == ["banks:read", "transactions:read"]
+    assert info["plan_has_api"] is True
+
+
+def test_describe_credential_flags_plans_without_api_access():
+    assert describe_credential({"plan": "Free"})["plan_has_api"] is False
+    assert describe_credential({"plan": "starter"})["plan_has_api"] is False
+    assert describe_credential({"plan": ""})["plan_has_api"] is True
+    assert describe_credential({})["name"] == "workspace"
+
+
+def test_describe_credential_accepts_comma_separated_scopes():
+    info = describe_credential({"scopes": "banks:read, transactions:read"})
+    assert info["scopes"] == ["banks:read", "transactions:read"]
+
+
+def test_test_key_route_warns_about_plans_without_api(client, db, monkeypatch):
+    login(client)
+
+    class FreePlan:
+        def __init__(self, api_key):
+            pass
+
+        def whoami(self):
+            return {"workspace": {"name": "Home"}, "plan": "Free", "scopes": []}
+
+        def list_banks(self):
+            return []
+
+    monkeypatch.setattr("services.banksync_client.BankSyncClient", FreePlan)
+    resp = client.post("/settings/save", data={
+        "action": "test_banksync", "banksync_api_key": "bsk_test"},
+        headers={"HX-Request": "true"})
+    assert resp.status_code == 200
+    assert b"no API access" in resp.data
+    assert b"alert-warning" in resp.data
+
+
+def test_test_key_route_reports_connection_health(client, db, monkeypatch):
+    login(client)
+
+    class Healthy:
+        def __init__(self, api_key):
+            pass
+
+        def whoami(self):
+            return {"workspace": {"name": "Home"}, "plan": "Standard", "scopes": []}
+
+        def list_banks(self):
+            return [{"id": "b1"}, {"id": "b2"}]
+
+    monkeypatch.setattr("services.banksync_client.BankSyncClient", Healthy)
+    resp = client.post("/settings/save", data={
+        "action": "test_banksync", "banksync_api_key": "bsk_test"},
+        headers={"HX-Request": "true"})
+    assert resp.status_code == 200
+    assert b"alert-success" in resp.data
+    assert b"2 bank connections" in resp.data
+
+
+def test_test_key_route_escapes_error_html(client, db, monkeypatch):
+    login(client)
+
+    class Exploding:
+        def __init__(self, api_key):
+            pass
+
+        def whoami(self):
+            raise BankSyncError("<script>alert(1)</script>")
+
+    monkeypatch.setattr("services.banksync_client.BankSyncClient", Exploding)
+    resp = client.post("/settings/save", data={
+        "action": "test_banksync", "banksync_api_key": "bsk_test"},
+        headers={"HX-Request": "true"})
+    assert b"<script>alert(1)</script>" not in resp.data
+    assert b"&lt;script&gt;" in resp.data
 
 
 class FakeBankSync:
