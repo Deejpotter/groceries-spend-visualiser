@@ -33,9 +33,9 @@ def _error_message(code: int, detail: str) -> str:
         return ("BankSync rejected the API key (401). Create a new key in "
                 "BankSync > Settings > Developers and save it here.")
     if code == 403:
-        return ("BankSync refused the request (403): the key is missing a "
-                "permission. Recreate it with banks:read and "
-                "transactions:read scopes.")
+        return ("BankSync refused the request (403): the key lacks the "
+                "banks:read scope, or your plan doesn't include API access. "
+                "Recreate the key with banks:read, or check your plan.")
     if code == 429:
         return ("BankSync rate limit reached (429). It allows about 10-20 "
                 "requests a minute; wait a minute and try again.")

@@ -171,7 +171,7 @@ def test_client_explains_consent_and_scope_errors(monkeypatch):
     with pytest.raises(BankSyncError, match="reconnect"):
         BankSyncClient("k")._get("/v1/banks")
     _fake_urlopen(monkeypatch, b"no", status=403)
-    with pytest.raises(BankSyncError, match="permission"):
+    with pytest.raises(BankSyncError, match="banks:read"):
         BankSyncClient("k")._get("/v1/banks")
     _fake_urlopen(monkeypatch, b"no", status=401)
     with pytest.raises(BankSyncError, match="rejected the API key"):
