@@ -174,7 +174,11 @@ def save():
         flash("Budget target saved.", "success")
 
     elif action == "test_banksync":
-        from services.banksync_client import BankSyncClient, BankSyncError
+        from markupsafe import escape
+
+        from services.banksync_client import (
+            BankSyncClient, BankSyncError, describe_credential,
+        )
         api_key = request.form.get("banksync_api_key", "").strip()
         if not api_key:
             if request.headers.get("HX-Request"):
@@ -182,15 +186,30 @@ def save():
             flash("Enter a BankSync API key first.", "error")
             return redirect(url_for("settings.settings"))
         try:
-            who = BankSyncClient(api_key).whoami()
-            workspace = who.get("workspace") or {}
-            name = workspace.get("name") or who.get("name") or "workspace"
+            client = BankSyncClient(api_key)
+            credential = describe_credential(client.whoami())
+            try:
+                banks = len(client.list_banks())
+                access = "{} bank connection{}".format(
+                    banks, "" if banks == 1 else "s")
+            except BankSyncError as exc:
+                access = str(exc)
+            message = "Connected to BankSync ({})".format(credential["name"])
+            if credential["plan"]:
+                message += " · plan {}".format(credential["plan"])
+            message += " · {}".format(access)
+            if not credential["plan_has_api"]:
+                message += (" — this plan has no API access. Upgrade to "
+                            "Standard or higher before syncing.")
             if request.headers.get("HX-Request"):
-                return f'<div class="alert alert-success mt-2">Connected to BankSync ({name}).</div>'
-            flash(f"Connected to BankSync ({name}).", "success")
+                css = "warning" if not credential["plan_has_api"] else "success"
+                return '<div class="alert alert-{} mt-2">{}</div>'.format(
+                    css, escape(message))
+            flash(message, "warning" if not credential["plan_has_api"] else "success")
         except BankSyncError as exc:
             if request.headers.get("HX-Request"):
-                return f'<div class="alert alert-danger mt-2">BankSync connection failed: {exc}</div>', 400
+                return '<div class="alert alert-danger mt-2">BankSync connection failed: {}</div>'.format(
+                    escape(str(exc))), 400
             flash(f"BankSync connection failed: {exc}", "error")
         return redirect(url_for("settings.settings"))
 
