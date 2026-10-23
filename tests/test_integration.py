@@ -2344,3 +2344,26 @@ class TestRecipeImageUpload:
         resp = client.get("/meal-plan?tab=rules")
         assert resp.status_code == 200
         assert b"Create rules" not in resp.data
+
+    def test_toggle_returns_fragment_for_htmx(self, client, db):
+        """The star swaps in place, so the HTMX branch must render a button."""
+        _login(client, "favuser4", "test123")
+        db.execute("INSERT INTO recipes (name, servings) VALUES ('Fav HTMX', 2)")
+        db.commit()
+        recipe_id = db.execute("SELECT id FROM recipes WHERE name = 'Fav HTMX'").fetchone()[0]
+
+        resp = client.post(
+            f"/recipes/{recipe_id}/favourite",
+            headers={"HX-Request": "true"},
+        )
+        assert resp.status_code == 200
+        assert b"<form" in resp.data
+        assert "★".encode() in resp.data
+        assert db.execute("SELECT is_favourite FROM recipes WHERE id = ?", (recipe_id,)).fetchone()[0] == 1
+
+        resp = client.post(
+            f"/recipes/{recipe_id}/favourite",
+            headers={"HX-Request": "true"},
+        )
+        assert "☆".encode() in resp.data
+        assert db.execute("SELECT is_favourite FROM recipes WHERE id = ?", (recipe_id,)).fetchone()[0] == 0
