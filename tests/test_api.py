@@ -544,3 +544,89 @@ def test_api_post_works_with_csrf_enabled(app, db):
     client.environ_base["HTTP_AUTHORIZATION"] = "Bearer csrf-test-key"
     r = client.post("/api/v1/ingredients", json={"name": "CSRF Test Ingredient"})
     assert r.status_code == 201, r.get_data(as_text=True)
+
+# ---------------------------------------------------------------------------
+# BankSync status and manual sync
+# ---------------------------------------------------------------------------
+
+def _set_banksync(db, key="bsk_test"):
+    db.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('banksync_api_key', ?)",
+        (key,))
+    db.commit()
+
+
+def test_banksync_status_when_unconfigured(api_client):
+    r = api_client.get("/api/v1/banksync")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["configured"] is False
+    assert body["accounts_tracked"] == 0
+
+
+def test_banksync_status_reports_progress(api_client):
+    from database import get_db
+    with api_client.application.app_context():
+        db = get_db()
+        _set_banksync(db)
+        db.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('banksync_cursors', ?)",
+            ('{"a1": {"date": "2026-10-05"}}',))
+        db.execute(
+            """INSERT INTO purchases
+               (order_date, basket_id, store, product_name, quantity, unit_price, line_total, origin)
+               VALUES ('2026-10-05', 'bs:txn-1', 'Woolworths', 'Milk 2L', 1, 3.0, 3.0, 'banksync')""")
+        db.commit()
+    r = api_client.get("/api/v1/banksync")
+    body = r.get_json()
+    assert body["configured"] is True
+    assert body["accounts_tracked"] == 1
+    assert body["account_cursors"] == {"a1": {"date": "2026-10-05"}}
+    assert body["purchases_imported"] == 1
+    assert body["latest_purchase_date"] == "2026-10-05"
+
+
+def test_banksync_sync_without_key_is_400(api_client):
+    r = api_client.post("/api/v1/banksync/sync")
+    assert r.status_code == 400
+    assert r.get_json()["error"]["code"] == "banksync_not_configured"
+
+
+def test_banksync_sync_imports_and_reports(api_client, monkeypatch):
+    from database import get_db
+    from test_banksync import TXN_COLES, TXN_UNKNOWN, TXN_WOOLWORTHS, FakeBankSync
+    with api_client.application.app_context():
+        db = get_db()
+        _set_banksync(db)
+    monkeypatch.setattr(
+        "services.banksync_client.BankSyncClient",
+        lambda api_key: FakeBankSync([TXN_WOOLWORTHS, TXN_COLES, TXN_UNKNOWN]))
+    r = api_client.post("/api/v1/banksync/sync")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["added"] == 2
+    assert body["unclassified"] == 1
+    assert body["errors"] == []
+    assert body["status"]["purchases_imported"] == 2
+    assert body["status"]["last_sync"]
+
+
+def test_banksync_sync_surfaces_upstream_failure(api_client, monkeypatch):
+    from database import get_db
+    from services.banksync_client import BankSyncError
+    with api_client.application.app_context():
+        db = get_db()
+        _set_banksync(db)
+
+    class Broken:
+        def __init__(self, api_key):
+            pass
+
+        def list_banks(self):
+            raise BankSyncError("BankSync says the bank needs reconnecting (503).")
+
+    monkeypatch.setattr("services.banksync_client.BankSyncClient", Broken)
+    r = api_client.post("/api/v1/banksync/sync")
+    assert r.status_code == 502
+    assert r.get_json()["error"]["code"] == "banksync_failed"
+    assert "reconnecting" in r.get_json()["error"]["message"]
