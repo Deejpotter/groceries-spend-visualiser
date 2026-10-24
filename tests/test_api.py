@@ -630,3 +630,89 @@ def test_banksync_sync_surfaces_upstream_failure(api_client, monkeypatch):
     assert r.status_code == 502
     assert r.get_json()["error"]["code"] == "banksync_failed"
     assert "reconnecting" in r.get_json()["error"]["message"]
+
+
+# ---------------------------------------------------------------------------
+# Purchases listing
+# ---------------------------------------------------------------------------
+
+def _seed_purchases(db):
+    rows = [
+        ("2026-10-19", "b1", "Woolworths", "Milk 2L", 2, 3.00, 6.00),
+        ("2026-10-19", "b1", "Woolworths", "Bread Loaf", 1, 4.00, 4.00),
+        ("2026-10-05", "b2", "Coles", "Milk 2L", 1, 3.50, 3.50),
+        ("2026-09-20", "b3", "Woolworths", "Apples", 1, 5.00, 5.00),
+    ]
+    for order_date, basket, store, name, qty, unit, total in rows:
+        db.execute(
+            """INSERT INTO purchases
+               (order_date, basket_id, store, product_name, quantity, unit_price,
+                line_total, origin)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 'banksync')""",
+            (order_date, basket, store, name, qty, unit, total))
+    db.commit()
+
+
+def test_purchases_are_newest_first_with_window_totals(api_client):
+    from database import get_db
+    with api_client.application.app_context():
+        _seed_purchases(get_db())
+    r = api_client.get("/api/v1/purchases")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert [p["product_name"] for p in body["purchases"]] == [
+        "Milk 2L", "Bread Loaf", "Milk 2L", "Apples"]
+    assert body["total_rows"] == 4
+    assert body["baskets"] == 3
+    assert body["stores"] == 2
+    assert body["spend"] == 18.5
+    assert body["first_date"] == "2026-09-20"
+    assert body["last_date"] == "2026-10-19"
+
+
+def test_purchases_date_window(api_client):
+    from database import get_db
+    with api_client.application.app_context():
+        _seed_purchases(get_db())
+    body = api_client.get("/api/v1/purchases?from=2026-10-01&to=2026-10-19").get_json()
+    assert body["total_rows"] == 3
+    assert body["spend"] == 13.5
+    assert all(p["order_date"] >= "2026-10-01" for p in body["purchases"])
+
+
+def test_purchases_store_and_search_filters(api_client):
+    from database import get_db
+    with api_client.application.app_context():
+        _seed_purchases(get_db())
+    coles = api_client.get("/api/v1/purchases?store=Coles").get_json()
+    assert coles["total_rows"] == 1
+    milk = api_client.get("/api/v1/purchases?search=milk").get_json()
+    assert milk["total_rows"] == 2
+    assert milk["spend"] == 9.5
+
+
+def test_purchases_limit_is_capped_and_validated(api_client):
+    from database import get_db
+    with api_client.application.app_context():
+        _seed_purchases(get_db())
+    limited = api_client.get("/api/v1/purchases?limit=1").get_json()
+    assert limited["count"] == 1
+    assert limited["total_rows"] == 4  # totals are the window, not the page
+    assert api_client.get("/api/v1/purchases?limit=0").get_json()["limit"] == 1
+    assert api_client.get("/api/v1/purchases?limit=9999").get_json()["limit"] == 500
+    bad = api_client.get("/api/v1/purchases?limit=abc")
+    assert bad.status_code == 400
+    assert bad.get_json()["error"]["code"] == "bad_limit"
+
+
+def test_purchases_reject_bad_dates(api_client):
+    r = api_client.get("/api/v1/purchases?from=last-tuesday")
+    assert r.status_code == 400
+    assert r.get_json()["error"]["code"] == "bad_date"
+
+
+def test_purchases_empty_window(api_client):
+    body = api_client.get("/api/v1/purchases?from=2030-01-01").get_json()
+    assert body["count"] == 0
+    assert body["total_rows"] == 0
+    assert body["spend"] == 0

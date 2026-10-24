@@ -245,6 +245,81 @@ def spend_summary():
     return jsonify(_spend_summary_payload())
 
 
+@api_bp.route("/purchases")
+@require_api_key
+@_handle
+def purchases():
+    """Individual grocery purchases in a date window, newest first.
+
+    Filters: from, to (YYYY-MM-DD), store (exact), search (product name),
+    limit (default 100, max 500). Totals cover the whole filtered window.
+    """
+    from datetime import date as _date
+
+    db = get_db()
+    conditions, params = [], []
+
+    def _day(name):
+        raw = (request.args.get(name) or "").strip()
+        if not raw:
+            return None
+        try:
+            return _date.fromisoformat(raw).isoformat()
+        except ValueError:
+            raise ApiError(400, "bad_date", f"{name} must be YYYY-MM-DD.")
+
+    start, end = _day("from"), _day("to")
+    if start:
+        conditions.append("p.order_date >= ?")
+        params.append(start)
+    if end:
+        conditions.append("p.order_date <= ?")
+        params.append(end)
+    store = (request.args.get("store") or "").strip()
+    if store:
+        conditions.append("p.store = ?")
+        params.append(store)
+    search = (request.args.get("search") or "").strip()
+    if search:
+        conditions.append("p.product_name LIKE ?")
+        params.append(f"%{search}%")
+
+    try:
+        limit = min(max(int((request.args.get("limit") or "100").strip()), 1), 500)
+    except ValueError:
+        raise ApiError(400, "bad_limit", "limit must be a whole number (1-500).")
+
+    where = " AND ".join(conditions) or "1=1"
+    rows = [dict(r) for r in db.execute(
+        f"""SELECT p.id, p.order_date, p.store, p.product_name, p.quantity,
+                   p.unit_price, p.line_total, p.cup_price, p.ingredient_id,
+                   i.name AS ingredient_name, p.origin, p.basket_id
+              FROM purchases p
+              LEFT JOIN ingredients i ON i.id = p.ingredient_id
+             WHERE {where}
+             ORDER BY p.order_date DESC, p.id ASC
+             LIMIT ?""",
+        params + [limit])]
+    totals = db.execute(
+        f"""SELECT COUNT(*) AS rows, COUNT(DISTINCT p.basket_id) AS baskets,
+                   COUNT(DISTINCT p.store) AS stores,
+                   ROUND(SUM(p.line_total), 2) AS spend,
+                   MIN(p.order_date) AS first_date, MAX(p.order_date) AS last_date
+              FROM purchases p WHERE {where}""",
+        params).fetchone()
+    return jsonify({
+        "count": len(rows),
+        "total_rows": totals["rows"],
+        "baskets": totals["baskets"],
+        "stores": totals["stores"],
+        "spend": totals["spend"] or 0,
+        "first_date": totals["first_date"],
+        "last_date": totals["last_date"],
+        "limit": limit,
+        "purchases": rows,
+    })
+
+
 @api_bp.route("/rules")
 @require_api_key
 @_handle

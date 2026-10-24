@@ -150,6 +150,25 @@ def get_spend_summary() -> dict:
 
 
 @mcp.tool()
+def list_purchases(start: str = "", end: str = "", store: str = "",
+                   search: str = "", limit: int = 50) -> dict:
+    """Individual grocery purchases (date, store, product, qty, price), newest first.
+
+    start/end are YYYY-MM-DD; search matches the product name.
+    """
+    query = {"limit": limit}
+    if start:
+        query["from"] = start
+    if end:
+        query["to"] = end
+    if store:
+        query["store"] = store
+    if search:
+        query["search"] = search
+    return _safe(_client().get, path="/purchases?" + urllib.parse.urlencode(query))
+
+
+@mcp.tool()
 def get_rules() -> dict:
     """Meal rules in evaluation order."""
     return _safe(_client().get, path="/rules")
