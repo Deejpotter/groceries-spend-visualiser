@@ -196,10 +196,26 @@ def test_tool_registry_matches_expectation():
     names = sorted(t.name for t in asyncio.run(mcp.list_tools()))
     assert names == sorted([
         "get_server_info", "get_week_plan", "get_shopping_list", "get_pantry_status",
-        "get_spend_summary", "get_rules", "search_ingredients", "read_recipe",
+        "get_spend_summary", "list_purchases", "get_rules", "search_ingredients",
+        "read_recipe",
         "create_ingredient", "create_recipe", "add_recipe_ingredient",
         "delete_ingredient", "delete_recipe",
         "plan_add_meal", "plan_swap_meal", "plan_remove_meal", "plan_generate",
         "tick_item", "tick_items", "add_shopping_item", "add_pantry_stock",
         "use_pantry", "link_spend_product", "import_files",
     ])
+
+
+def test_list_purchases_builds_the_query(monkeypatch):
+    from mcp_server import server
+    opener = FakeOpener([FakeResponse({"purchases": [], "count": 0})])
+    monkeypatch.setenv("GROCERIES_URL", "https://groceries.example")
+    monkeypatch.setenv("GROCERIES_API_KEY", "gx_test")
+    monkeypatch.setattr(server, "_client", lambda: _api(opener=opener))
+    server.list_purchases(start="2026-10-01", end="2026-10-31", search="milk")
+    req, _ = opener.requests[0]
+    assert "/purchases?" in req.full_url
+    assert "from=2026-10-01" in req.full_url
+    assert "to=2026-10-31" in req.full_url
+    assert "search=milk" in req.full_url
+    assert "limit=50" in req.full_url
