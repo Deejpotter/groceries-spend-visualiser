@@ -21,6 +21,8 @@ from services.subscriptions import (
 )
 from services.spend_analysis import load_purchases
 from services.recurring import detect_recurring
+from services.price_history import group_price_history, payment_rows, summarise
+from services.dashboard import sparkline
 from services.ai_review import (
     AIReviewError,
     build_candidates,
@@ -34,15 +36,36 @@ from services.ai_review import (
 subscriptions_bp = Blueprint("subscriptions", __name__)
 
 
+def _all_histories(db):
+    """Price history for every merchant, keyed by merchant key."""
+    rows = [dict(row) for row in db.execute(
+        """SELECT txn_date, amount, merchant_key, direction
+           FROM bank_transactions"""
+    ).fetchall()]
+    return group_price_history(rows)
+
+
+def _decorate_subscription(sub, histories):
+    """Attach price history and a sparkline to a subscription row."""
+    sub = dict(sub)
+    points = histories.get(sub.get("merchant_key") or "", [])
+    sub["price_points"] = points
+    sub["price_summary"] = summarise(points)
+    sub["price_spark"] = (sparkline([p["amount"] for p in points], 64, 18)
+                          if len(points) >= 2 else "")
+    return sub
+
+
 @subscriptions_bp.route("/subscriptions")
 @login_required
 def subscription_list():
     """List all active subscriptions, grouped by category."""
     db = get_db()
+    histories = _all_histories(db)
     rows = db.execute(
         "SELECT * FROM subscriptions WHERE active = 1 ORDER BY category, name"
     ).fetchall()
-    subscriptions = [dict(r) for r in rows]
+    subscriptions = [_decorate_subscription(r, histories) for r in rows]
 
     # Group by category.
     by_category = {}
@@ -51,7 +74,7 @@ def subscription_list():
         by_category.setdefault(cat, []).append(s)
 
     # Inactive subscriptions (paused or soft-deleted) get their own section.
-    inactive = [dict(r) for r in db.execute(
+    inactive = [_decorate_subscription(r, histories) for r in db.execute(
         "SELECT * FROM subscriptions WHERE active = 0 ORDER BY category, name"
     ).fetchall()]
 
@@ -78,6 +101,49 @@ def subscription_list():
         biggest=biggest,
         biggest_monthly=biggest_monthly,
     )
+
+
+@subscriptions_bp.route("/subscriptions/<int:sub_id>")
+@login_required
+def subscription_detail(sub_id):
+    """One bill, with the price it has been charged at over time."""
+    db = get_db()
+    row = db.execute("SELECT * FROM subscriptions WHERE id = ?", (sub_id,)).fetchone()
+    if not row:
+        flash("Subscription not found.", "error")
+        return redirect(url_for("subscriptions.subscription_list"))
+    sub = _decorate_subscription(row, _all_histories(db))
+    return render_template(
+        "subscriptions/detail.html",
+        s=sub,
+        summary=sub["price_summary"],
+        points=sub["price_points"],
+        payments=payment_rows(sub["price_points"]),
+        price_differs=bool(sub["price_summary"]
+                           and abs(sub["price_summary"]["latest"] - sub["amount"]) >= 0.01),
+        format_frequency=format_frequency,
+        category_label=subscription_category_label,
+    )
+
+
+@subscriptions_bp.route("/subscriptions/<int:sub_id>/use-latest", methods=["POST"])
+@login_required
+def subscription_use_latest(sub_id):
+    """Set the subscription amount to the latest observed payment."""
+    db = get_db()
+    row = db.execute("SELECT * FROM subscriptions WHERE id = ?", (sub_id,)).fetchone()
+    if not row:
+        flash("Subscription not found.", "error")
+        return redirect(url_for("subscriptions.subscription_list"))
+    points = _decorate_subscription(row, _all_histories(db))["price_points"]
+    if not points:
+        flash("No linked payments to take a price from yet.", "error")
+        return redirect(url_for("subscriptions.subscription_detail", sub_id=sub_id))
+    latest = points[-1]["amount"]
+    db.execute("UPDATE subscriptions SET amount = ? WHERE id = ?", (latest, sub_id))
+    db.commit()
+    flash(f"Updated '{row['name']}' to ${latest:.2f} from the latest payment.", "success")
+    return redirect(url_for("subscriptions.subscription_detail", sub_id=sub_id))
 
 
 @subscriptions_bp.route("/subscriptions/add", methods=["GET", "POST"])
@@ -237,7 +303,8 @@ def subscription_toggle(sub_id):
         if new_active:
             sub = db.execute("SELECT * FROM subscriptions WHERE id = ?", (sub_id,)).fetchone()
             if sub:
-                return render_template("subscriptions/_sub_row.html", s=dict(sub),
+                return render_template("subscriptions/_sub_row.html",
+                                       s=_decorate_subscription(sub, _all_histories(db)),
                                        format_frequency=format_frequency)
         return "", 204
     flash(f"Subscription '{sub['name']}' {status}.", "success")
@@ -261,7 +328,8 @@ def subscription_resume(sub_id):
     if request.headers.get("HX-Request"):
         sub = db.execute("SELECT * FROM subscriptions WHERE id = ?", (sub_id,)).fetchone()
         if sub:
-            return render_template("subscriptions/_sub_row.html", s=dict(sub),
+            return render_template("subscriptions/_sub_row.html",
+                                   s=_decorate_subscription(sub, _all_histories(db)),
                                    format_frequency=format_frequency)
         return "", 204
     flash(f"Subscription '{sub['name']}' resumed.", "success")
@@ -329,7 +397,8 @@ def subscription_mark_paid(sub_id):
         if request.headers.get("HX-Request"):
             sub = db.execute("SELECT * FROM subscriptions WHERE id = ?", (sub_id,)).fetchone()
             if sub:
-                return render_template("subscriptions/_sub_row.html", s=dict(sub),
+                return render_template("subscriptions/_sub_row.html",
+                                       s=_decorate_subscription(sub, _all_histories(db)),
                                        format_frequency=format_frequency)
             return "", 204
         note = f"Marked '{sub['name']}' as paid. Next due: {next_due}."

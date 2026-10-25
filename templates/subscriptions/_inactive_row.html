@@ -1,7 +1,7 @@
 {% from "_macros.html" import csrf %}
 <tr id="sub-{{ s.id }}">
     <td>
-        <strong>{{ s.name }}</strong>
+        <strong><a href="{{ url_for('subscriptions.subscription_detail', sub_id=s.id) }}" class="bill-link">{{ s.name }}</a></strong>
         {% if s.notes %}<br><small class="text-muted">{{ s.notes }}</small>{% endif %}
     </td>
     <td>${{ "%.2f"|format(s.amount) }}</td>

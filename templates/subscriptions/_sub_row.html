@@ -1,10 +1,29 @@
 {% from "_macros.html" import csrf %}
 <tr id="sub-{{ s.id }}">
     <td>
-        <strong>{{ s.name }}</strong>
+        <strong><a href="{{ url_for('subscriptions.subscription_detail', sub_id=s.id) }}" class="bill-link">{{ s.name }}</a></strong>
         {% if s.notes %}<br><small class="text-muted">{{ s.notes }}</small>{% endif %}
     </td>
-    <td>${{ "%.2f"|format(s.amount) }}</td>
+    <td>
+        ${{ "%.2f"|format(s.amount) }}
+        {% if s.price_spark %}
+        <svg class="bill-spark" width="64" height="18" viewBox="0 0 64 18" role="img"
+             aria-label="Price trend for {{ s.name }}">
+            <polyline fill="none" stroke="currentColor" stroke-width="1.5"
+                      stroke-linecap="round" stroke-linejoin="round"
+                      points="{{ s.price_spark }}"></polyline>
+        </svg>
+        {% endif %}
+        {% if s.price_summary %}
+            {% if s.price_summary.direction == 'up' %}
+            <span class="price-change" data-dir="up" title="Since {{ s.price_summary.started|nice_date }}">▲ {{ s.price_summary.pct }}%</span>
+            {% elif s.price_summary.direction == 'down' %}
+            <span class="price-change" data-dir="down" title="Since {{ s.price_summary.started|nice_date }}">▼ {{ s.price_summary.pct }}%</span>
+            {% else %}
+            <span class="price-change" data-dir="flat">steady</span>
+            {% endif %}
+        {% endif %}
+    </td>
     <td>{{ format_frequency(s.frequency) }}</td>
     <td>{{ s.next_due }}</td>
     <td class="text-right">

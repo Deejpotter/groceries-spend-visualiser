@@ -76,6 +76,19 @@ class TestDetectRecurring:
         assert suggestion["confidence"] == "high"
         assert suggestion["next_due"] == "2026-05-15"
 
+    def test_price_fields_track_a_price_rise(self):
+        rows = [
+            make_transaction("2026-01-15", "NETFLIX.COM", 16.00),
+            make_transaction("2026-02-15", "NETFLIX.COM", 16.00),
+            make_transaction("2026-03-15", "NETFLIX.COM", 18.00),
+        ]
+        suggestion = detect_recurring(rows)[0]
+        assert suggestion["first_amount"] == 16.00
+        assert suggestion["latest_amount"] == 18.00
+        assert suggestion["price_change"] == 2.00
+        assert suggestion["price_direction"] == "up"
+        assert suggestion["price_pct"] == 12.5
+
     def test_variable_amount_is_a_bill(self):
         dates = ["2026-01-20", "2026-02-20", "2026-03-20", "2026-04-20"]
         rows = [

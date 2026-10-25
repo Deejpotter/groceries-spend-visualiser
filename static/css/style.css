@@ -680,6 +680,8 @@ details[open].pack-others > summary::after {
     border-radius: 999px;
     white-space: nowrap;
 }
+.chip.price-up { color: var(--danger); border-color: var(--danger-tint); }
+.chip.price-down { color: var(--ok); border-color: var(--ok-tint); }
 .suggestion-amount {
     flex: none;
     min-width: 7.25rem;
@@ -740,6 +742,22 @@ details[open].pack-others > summary::after {
     margin: 0.15rem 0 0;
 }
 .sparkline { display: block; }
+.bill-spark {
+    display: block;
+    margin-top: 0.15rem;
+    color: var(--brand);
+}
+.price-change {
+    display: inline-block;
+    margin-top: 0.1rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+}
+.price-change[data-dir="up"] { color: var(--danger); }
+.price-change[data-dir="down"] { color: var(--ok); }
+.price-change[data-dir="flat"] { color: var(--ink-soft); }
+.bill-link { color: inherit; text-decoration: none; }
+.bill-link:hover { color: var(--brand); text-decoration: underline; }
 
 /* Numbers that update or stack stay aligned */
 .stat-value,

@@ -254,6 +254,13 @@ def detect_recurring(transactions: List[Dict],
 
         last_seen = dates[-1]
         kind = "subscription" if variance <= _SUBSCRIPTION_VARIANCE else "bill"
+        first_amount = round(amounts[0], 2)
+        latest_amount = round(amounts[-1], 2)
+        price_change = round(latest_amount - first_amount, 2)
+        price_pct = (round(abs(price_change) / first_amount * 100, 1)
+                     if first_amount else 0)
+        price_direction = ("flat" if abs(price_change) < 0.005
+                           else ("up" if price_change > 0 else "down"))
         high = (len(rows) >= 4 and consistency >= 0.8
                 and variance <= 0.25 and intervals[-1] <= target + tolerance)
         name = known["name"] if known else _display_name(
@@ -273,6 +280,11 @@ def detect_recurring(transactions: List[Dict],
             "occurrences": len(rows),
             "first_seen": dates[0].isoformat(),
             "last_seen": last_seen.isoformat(),
+            "first_amount": first_amount,
+            "latest_amount": latest_amount,
+            "price_change": price_change,
+            "price_pct": price_pct,
+            "price_direction": price_direction,
             "next_due": suggested_next_due(frequency, last_seen.isoformat()),
             "monthly_cost": round(mean_amount * _MONTHLY_MULTIPLIER[frequency], 2),
             "reason": (f"{len(rows)} payments, about {int(median(intervals))} days "

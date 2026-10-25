@@ -149,6 +149,13 @@ def build_candidates(transactions: List[Dict], excluded_keys=None) -> List[Dict]
         mean_amount = sum(amounts) / len(amounts)
         variance = (max(abs(a - mean_amount) for a in amounts) / mean_amount
                     if mean_amount else 0)
+        first_amount = round(amounts[0], 2)
+        latest_amount = round(amounts[-1], 2)
+        price_change = round(latest_amount - first_amount, 2)
+        price_pct = (round(abs(price_change) / first_amount * 100, 1)
+                     if first_amount else 0)
+        price_direction = ("flat" if abs(price_change) < 0.005
+                           else ("up" if price_change > 0 else "down"))
         unique_descriptions = []
         for row in rows:
             cleaned = redact(row["description"])
@@ -163,6 +170,12 @@ def build_candidates(transactions: List[Dict], excluded_keys=None) -> List[Dict]
             "occurrences": len(rows),
             "mean_amount": round(mean_amount, 2),
             "amount_variance": round(variance, 3),
+            "first_amount": first_amount,
+            "latest_amount": latest_amount,
+            "price_change": price_change,
+            "price_pct": price_pct,
+            "price_direction": price_direction,
+            "first_seen": dates[0].isoformat(),
             "median_interval_days": round(median(intervals), 1) if intervals else None,
             "rule_frequency": classify_frequency(intervals),
         })
@@ -384,6 +397,12 @@ def merge_suggestions(detected: List[Dict], candidates: List[Dict],
             "source": "ai",
             "occurrences": candidate["occurrences"],
             "last_seen": last_seen,
+            "first_seen": candidate.get("first_seen"),
+            "first_amount": candidate.get("first_amount"),
+            "latest_amount": candidate.get("latest_amount"),
+            "price_change": candidate.get("price_change"),
+            "price_pct": candidate.get("price_pct"),
+            "price_direction": candidate.get("price_direction"),
             "next_due": suggested_next_due(frequency, last_seen),
             "monthly_cost": round(amount * monthly_factor, 2),
             "reason": review.get("reason") or "AI review",

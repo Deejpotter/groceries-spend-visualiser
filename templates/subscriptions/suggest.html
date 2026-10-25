@@ -90,6 +90,15 @@
                     {% if s.category %}<span class="chip">{{ s.category|title }}</span>{% endif %}
                     {% if s.next_due %}<span class="chip">next {{ s.next_due|nice_date }}</span>{% endif %}
                     {% if s.kind == 'bill' %}<span class="chip">variable amount</span>{% endif %}
+                    {% if s.price_direction and s.first_seen %}
+                        {% if s.price_direction == 'up' %}
+                        <span class="chip price-up">&uarr; {{ s.price_pct }}% since {{ s.first_seen|nice_date }}</span>
+                        {% elif s.price_direction == 'down' %}
+                        <span class="chip price-down">&darr; {{ s.price_pct }}% since {{ s.first_seen|nice_date }}</span>
+                        {% else %}
+                        <span class="chip">price steady</span>
+                        {% endif %}
+                    {% endif %}
                 </div>
                 <small class="text-muted d-block mt-1">{{ s.reason }}</small>
                 {% if s.ai_reason and s.source != 'ai' %}

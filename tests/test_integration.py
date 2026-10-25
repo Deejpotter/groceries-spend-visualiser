@@ -1931,7 +1931,7 @@ class TestSubscriptions:
                    (source, external_id, txn_date, description, merchant_key,
                     amount, direction, status)
                    VALUES ('csv', ?, ?, ?, ?, ?, ?, ?)""",
-                (f"{description}-{i}", txn_date, description,
+                (f"{description}-{txn_date}-{i}", txn_date, description,
                  normalise_merchant(description), amount, direction, status),
             )
         db.commit()
@@ -2108,6 +2108,41 @@ class TestSubscriptions:
         resp = client.get("/subscriptions/suggest")
         assert b"Binge Streaming" in resp.data
         assert b"Review again" in resp.data
+
+    def test_bill_detail_shows_price_history_and_can_use_latest(self, client, db):
+        _login(client, "subuser", "test123")
+        self._bank_rows(db, "BINGE.COM", 16.00,
+                        ["2026-01-10", "2026-02-10"])
+        self._bank_rows(db, "BINGE.COM", 18.00, ["2026-03-10"])
+        client.post("/subscriptions/suggest/accept", data={
+            "merchant_key": "binge", "name": "Binge", "amount": "16.67",
+            "frequency": "monthly", "category": "entertainment",
+        })
+        sub_id = db.execute("SELECT id FROM subscriptions").fetchone()["id"]
+
+        resp = client.get(f"/subscriptions/{sub_id}")
+        assert resp.status_code == 200
+        assert b"Price over time" in resp.data
+        assert b"priceChart" in resp.data
+        assert b"12.5%" in resp.data
+        assert b"Payment history" in resp.data
+
+        resp = client.get("/subscriptions")
+        assert b"bill-spark" in resp.data
+        assert b"12.5%" in resp.data
+
+        client.post(f"/subscriptions/{sub_id}/use-latest", follow_redirects=True)
+        amount = db.execute("SELECT amount FROM subscriptions WHERE id = ?",
+                            (sub_id,)).fetchone()["amount"]
+        assert amount == 18.00
+
+    def test_bill_detail_without_linked_history(self, client, db):
+        _login(client, "subuser", "test123")
+        self._add(client, name="Manual Bill", amount="20.00")
+        sub_id = db.execute("SELECT id FROM subscriptions").fetchone()["id"]
+        resp = client.get(f"/subscriptions/{sub_id}")
+        assert resp.status_code == 200
+        assert b"No price history yet" in resp.data
 
     def test_repeat_groceries_are_not_offered_as_bills(self, client, db):
         _login(client, "subuser", "test123")
