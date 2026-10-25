@@ -48,7 +48,7 @@
     <li class="nav-item"><a class="nav-link {{ 'active' if key == range_key }}" href="{{ url_for('spend.spend_dashboard', range=key) }}">{{ label }}</a></li>
     {% endfor %}
 </ul>
-<p class="text-muted">
+<p class="text-muted small mb-2">
     {{ stats.first_date.strftime('%d %b %Y') }} – {{ stats.last_date.strftime('%d %b %Y') }}
     &middot; {{ stats.total_shops }} shops &middot; {{ stats.total_items }} line items
 </p>
@@ -95,19 +95,28 @@
     {% endif %}
 </div>
 
-<p class="text-muted small">
-    Start with the tiles: how much, how often, and how much each shop costs.
-    The charts below show the shape of that spending.
-</p>
+<div class="insight">
+    {{ icon('chart-line') }}
+    <p>
+        You spent <strong>{{ stats.avg_spend_per_month|money }}</strong> a month on average.
+        {% if stats.store_spend %}
+        {{ stats.store_spend[0].store }} took <strong>{{ stats.store_spend[0].share }}%</strong> of it.
+        {% endif %}
+        {% if stats.top_by_spend %}
+        Your biggest single product was <strong>{{ stats.top_by_spend[0].product_name }}</strong>
+        at {{ stats.top_by_spend[0].total_spend|money }}.
+        {% endif %}
+    </p>
+</div>
 
 <div class="card mb-4 section-card">
-    <div class="card-header py-2"><strong>Spending over time</strong>
+    <div class="card-header py-2"><strong>{{ icon('chart-line') }} Spending over time</strong>
         <span class="small text-muted ml-2">each bar is one month</span></div>
     <div class="card-body">
         <div class="chart-box"><canvas id="monthlyChart" aria-label="Bar chart of total grocery spend per month, with a dashed line showing the monthly budget" role="img"></canvas></div>
         <p class="small text-muted mb-0 mt-2">
             Taller bars are more expensive months.{% if budget %} The dashed line is your
-            {{ budget.target|money }} monthly target — bars above it are months you went over.{% endif %}
+            {{ budget.target|money }} monthly target — months above it are red.{% endif %}
         </p>
         <details class="mt-2 small">
             <summary>How to read this</summary>
@@ -122,7 +131,7 @@
     {% if stats.store_spend|length > 1 %}
     <div class="col-lg-5 mb-4">
         <div class="card h-100 section-card">
-            <div class="card-header py-2"><strong>Where your money goes</strong>
+            <div class="card-header py-2"><strong>{{ icon('shopping-cart') }} Where your money goes</strong>
                 <span class="small text-muted ml-2">by store</span></div>
             <div class="card-body">
                 <div class="chart-box" style="height: 260px"><canvas id="storeChart" aria-label="Doughnut chart of grocery spend by store" role="img"></canvas></div>
@@ -142,7 +151,7 @@
     {% endif %}
     <div class="col-lg-{{ '7' if stats.store_spend|length > 1 else '12' }} mb-4">
         <div class="card h-100 section-card">
-            <div class="card-header py-2"><strong>Products that cost the most</strong>
+            <div class="card-header py-2"><strong>{{ icon('receipt') }} Products that cost the most</strong>
                 <span class="small text-muted ml-2">top 6 by total spend</span></div>
             <div class="card-body">
                 <div class="chart-box" style="height: 260px"><canvas id="productChart" aria-label="Horizontal bar chart of the six products with the highest total spend" role="img"></canvas></div>
@@ -200,10 +209,13 @@
 </div>
 {% endif %}
 
-<div class="row">
-    <div class="col-lg-6">{{ product_table('Bought most often', stats.top_by_frequency) }}</div>
-    <div class="col-lg-6">{{ product_table('Highest total spend', stats.top_by_spend) }}</div>
-</div>
+<details class="mt-4">
+    <summary><strong>Exact product numbers</strong> &mdash; frequency and total spend</summary>
+    <div class="row mt-3">
+        <div class="col-lg-6">{{ product_table('Bought most often', stats.top_by_frequency) }}</div>
+        <div class="col-lg-6">{{ product_table('Highest total spend', stats.top_by_spend) }}</div>
+    </div>
+</details>
 {% endif %}
 {% endblock %}
 
@@ -217,17 +229,76 @@
     function theme() {
         const css = getComputedStyle(document.documentElement);
         const brand = (css.getPropertyValue('--brand') || '#c25e3a').trim();
+        const ink = (css.getPropertyValue('--ink') || '#2c2620').trim();
         const inkSoft = (css.getPropertyValue('--ink-soft') || '#7a6c58').trim();
         const line = (css.getPropertyValue('--line') || '#e2d6c1').trim();
         const surface = (css.getPropertyValue('--surface') || '#ece3d2').trim();
         const ok = (css.getPropertyValue('--ok') || '#6c7a45').trim();
         const warn = (css.getPropertyValue('--warn') || '#c8912f').trim();
+        const danger = (css.getPropertyValue('--danger') || '#b23a2e').trim();
         return {
-            brand, inkSoft, line, surface,
+            brand, ink, inkSoft, line, surface, danger,
             palette: [brand, ok, warn, '#6f8fa8', '#8a6fa8', '#b58b4f', '#7a9e9f']
         };
     }
+    const centreText = {
+        id: 'centreText',
+        afterDatasetsDraw(chart, args, opts) {
+            if (!opts || !opts.text || !chart.chartArea) return;
+            const { ctx, chartArea } = chart;
+            const x = (chartArea.left + chartArea.right) / 2;
+            const y = (chartArea.top + chartArea.bottom) / 2;
+            ctx.save();
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = opts.color;
+            ctx.font = '700 20px "Segoe UI", system-ui, sans-serif';
+            ctx.fillText(opts.text, x, y - 7);
+            ctx.fillStyle = opts.subColor;
+            ctx.font = '600 10px "Segoe UI", system-ui, sans-serif';
+            ctx.fillText(opts.label, x, y + 13);
+            ctx.restore();
+        }
+    };
+    const valueLabels = {
+        id: 'valueLabels',
+        afterDatasetsDraw(chart, args, opts) {
+            if (!opts || opts.display === false) return;
+            const count = (chart.data.labels || []).length;
+            const extent = chart.options.indexAxis === 'y' ? chart.height : chart.width;
+            if (opts.minSpacing && count && extent / count < opts.minSpacing) return;
+            const { ctx } = chart;
+            ctx.save();
+            ctx.font = '600 11px "Segoe UI", system-ui, sans-serif';
+            ctx.fillStyle = opts.color;
+            chart.data.datasets.forEach(function (dataset, index) {
+                if (opts.datasets && !opts.datasets.includes(index)) return;
+                const meta = chart.getDatasetMeta(index);
+                if (!meta || meta.hidden) return;
+                meta.data.forEach(function (element, i) {
+                    const value = Number(dataset.data[i]);
+                    if (!value) return;
+                    const position = element.tooltipPosition();
+                    const text = opts.format ? opts.format(value) : value;
+                    if (chart.options.indexAxis === 'y') {
+                        ctx.textAlign = 'left';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(text, position.x + 6, position.y);
+                    } else {
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'bottom';
+                        ctx.fillText(text, position.x, position.y - 4);
+                    }
+                });
+            });
+            ctx.restore();
+        }
+    };
+    const moneyLabel = value => '$' + Math.round(value);
     const money = value => '$' + Number(value).toFixed(2);
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        Chart.defaults.animation = false;
+    }
     const short = (text, max) => text.length > max
         ? text.slice(0, max - 1) + '…' : text;
     const monthLabel = ([month]) => {
@@ -243,7 +314,10 @@
     if (monthlyEl && monthly.length) {
         const datasets = [{
             type: 'bar', label: 'Spend', data: monthly.map(d => d[1]),
-            backgroundColor: colours.brand, borderRadius: 6
+            backgroundColor: monthly.map(d => target && d[1] > target
+                ? colours.danger : colours.brand),
+            gvKind: 'budgetBars',
+            borderRadius: 6
         }];
         if (target) {
             datasets.push({
@@ -256,11 +330,14 @@
         charts.push(new Chart(monthlyEl, {
             type: 'bar',
             data: { labels: monthly.map(monthLabel), datasets },
+            plugins: [valueLabels],
             options: {
                 maintainAspectRatio: false,
+                layout: { padding: { top: 18 } },
                 plugins: {
                     legend: { display: !!target, labels: { color: colours.inkSoft, boxWidth: 12 } },
-                    tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + money(ctx.parsed.y) } }
+                    tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + money(ctx.parsed.y) } },
+                    valueLabels: { datasets: [0], color: colours.inkSoft, format: moneyLabel, minSpacing: 42 }
                 },
                 scales: {
                     x: { grid: { display: false }, ticks: { color: colours.inkSoft } },
@@ -284,11 +361,18 @@
                     borderWidth: 2
                 }]
             },
+            plugins: [centreText],
             options: {
                 maintainAspectRatio: false,
-                cutout: '58%',
+                cutout: '62%',
                 plugins: {
                     legend: { position: 'bottom', labels: { color: colours.inkSoft, boxWidth: 12 } },
+                    centreText: {
+                        text: '{{ stats.total_spend|money }}',
+                        label: 'this period',
+                        color: colours.ink,
+                        subColor: colours.inkSoft
+                    },
                     tooltip: {
                         callbacks: {
                             label: ctx => ctx.label + ': ' + money(ctx.parsed)
@@ -312,11 +396,14 @@
                     backgroundColor: colours.brand, borderRadius: 4
                 }]
             },
+            plugins: [valueLabels],
             options: {
                 indexAxis: 'y',
                 maintainAspectRatio: false,
+                layout: { padding: { right: 54 } },
                 plugins: {
                     legend: { display: false },
+                    valueLabels: { datasets: [0], color: colours.inkSoft, format: moneyLabel, minSpacing: 42 },
                     tooltip: {
                         callbacks: {
                             title: ctx => products[ctx[0].dataIndex].product_name,
@@ -344,8 +431,18 @@
             }
             const legend = chart.options.plugins && chart.options.plugins.legend;
             if (legend && legend.labels) legend.labels.color = colours.inkSoft;
+            const valueOptions = chart.options.plugins && chart.options.plugins.valueLabels;
+            if (valueOptions) valueOptions.color = colours.inkSoft;
+            const centreOptions = chart.options.plugins && chart.options.plugins.centreText;
+            if (centreOptions) {
+                centreOptions.color = colours.ink;
+                centreOptions.subColor = colours.inkSoft;
+            }
             chart.data.datasets.forEach(function (dataset) {
-                if (chart.config.type === 'doughnut') {
+                if (dataset.gvKind === 'budgetBars') {
+                    dataset.backgroundColor = monthly.map(d => target && d[1] > target
+                        ? colours.danger : colours.brand);
+                } else if (chart.config.type === 'doughnut') {
                     dataset.backgroundColor = colours.palette;
                     dataset.borderColor = colours.surface;
                 } else if (dataset.type === 'line') {

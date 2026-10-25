@@ -16,6 +16,11 @@ os.environ.setdefault("SECRET_KEY", "test-secret-key-for-pytest")
 for var in ("ADMIN_USERNAME", "ADMIN_PASSWORD"):
     os.environ.pop(var, None)
 
+# An ambient AI key would make tests call a real API. Tests that need one set
+# it explicitly and mock the network.
+for var in ("OPENROUTER_API_KEY", "OPENROUTER_MODEL"):
+    os.environ.pop(var, None)
+
 
 @pytest.fixture
 def app():

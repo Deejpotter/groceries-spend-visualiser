@@ -9,7 +9,9 @@ workers = int(os.getenv("GUNICORN_WORKERS", "2"))
 threads = int(os.getenv("GUNICORN_THREADS", "4"))
 
 # Timeouts
-timeout = 30
+# The optional AI review waits on OpenRouter, which can take up to a minute
+# on a free model, so leave headroom above the 30s default.
+timeout = int(os.getenv("GUNICORN_TIMEOUT", "90"))
 keepalive = 5
 
 # Logging

@@ -66,8 +66,16 @@ _INCOME_KEYWORDS = (
 _INTERNAL_TRANSFER_PATTERNS = (
     "transfer to savings", "transfer to offset", "transfer to credit",
     "transfer to visa", "transfer from savings", "transfer from offset",
-    "internal transfer", "transfer between", "own account",
-    "credit card payment", "payment to card", "card payment received",
+    "internal transfer", "transfer between", "own account", "savings",
+    "offset account", "credit card payment", "payment to card",
+    "card payment received",
+)
+
+# Bank charges are not household bills, even when they repeat.
+_FEE_KEYWORDS = (
+    "transaction fee", "account fee", "monthly fee", "service fee",
+    "international fee", "foreign transaction", "interest charge",
+    "overdraft fee", "late fee", "card fee", "atm fee", "annual fee",
 )
 
 _CATEGORY_KEYWORDS = [
@@ -148,6 +156,18 @@ def guess_category(description: str) -> str:
     return "other"
 
 
+def is_ignored_description(description: str) -> bool:
+    """True for income, bank fees and internal transfers, which are never bills."""
+    lowered = (description or "").lower()
+    if any(word in lowered for word in _INCOME_KEYWORDS):
+        return True
+    if any(pattern in lowered for pattern in _INTERNAL_TRANSFER_PATTERNS):
+        return True
+    if any(word in lowered for word in _FEE_KEYWORDS):
+        return True
+    return False
+
+
 def _display_name(descriptions: List[str]) -> str:
     """The most common description, trimmed and title-cased for display."""
     counts = Counter(d.strip() for d in descriptions if d and d.strip())
@@ -181,10 +201,7 @@ def detect_recurring(transactions: List[Dict],
         if (row.get("direction") or "debit") == "credit":
             continue
         description = row.get("description") or ""
-        lowered = description.lower()
-        if any(word in lowered for word in _INCOME_KEYWORDS):
-            continue
-        if any(pattern in lowered for pattern in _INTERNAL_TRANSFER_PATTERNS):
+        if is_ignored_description(description):
             continue
         if (row.get("status") or "") == "grocery":
             continue

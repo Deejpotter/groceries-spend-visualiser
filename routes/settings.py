@@ -1,5 +1,7 @@
 """Routes for app settings."""
 
+import os
+
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 from database import get_db, get_setting, set_setting, get_plan_dates
 from models import MAX_PLAN_DAYS, parse_date
@@ -30,6 +32,8 @@ def _settings_values():
     from services.api_keys import list_keys
     banksync_key_set = bool(get_setting("banksync_api_key"))
     banksync_last_sync = get_setting("banksync_last_sync") or ""
+    stored_ai_key = bool(get_setting("openrouter_api_key"))
+    env_ai_key = bool(os.getenv("OPENROUTER_API_KEY"))
     return {
         "plan_start": plan_start,
         "plan_end": plan_end,
@@ -43,6 +47,11 @@ def _settings_values():
         "new_api_key": None,
         "banksync_key_set": banksync_key_set,
         "banksync_last_sync": banksync_last_sync,
+        "openrouter_key_set": stored_ai_key or env_ai_key,
+        "openrouter_from_env": env_ai_key and not stored_ai_key,
+        "openrouter_model": (get_setting("openrouter_model")
+                             or os.getenv("OPENROUTER_MODEL")
+                             or "openrouter/free"),
         "errors": None,
         "error_form": None,
     }
@@ -172,6 +181,27 @@ def save():
         if request.headers.get("HX-Request"):
             return render_template("settings/_save_status.html", action="budget")
         flash("Budget target saved.", "success")
+
+    elif action == "save_ai":
+        key = request.form.get("openrouter_api_key", "").strip()
+        model = request.form.get("openrouter_model", "").strip() or "openrouter/free"
+        if len(model) > 80:
+            values = _settings_values()
+            values.update({"openrouter_model": model,
+                           "errors": ["The model name is too long."],
+                           "error_form": "ai"})
+            if request.headers.get("HX-Request"):
+                return render_template("settings.html", **values)
+            return render_template("settings.html", **values)
+        if request.form.get("remove_ai_key"):
+            set_setting("openrouter_api_key", "")
+        elif key:
+            set_setting("openrouter_api_key", key)
+        set_setting("openrouter_model", model)
+        db.commit()
+        if request.headers.get("HX-Request"):
+            return render_template("settings/_save_status.html", action="ai")
+        flash("AI review settings saved.", "success")
 
     elif action == "test_banksync":
         from markupsafe import escape

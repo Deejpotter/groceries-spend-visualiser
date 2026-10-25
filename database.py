@@ -219,6 +219,17 @@ CREATE TABLE IF NOT EXISTS merchant_decisions (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS ai_reviews (
+    merchant_key TEXT PRIMARY KEY,
+    evidence_hash TEXT NOT NULL,
+    verdict TEXT NOT NULL,
+    display_name TEXT,
+    category TEXT,
+    frequency TEXT,
+    reason TEXT,
+    reviewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS import_batches (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     token TEXT UNIQUE NOT NULL,
@@ -338,7 +349,7 @@ def init_db() -> bool:
 COUNTED_TABLES = (
     "users", "api_keys", "ingredients", "recipes", "recipe_ingredients", "meal_rules",
     "meal_plan_entries", "shopping_list_items", "pantry_items", "purchases",
-    "subscriptions", "bank_transactions", "merchant_decisions",
+    "subscriptions", "bank_transactions", "merchant_decisions", "ai_reviews",
     "import_batches", "import_staged_lines",
 )
 
