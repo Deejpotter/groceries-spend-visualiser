@@ -57,9 +57,11 @@
     </div>
     <div class="card-body">
         <p class="text-muted">
-            These rows didn't match any grocery merchant pattern, so nothing was imported.
-            Add patterns on the <a href="{{ url_for('settings.settings') }}">settings page</a>
-            and re-import the file.
+            These rows didn't match any grocery merchant pattern, so they weren't
+            imported as purchases. They are still stored for bill and subscription
+            detection. To treat one as a shop, add a pattern on the
+            <a href="{{ url_for('settings.settings') }}">settings page</a> and re-import
+            the file.
         </p>
         <div class="table-responsive">
             <table class="table table-sm">

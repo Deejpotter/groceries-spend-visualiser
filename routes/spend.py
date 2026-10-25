@@ -152,7 +152,7 @@ def import_bank_csv():
     """Import a transaction CSV exported from NetBank."""
     from services.bank_import import (
         import_bank_transactions, load_merchant_patterns, parse_netbank_csv,
-        to_purchases,
+        store_bank_transactions, to_purchases,
     )
     upload = request.files.get("bank_file")
     if not upload or not upload.filename:
@@ -169,7 +169,9 @@ def import_bank_csv():
         flash(errors[0], "error")
         return redirect(url_for("spend.spend_import"))
     db = get_db()
-    purchases, unclassified = to_purchases(rows, load_merchant_patterns(db))
+    patterns = load_merchant_patterns(db)
+    store_bank_transactions(db, rows, "csv", patterns)
+    purchases, unclassified = to_purchases(rows, patterns)
     added, duplicates = import_bank_transactions(db, purchases)
     from services.bank_import import remember_unclassified
     remember_unclassified(db, unclassified)

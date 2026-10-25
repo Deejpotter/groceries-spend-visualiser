@@ -17,6 +17,7 @@ from services.subscriptions import (
     suggest_from_unclassified,
 )
 from services.spend_analysis import load_purchases
+from services.recurring import detect_recurring
 
 subscriptions_bp = Blueprint("subscriptions", __name__)
 
@@ -253,6 +254,7 @@ def subscription_purge(sub_id):
         flash("Subscription not found.", "error")
         return redirect(url_for("subscriptions.subscription_list"))
 
+    db.execute("DELETE FROM merchant_decisions WHERE subscription_id = ?", (sub_id,))
     db.execute("DELETE FROM subscriptions WHERE id = ?", (sub_id,))
     db.commit()
     if request.headers.get("HX-Request"):
@@ -370,8 +372,20 @@ def subscription_fortnight():
 @subscriptions_bp.route("/subscriptions/suggest")
 @login_required
 def subscription_suggest():
-    """Show subscription suggestions from bank data and purchase history."""
+    """Show subscription suggestions from bank transactions and purchase history."""
     db = get_db()
+
+    # Recurring payments detected from every stored bank transaction. Merchants
+    # already accepted or dismissed are excluded so they don't nag.
+    decisions = [dict(r) for r in db.execute(
+        "SELECT * FROM merchant_decisions ORDER BY display_name"
+    ).fetchall()]
+    excluded_keys = [d["merchant_key"] for d in decisions]
+    transactions = [dict(r) for r in db.execute(
+        """SELECT txn_date, description, amount, merchant_key, direction, status
+           FROM bank_transactions"""
+    ).fetchall()]
+    detected = detect_recurring(transactions, excluded_keys=excluded_keys)
 
     # Suggestions from purchase history (about 13 months back from the
     # newest purchase, so old one-offs don't re-qualify as "recurring").
@@ -385,6 +399,7 @@ def subscription_suggest():
     purchase_suggestions = suggest_from_purchases(purchases)
 
     # Suggestions from BankSync unclassified (stored in settings as JSON).
+    # Kept for data imported before transactions were stored in their own table.
     import json
     unclassified_raw = (get_setting("banksync_unclassified") or "[]").strip()
     try:
@@ -393,18 +408,26 @@ def subscription_suggest():
         unclassified = []
     banksync_suggestions = suggest_from_unclassified(unclassified)
 
-    # Merge and deduplicate by name.
+    # Merge and deduplicate by name, skipping anything already tracked.
+    existing = {
+        (row["name"] or "").strip().lower()
+        for row in db.execute("SELECT name FROM subscriptions").fetchall()
+    }
     seen = set()
     all_suggestions = []
-    for s in purchase_suggestions + banksync_suggestions:
+    for s in detected + purchase_suggestions + banksync_suggestions:
         key = s["name"].lower()
-        if key not in seen:
-            seen.add(key)
-            all_suggestions.append(s)
+        if key in seen or key in existing:
+            continue
+        seen.add(key)
+        all_suggestions.append(s)
+
+    dismissed = [d for d in decisions if d["decision"] == "ignored"]
 
     return render_template(
         "subscriptions/suggest.html",
         suggestions=all_suggestions,
+        dismissed=dismissed,
         format_frequency=format_frequency,
     )
 
@@ -417,6 +440,7 @@ def subscription_accept_suggestion():
     amount_raw = request.form.get("amount", "").strip()
     frequency = request.form.get("frequency", "monthly").strip().lower()
     category = request.form.get("category", "other").strip()
+    merchant_key = request.form.get("merchant_key", "").strip()
 
     if not name:
         flash("Suggestion is missing a name.", "error")
@@ -439,14 +463,79 @@ def subscription_accept_suggestion():
         next_due = date.today().isoformat()
 
     db = get_db()
-    db.execute(
-        """INSERT INTO subscriptions (name, amount, frequency, category, next_due, notes)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (name, amount, frequency, category, next_due, "Added from suggestion"),
+    cursor = db.execute(
+        """INSERT INTO subscriptions
+           (name, amount, frequency, category, next_due, notes, merchant_key)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (name, amount, frequency, category, next_due, "Added from suggestion",
+         merchant_key or None),
     )
+    if merchant_key:
+        db.execute(
+            """INSERT INTO merchant_decisions
+               (merchant_key, display_name, amount, frequency, decision, subscription_id)
+               VALUES (?, ?, ?, ?, 'accepted', ?)
+               ON CONFLICT(merchant_key) DO UPDATE SET
+                 decision = 'accepted',
+                 display_name = excluded.display_name,
+                 amount = excluded.amount,
+                 frequency = excluded.frequency,
+                 subscription_id = excluded.subscription_id""",
+            (merchant_key, name, amount, frequency, cursor.lastrowid),
+        )
     db.commit()
     flash(f"Added subscription '{name}'.", "success")
     return redirect(url_for("subscriptions.subscription_list"))
+
+
+@subscriptions_bp.route("/subscriptions/suggest/ignore", methods=["POST"])
+@login_required
+def subscription_ignore_suggestion():
+    """Dismiss a detected merchant so it stops being suggested."""
+    merchant_key = request.form.get("merchant_key", "").strip()
+    if not merchant_key:
+        flash("That suggestion can't be dismissed.", "error")
+        return redirect(url_for("subscriptions.subscription_suggest"))
+
+    db = get_db()
+    db.execute(
+        """INSERT INTO merchant_decisions
+           (merchant_key, display_name, amount, frequency, decision)
+           VALUES (?, ?, ?, ?, 'ignored')
+           ON CONFLICT(merchant_key) DO UPDATE SET
+             decision = 'ignored',
+             display_name = excluded.display_name,
+             amount = excluded.amount,
+             frequency = excluded.frequency""",
+        (merchant_key,
+         request.form.get("name", "").strip() or merchant_key,
+         _amount_or_none(request.form.get("amount")),
+         request.form.get("frequency", "").strip() or None),
+    )
+    db.commit()
+    flash("Suggestion dismissed. It won't be suggested again.", "success")
+    return redirect(url_for("subscriptions.subscription_suggest"))
+
+
+@subscriptions_bp.route("/subscriptions/suggest/restore/<int:decision_id>", methods=["POST"])
+@login_required
+def subscription_restore_suggestion(decision_id):
+    """Undo a dismissal."""
+    db = get_db()
+    db.execute(
+        "DELETE FROM merchant_decisions WHERE id = ? AND decision = 'ignored'",
+        (decision_id,),
+    )
+    db.commit()
+    flash("Suggestion restored.", "success")
+    return redirect(url_for("subscriptions.subscription_suggest"))
+
+
+def _amount_or_none(raw):
+    try:
+        return float(str(raw).replace("$", "").replace(",", ""))
+    except (TypeError, ValueError):
+        return None
 
 
 def register_subscriptions_routes(app):

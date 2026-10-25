@@ -7,7 +7,8 @@ import pytest
 from conftest import login
 from services.bank_import import (
     classify_merchant, force_import_duplicate, import_bank_transactions,
-    load_merchant_patterns, parse_netbank_csv, to_purchases,
+    load_merchant_patterns, parse_netbank_csv, store_bank_transactions,
+    to_purchases,
 )
 
 AMOUNT_LAYOUT = """Date,Description,Amount,Balance
@@ -32,8 +33,10 @@ def test_parse_amount_layout():
     assert len(rows) == 4  # $0.00 line is not a purchase
     assert rows[0] == {"order_date": "2026-10-01",
                        "description": "WOOLWORTHS MT WAVERLEY 3456",
-                       "amount": 82.40}
+                       "amount": 82.40,
+                       "direction": "debit"}
     assert rows[2]["amount"] == 1500.00  # money in comes back positive
+    assert rows[2]["direction"] == "credit"
     assert errors == []
 
 
@@ -83,7 +86,8 @@ def test_to_purchases_splits_unclassified():
     rows, _ = parse_netbank_csv(AMOUNT_LAYOUT)
     purchases, unclassified = to_purchases(rows, PATTERNS)
     assert len(purchases) == 2
-    assert len(unclassified) == 2
+    # The salary credit is money in, so it is neither a purchase nor classified.
+    assert len(unclassified) == 1
     assert purchases[0]["store"] == "Woolworths"
     assert purchases[0]["product_name"] == "WOOLWORTHS MT WAVERLEY 3456"
     assert purchases[0]["line_total"] == 82.40
@@ -95,6 +99,26 @@ def test_basket_id_is_stable():
     first, _ = to_purchases(rows, PATTERNS)
     second, _ = to_purchases(rows, PATTERNS)
     assert [p["basket_id"] for p in first] == [p["basket_id"] for p in second]
+
+
+def test_store_bank_transactions_keeps_every_row(db):
+    rows, _ = parse_netbank_csv(AMOUNT_LAYOUT)
+    added = store_bank_transactions(db, rows, "csv", PATTERNS)
+    assert added == 4  # purchases, an unknown shop and the salary credit
+
+    stored = {
+        row["description"]: dict(row)
+        for row in db.execute("SELECT * FROM bank_transactions").fetchall()
+    }
+    assert stored["MY OB PAYROLL"]["direction"] == "credit"
+    assert stored["MY OB PAYROLL"]["merchant_key"] == "my"
+    assert stored["WOOLWORTHS MT WAVERLEY 3456"]["status"] == "grocery"
+    assert stored["UNKNOWN SHOPPE"]["status"] == "other"
+    assert stored["UNKNOWN SHOPPE"]["merchant_key"] == "unknown"
+
+    # Re-importing the same statement adds nothing.
+    assert store_bank_transactions(db, rows, "csv", PATTERNS) == 0
+    assert db.execute("SELECT COUNT(*) FROM bank_transactions").fetchone()[0] == 4
 
 
 def test_import_then_dedupe(db):
@@ -160,6 +184,8 @@ def test_import_bank_csv_route(client, db):
     }, content_type="multipart/form-data")
     assert resp.status_code == 200
     assert db.execute("SELECT COUNT(*) FROM purchases").fetchone()[0] == 2
+    # Every row is kept for recurring-payment detection, not just purchases.
+    assert db.execute("SELECT COUNT(*) FROM bank_transactions").fetchone()[0] == 4
     # re-import: everything lands on the duplicates review page
     resp = client.post("/spend/import-bank", data={
         "bank_file": (io.BytesIO(AMOUNT_LAYOUT.encode()), "statement.csv"),

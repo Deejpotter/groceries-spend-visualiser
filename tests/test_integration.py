@@ -1897,6 +1897,79 @@ class TestSubscriptions:
         assert b"Netflix" in resp.data
         assert b"Monthly" in resp.data  # formatted, not the raw code
 
+    def _bank_rows(self, db, description, amount, dates,
+                   direction="debit", status="other"):
+        from services.recurring import normalise_merchant
+        for i, txn_date in enumerate(dates):
+            db.execute(
+                """INSERT INTO bank_transactions
+                   (source, external_id, txn_date, description, merchant_key,
+                    amount, direction, status)
+                   VALUES ('csv', ?, ?, ?, ?, ?, ?, ?)""",
+                (f"{description}-{i}", txn_date, description,
+                 normalise_merchant(description), amount, direction, status),
+            )
+        db.commit()
+
+    def test_suggest_detects_recurring_bank_transactions(self, client, db):
+        _login(client, "subuser", "test123")
+        self._bank_rows(db, "BINGE.COM", 16.00,
+                        ["2026-01-10", "2026-02-10", "2026-03-10", "2026-04-10"])
+        resp = client.get("/subscriptions/suggest")
+        assert resp.status_code == 200
+        assert b"Binge" in resp.data
+        assert b"4 payments" in resp.data
+        assert b"subscription" in resp.data
+        assert b"Monthly" in resp.data
+
+    def test_accepting_a_detected_payment_links_the_merchant(self, client, db):
+        _login(client, "subuser", "test123")
+        self._bank_rows(db, "BINGE.COM", 16.00,
+                        ["2026-01-10", "2026-02-10", "2026-03-10", "2026-04-10"])
+        resp = client.post("/subscriptions/suggest/accept", data={
+            "merchant_key": "binge", "name": "Binge", "amount": "16.00",
+            "frequency": "monthly", "category": "entertainment",
+            "next_due": "2026-05-10",
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+        sub = db.execute("SELECT * FROM subscriptions").fetchone()
+        assert sub["merchant_key"] == "binge"
+        assert sub["next_due"] == "2026-05-10"
+        decision = db.execute("SELECT * FROM merchant_decisions").fetchone()
+        assert decision["decision"] == "accepted"
+        assert decision["subscription_id"] == sub["id"]
+        # Accepted merchants are not suggested again.
+        resp = client.get("/subscriptions/suggest")
+        assert b"4 payments" not in resp.data
+
+    def test_dismiss_and_restore_a_detected_payment(self, client, db):
+        _login(client, "subuser", "test123")
+        self._bank_rows(db, "BINGE.COM", 16.00,
+                        ["2026-01-10", "2026-02-10", "2026-03-10"])
+        client.post("/subscriptions/suggest/ignore", data={
+            "merchant_key": "binge", "name": "Binge", "amount": "16.00",
+            "frequency": "monthly",
+        })
+        resp = client.get("/subscriptions/suggest")
+        assert b"Dismissed" in resp.data
+        assert b"3 payments" not in resp.data
+
+        decision_id = db.execute("SELECT id FROM merchant_decisions").fetchone()["id"]
+        assert client.post(
+            f"/subscriptions/suggest/restore/{decision_id}",
+        ).status_code == 302
+        resp = client.get("/subscriptions/suggest")
+        assert b"3 payments" in resp.data
+        assert db.execute("SELECT COUNT(*) FROM merchant_decisions").fetchone()[0] == 0
+
+    def test_existing_subscription_is_not_suggested_again(self, client, db):
+        _login(client, "subuser", "test123")
+        self._add(client, name="Binge", amount="16.00")
+        self._bank_rows(db, "BINGE.COM", 16.00,
+                        ["2026-01-10", "2026-02-10", "2026-03-10", "2026-04-10"])
+        resp = client.get("/subscriptions/suggest")
+        assert b"4 payments" not in resp.data
+
     def test_suggest_ignores_ancient_purchases(self, client, db):
         _login(client, "subuser", "test123")
         for i, d in enumerate(("2020-01-01", "2020-02-01", "2020-03-01")):

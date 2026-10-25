@@ -191,6 +191,34 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS bank_transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source TEXT NOT NULL DEFAULT 'csv',
+    external_id TEXT NOT NULL,
+    txn_date TEXT NOT NULL,
+    description TEXT NOT NULL,
+    merchant_key TEXT NOT NULL,
+    amount REAL NOT NULL,
+    direction TEXT NOT NULL DEFAULT 'debit',
+    status TEXT NOT NULL DEFAULT 'other',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (source, external_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_bank_transactions_date ON bank_transactions(txn_date);
+CREATE INDEX IF NOT EXISTS idx_bank_transactions_merchant ON bank_transactions(merchant_key);
+
+CREATE TABLE IF NOT EXISTS merchant_decisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    merchant_key TEXT NOT NULL UNIQUE,
+    display_name TEXT,
+    amount REAL,
+    frequency TEXT,
+    decision TEXT NOT NULL,
+    subscription_id INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS import_batches (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     token TEXT UNIQUE NOT NULL,
@@ -244,6 +272,7 @@ MIGRATIONS = [
     ("shopping_list_items", "origin", "TEXT"),
     ("pantry_items", "origin", "TEXT"),
     ("purchases", "origin", "TEXT"),
+    ("subscriptions", "merchant_key", "TEXT"),
 ]
 
 
@@ -309,7 +338,8 @@ def init_db() -> bool:
 COUNTED_TABLES = (
     "users", "api_keys", "ingredients", "recipes", "recipe_ingredients", "meal_rules",
     "meal_plan_entries", "shopping_list_items", "pantry_items", "purchases",
-    "subscriptions", "import_batches", "import_staged_lines",
+    "subscriptions", "bank_transactions", "merchant_decisions",
+    "import_batches", "import_staged_lines",
 )
 
 

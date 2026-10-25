@@ -34,6 +34,43 @@ SUBSCRIPTION_CATEGORIES = [
 
 SUBSCRIPTION_CATEGORY_LOOKUP = {code: label for code, label in SUBSCRIPTION_CATEGORIES}
 
+# Australian merchants worth naming and categorising on sight. Detection uses
+# these for display only; the observed cadence and amount always win.
+KNOWN_MERCHANTS = [
+    ("netflix", "Netflix", "monthly", "entertainment"),
+    ("spotify", "Spotify", "monthly", "entertainment"),
+    ("stan", "Stan", "monthly", "entertainment"),
+    ("disney", "Disney+", "monthly", "entertainment"),
+    ("amazon prime", "Amazon Prime", "monthly", "entertainment"),
+    ("youtube", "YouTube Premium", "monthly", "entertainment"),
+    ("apple", "Apple Services", "monthly", "entertainment"),
+    ("microsoft", "Microsoft", "monthly", "entertainment"),
+    ("agl", "AGL Energy", "quarterly", "utilities"),
+    ("origin energy", "Origin Energy", "quarterly", "utilities"),
+    ("energyaustralia", "EnergyAustralia", "monthly", "utilities"),
+    ("energy australia", "EnergyAustralia", "monthly", "utilities"),
+    ("aami", "AAMI Insurance", "monthly", "insurance"),
+    ("racv", "RACV Insurance", "monthly", "insurance"),
+    ("nrma", "NRMA Insurance", "monthly", "insurance"),
+    ("bupa", "Bupa Health", "monthly", "health"),
+    ("medibank", "Medibank Health", "monthly", "health"),
+    ("telstra", "Telstra", "monthly", "bills"),
+    ("optus", "Optus", "monthly", "bills"),
+    ("vodafone", "Vodafone", "monthly", "bills"),
+    ("foxtel", "Foxtel", "monthly", "entertainment"),
+    ("nrl ticket", "NRL Tickets", "yearly", "entertainment"),
+    ("nrl", "NRL/Telstra", "yearly", "entertainment"),
+    ("iinet", "iiNet", "monthly", "bills"),
+    ("tpg", "TPG Internet", "monthly", "bills"),
+    ("austar", "Austar", "monthly", "entertainment"),
+    ("drops", "Gym/Health", "monthly", "health"),
+    ("fitness", "Gym/Fitness", "monthly", "health"),
+    ("jetts", "Jetts Fitness", "monthly", "health"),
+    ("anytime", "Anytime Fitness", "monthly", "health"),
+    ("snap", "Snap Fitness", "monthly", "health"),
+    ("jim", "Jim's Fitness", "monthly", "health"),
+]
+
 # Fixed-day intervals for weekly/fortnightly. Monthly/quarterly/yearly use
 # calendar arithmetic (add_months) so a bill on the 14th stays on the 14th.
 _FREQUENCY_DAYS = {
@@ -207,40 +244,6 @@ def suggest_from_unclassified(unclassified: List[Dict]) -> List[Dict]:
 
     Matches known Australian merchant names and surfaces recurring descriptions.
     """
-    KNOWN_MERCHANTS = [
-        ("netflix", "Netflix", "monthly", "entertainment"),
-        ("spotify", "Spotify", "monthly", "entertainment"),
-        ("stan", "Stan", "monthly", "entertainment"),
-        ("disney", "Disney+", "monthly", "entertainment"),
-        ("amazon prime", "Amazon Prime", "monthly", "entertainment"),
-        ("youtube", "YouTube Premium", "monthly", "entertainment"),
-        ("apple", "Apple Services", "monthly", "entertainment"),
-        ("microsoft", "Microsoft", "monthly", "entertainment"),
-        ("agl", "AGL Energy", "quarterly", "utilities"),
-        ("origin energy", "Origin Energy", "quarterly", "utilities"),
-        ("energyaustralia", "EnergyAustralia", "monthly", "utilities"),
-        ("aami", "AAMI Insurance", "monthly", "insurance"),
-        ("racv", "RACV Insurance", "monthly", "insurance"),
-        ("nrma", "NRMA Insurance", "monthly", "insurance"),
-        ("bupa", "Bupa Health", "monthly", "health"),
-        ("medibank", "Medibank Health", "monthly", "health"),
-        ("telstra", "Telstra", "monthly", "bills"),
-        ("optus", "Optus", "monthly", "bills"),
-        ("voda", "Vodafone", "monthly", "bills"),
-        ("foxtel", "Foxtel", "monthly", "entertainment"),
-        ("nrl", "NRL/Telstra", "yearly", "entertainment"),
-        ("nrl ticket", "NRL Tickets", "yearly", "entertainment"),
-        ("iinet", "iiNet", "monthly", "bills"),
-        ("tpg", "TPG Internet", "monthly", "bills"),
-        ("austar", "Austar", "monthly", "entertainment"),
-        ("drops", "Gym/Health", "monthly", "health"),
-        ("fitness", "Gym/Fitness", "monthly", "health"),
-        ("jetts", "Jetts Fitness", "monthly", "health"),
-        ("anytime", "Anytime Fitness", "monthly", "health"),
-        ("snap", "Snap Fitness", "monthly", "health"),
-        ("jim", "Jim's Fitness", "monthly", "health"),
-    ]
-
     suggestions = []
     seen = set()
 

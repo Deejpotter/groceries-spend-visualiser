@@ -196,7 +196,11 @@ def map_banksync_transaction(txn: Dict) -> Optional[Dict]:
         return None
     return {"txn_id": str(txn_id), "order_date": order_date,
             "description": str(description).strip(),
-            "amount": round(abs(value), 2)}
+            "amount": round(abs(value), 2),
+            # Some providers report money out as a positive number, so only a
+            # negative amount is a certain debit. Detection also filters income
+            # descriptions before trusting an unknown direction.
+            "direction": "debit" if value < 0 else "unknown"}
 
 
 def sync_accounts(db, client, patterns) -> Dict:
@@ -208,7 +212,7 @@ def sync_accounts(db, client, patterns) -> Dict:
     """
     from database import get_setting, set_setting
     from services.bank_import import (
-        bank_txn_to_purchase, import_bank_transactions,
+        bank_txn_to_purchase, import_bank_transactions, store_bank_transactions,
     )
     try:
         cursors = json.loads(get_setting("banksync_cursors") or "{}")
@@ -237,11 +241,13 @@ def sync_accounts(db, client, patterns) -> Dict:
                 errors.append(str(exc))
                 continue
             purchases = []
+            mapped = []
             latest = bookmark.get("date")
             for txn in txns:
                 row = map_banksync_transaction(txn)
                 if row is None:
                     continue
+                mapped.append(row)
                 if latest is None or row["order_date"] > latest:
                     latest = row["order_date"]
                 purchase = bank_txn_to_purchase(row, patterns)
@@ -249,6 +255,7 @@ def sync_accounts(db, client, patterns) -> Dict:
                     purchases.append(purchase)
                 else:
                     unclassified.append(row)
+            store_bank_transactions(db, mapped, "banksync", patterns)
             batch_added, batch_duplicates = import_bank_transactions(
                 db, purchases)
             added += batch_added

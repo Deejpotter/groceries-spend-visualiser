@@ -30,6 +30,9 @@ app.py (factory, auth, dashboard, template filters, CLI)
 │   ├── spend_import.py            — CSV parsing, cup-price parsing, PDF invoice parsing,
 │   │                               staged import batches (review/edit/confirm), de-duplicated import
 │   ├── spend_analysis.py          — pure spend statistics
+│   ├── bank_import.py             — bank CSV parsing, merchant classification, transaction storage
+│   ├── recurring.py               — recurring bill/subscription detection over bank transactions
+│   ├── subscriptions.py           — bill/subscription schedules, next due, mark paid
 │   └── repository.py              — loads DB rows into the dicts the pure services use
 │
 ├── database.py      — SQLite connection, schema, idempotent migrations, settings KV
@@ -74,9 +77,12 @@ Single SQLite file (default `./data/groceries.db`). Schema is created idempotent
 | `shopping_list_items` | Aggregated list with tick state, manual items, cost estimates |
 | `pantry_items` | Stock per ingredient with quantity, unit, expiry, location |
 | `purchases` | Imported order lines (Woolworths invoices/CSV), linked to ingredients |
+| `bank_transactions` | Every imported or synced bank row, kept for recurring-payment detection |
+| `subscriptions` | Tracked bills and subscriptions with schedule, category and next due date |
+| `merchant_decisions` | Merchants the user accepted or dismissed, so detection does not re-suggest them |
 | `import_batches` / `import_staged_lines` | Pending PDF-import review batches and their editable lines |
 
-Indexes: `idx_purchases_date` on `purchases(order_date)`, `idx_plan_date` on `meal_plan_entries(date, meal_type)`.
+Indexes: `idx_purchases_date` on `purchases(order_date)`, `idx_plan_date` on `meal_plan_entries(date, meal_type)`, `idx_bank_transactions_date` and `idx_bank_transactions_merchant` on `bank_transactions`.
 
 ## Authentication
 
