@@ -7,6 +7,7 @@ Flask or SQL so they are easy to unit-test.
 """
 
 from calendar import monthrange
+from collections import defaultdict
 from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional
 
@@ -193,6 +194,77 @@ def format_frequency(freq: str) -> str:
 def subscription_category_label(code: str) -> str:
     """Human-readable label for a subscription category code."""
     return SUBSCRIPTION_CATEGORY_LOOKUP.get(code, code)
+
+
+# How many times a cycle happens per month, for comparing bills on one scale.
+_MONTHLY_FACTORS = {
+    "weekly": 52 / 12,
+    "fortnightly": 26 / 12,
+    "monthly": 1,
+    "quarterly": 1 / 3,
+    "yearly": 1 / 12,
+}
+
+
+def monthly_cost(subscription: Dict) -> float:
+    """What one subscription costs per month, whatever its billing cycle.
+
+    Turning weekly, quarterly and yearly bills into a monthly figure is the
+    only honest way to compare them on a chart.
+    """
+    freq = (subscription.get("frequency") or "").lower()
+    factor = _MONTHLY_FACTORS.get(freq)
+    if factor is None:
+        return 0.0
+    return round(float(subscription.get("amount") or 0) * factor, 2)
+
+
+def monthly_cost_total(subscriptions: List[Dict]) -> float:
+    """Combined monthly cost of the active subscriptions."""
+    return round(sum(monthly_cost(s) for s in subscriptions
+                     if s.get("active", 1)), 2)
+
+
+def monthly_cost_by_category(subscriptions: List[Dict]) -> List[Dict]:
+    """Monthly cost split by category, largest first, with each share of the total."""
+    totals: Dict[str, float] = defaultdict(float)
+    for s in subscriptions:
+        if not s.get("active", 1):
+            continue
+        totals[s.get("category") or "other"] += monthly_cost(s)
+    total = sum(totals.values())
+    return [
+        {"category": category, "total": round(value, 2),
+         "share": round(100 * value / total) if total else 0}
+        for category, value in sorted(totals.items(), key=lambda x: -x[1])
+        if value > 0
+    ]
+
+
+def upcoming_weeks(subscriptions: List[Dict], weeks: int = 8,
+                   start: Optional[date] = None) -> List[Dict]:
+    """Total due in each Monday-Sunday week from the current one.
+
+    Gives the Bills page a simple "what's coming" bar chart. Each row carries
+    the week bounds, label, total, count and the names due, so the template can
+    explain a bar without recalculating anything.
+    """
+    start = start or date.today()
+    monday = start - timedelta(days=start.weekday())
+    result = []
+    for index in range(weeks):
+        week_start = monday + timedelta(days=7 * index)
+        week_end = week_start + timedelta(days=6)
+        due = subscriptions_due_in_range(subscriptions, week_start, week_end)
+        result.append({
+            "start": week_start,
+            "end": week_end,
+            "label": week_start.strftime("%d %b"),
+            "total": round(sum(float(s.get("amount") or 0) for s in due), 2),
+            "count": len(due),
+            "names": [s.get("name") or "Bill" for s in due],
+        })
+    return result
 
 
 def mark_paid(subscription: Dict, today: Optional[date] = None) -> tuple:

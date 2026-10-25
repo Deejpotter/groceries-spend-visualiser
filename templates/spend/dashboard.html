@@ -95,9 +95,72 @@
     {% endif %}
 </div>
 
-<div class="card mb-4">
-    <div class="card-header py-2"><strong>Monthly spend</strong></div>
-    <div class="card-body"><div class="chart-box"><canvas id="monthlyChart" aria-label="Monthly spend chart" role="img"></canvas></div></div>
+<p class="text-muted small">
+    Start with the tiles: how much, how often, and how much each shop costs.
+    The charts below show the shape of that spending.
+</p>
+
+<div class="card mb-4 section-card">
+    <div class="card-header py-2"><strong>Spending over time</strong>
+        <span class="small text-muted ml-2">each bar is one month</span></div>
+    <div class="card-body">
+        <div class="chart-box"><canvas id="monthlyChart" aria-label="Bar chart of total grocery spend per month, with a dashed line showing the monthly budget" role="img"></canvas></div>
+        <p class="small text-muted mb-0 mt-2">
+            Taller bars are more expensive months.{% if budget %} The dashed line is your
+            {{ budget.target|money }} monthly target — bars above it are months you went over.{% endif %}
+        </p>
+        <details class="mt-2 small">
+            <summary>How to read this</summary>
+            <p class="mb-0">Each bar adds up every tracked shop in that month. A bar can be high
+            because you shopped more often, bought more expensive items, or both. Compare
+            neighbouring months rather than single bars — one big shop can skew a month.</p>
+        </details>
+    </div>
+</div>
+
+<div class="row">
+    {% if stats.store_spend|length > 1 %}
+    <div class="col-lg-5 mb-4">
+        <div class="card h-100 section-card">
+            <div class="card-header py-2"><strong>Where your money goes</strong>
+                <span class="small text-muted ml-2">by store</span></div>
+            <div class="card-body">
+                <div class="chart-box" style="height: 260px"><canvas id="storeChart" aria-label="Doughnut chart of grocery spend by store" role="img"></canvas></div>
+                <p class="small text-muted mb-0 mt-2">
+                    {{ stats.store_spend[0].store }} is the biggest share at
+                    {{ stats.store_spend[0].share }}% of your grocery spend.
+                </p>
+                <details class="mt-2 small">
+                    <summary>How to read this</summary>
+                    <p class="mb-0">Each slice is one shop or supermarket. Bigger slices mean more
+                    money spent there, not necessarily more visits. Tap or hover a slice for the
+                    dollar amount.</p>
+                </details>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    <div class="col-lg-{{ '7' if stats.store_spend|length > 1 else '12' }} mb-4">
+        <div class="card h-100 section-card">
+            <div class="card-header py-2"><strong>Products that cost the most</strong>
+                <span class="small text-muted ml-2">top 6 by total spend</span></div>
+            <div class="card-body">
+                <div class="chart-box" style="height: 260px"><canvas id="productChart" aria-label="Horizontal bar chart of the six products with the highest total spend" role="img"></canvas></div>
+                <p class="small text-muted mb-0 mt-2">
+                    {% if stats.top_by_spend %}
+                    {{ stats.top_by_spend[0].product_name }} is your biggest single product cost
+                    at {{ stats.top_by_spend[0].total_spend|money }}.
+                    {% endif %}
+                </p>
+                <details class="mt-2 small">
+                    <summary>How to read this</summary>
+                    <p class="mb-0">This is total money spent, not price per item. A cheap product
+                    you buy every week can outrank an expensive one you buy once. Check the
+                    "Bought most often" table below to see which is which.</p>
+                </details>
+            </div>
+        </div>
+    </div>
 </div>
 
 {% if stats.category_spend|length > 1 or (stats.category_spend and stats.category_spend[0][0] != 'unlinked') %}
@@ -115,6 +178,20 @@
             <div class="num small" style="width: 6rem">{{ value|money }}</div>
         </div>
         {% endfor %}
+        {% if stats.category_spend and stats.category_spend[0][0] == 'unlinked' %}
+        <p class="small text-muted mb-0">
+            Most of your spend is not linked to an ingredient yet, so it sits in
+            “Not linked yet”.
+            <a href="{{ url_for('spend.spend_products') }}">Link products</a> to see the
+            real breakdown.
+        </p>
+        {% endif %}
+        <details class="mt-2 small">
+            <summary>How to read this</summary>
+            <p class="mb-0">Each bar is a food category (meat, dairy, produce and so on).
+            It only knows a product's category once that product is linked to an ingredient,
+            so linking a few regulars makes this chart much more useful.</p>
+        </details>
     </div>
 </div>
 {% elif unlinked_count %}
@@ -136,30 +213,116 @@
         integrity="sha384-NrKB+u6Ts6AtkIhwPixiKTzgSKNblyhlk0Sohlgar9UHUBzai/sgnNNWWd291xqt" crossorigin="anonymous"></script>
 <script>
 (function () {
-    const data = {{ stats.monthly_spend|tojson }};
-    const labels = data.map(([month]) => {
-        const [y, m] = month.split('-');
-        return new Date(+y, +m - 1, 1).toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
-    });
     const css = getComputedStyle(document.documentElement);
     const brand = (css.getPropertyValue('--brand') || '#c25e3a').trim();
     const inkSoft = (css.getPropertyValue('--ink-soft') || '#7a6c58').trim();
     const line = (css.getPropertyValue('--line') || '#e2d6c1').trim();
-    new Chart(document.getElementById('monthlyChart'), {
-        type: 'bar',
-        data: { labels, datasets: [{ label: 'Spend', data: data.map(d => d[1]), backgroundColor: brand, borderRadius: 6 }] },
-        options: {
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false },
-                tooltip: { callbacks: { label: ctx => '$' + ctx.parsed.y.toFixed(2) } }
-            },
-            scales: {
-                x: { grid: { display: false }, ticks: { color: inkSoft } },
-                y: { beginAtZero: true, grid: { color: line }, ticks: { color: inkSoft, callback: v => '$' + v } }
-            }
+    const ok = (css.getPropertyValue('--ok') || '#6c7a45').trim();
+    const warn = (css.getPropertyValue('--warn') || '#c8912f').trim();
+    const palette = [brand, ok, warn, '#6f8fa8', '#8a6fa8', '#b58b4f', '#7a9e9f'];
+    const money = value => '$' + Number(value).toFixed(2);
+    const short = (text, max) => text.length > max
+        ? text.slice(0, max - 1) + '…' : text;
+    const monthLabel = ([month]) => {
+        const [y, m] = month.split('-');
+        return new Date(+y, +m - 1, 1).toLocaleDateString(undefined,
+            { month: 'short', year: '2-digit' });
+    };
+
+    const monthly = {{ stats.monthly_spend|tojson }};
+    const target = {{ (budget.target if budget else none)|tojson }};
+    const monthlyEl = document.getElementById('monthlyChart');
+    if (monthlyEl && monthly.length) {
+        const datasets = [{
+            type: 'bar', label: 'Spend', data: monthly.map(d => d[1]),
+            backgroundColor: brand, borderRadius: 6
+        }];
+        if (target) {
+            datasets.push({
+                type: 'line', label: 'Monthly target',
+                data: monthly.map(() => target),
+                borderColor: inkSoft, borderDash: [6, 4], borderWidth: 2,
+                pointRadius: 0, fill: false
+            });
         }
-    });
+        new Chart(monthlyEl, {
+            type: 'bar',
+            data: { labels: monthly.map(monthLabel), datasets },
+            options: {
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: !!target, labels: { color: inkSoft, boxWidth: 12 } },
+                    tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + money(ctx.parsed.y) } }
+                },
+                scales: {
+                    x: { grid: { display: false }, ticks: { color: inkSoft } },
+                    y: { beginAtZero: true, grid: { color: line }, ticks: { color: inkSoft, callback: v => '$' + v } }
+                }
+            }
+        });
+    }
+
+    const stores = {{ stats.store_spend|tojson }};
+    const storeEl = document.getElementById('storeChart');
+    if (storeEl && stores.length > 1) {
+        new Chart(storeEl, {
+            type: 'doughnut',
+            data: {
+                labels: stores.map(s => s.store),
+                datasets: [{
+                    data: stores.map(s => s.total),
+                    backgroundColor: palette,
+                    borderColor: css.getPropertyValue('--surface').trim() || '#ece3d2',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                maintainAspectRatio: false,
+                cutout: '58%',
+                plugins: {
+                    legend: { position: 'bottom', labels: { color: inkSoft, boxWidth: 12 } },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => ctx.label + ': ' + money(ctx.parsed)
+                                + ' (' + stores[ctx.dataIndex].share + '%)'
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    const products = {{ stats.top_by_spend|tojson }}.slice(0, 6);
+    const productEl = document.getElementById('productChart');
+    if (productEl && products.length) {
+        new Chart(productEl, {
+            type: 'bar',
+            data: {
+                labels: products.map(p => short(p.product_name, 30)),
+                datasets: [{
+                    data: products.map(p => p.total_spend),
+                    backgroundColor: brand, borderRadius: 4
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            title: ctx => products[ctx[0].dataIndex].product_name,
+                            label: ctx => money(ctx.parsed.x) + ' total'
+                        }
+                    }
+                },
+                scales: {
+                    x: { beginAtZero: true, grid: { color: line }, ticks: { color: inkSoft, callback: v => '$' + v } },
+                    y: { grid: { display: false }, ticks: { color: inkSoft } }
+                }
+            }
+        });
+    }
 })();
 </script>
 {% endif %}

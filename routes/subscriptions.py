@@ -10,11 +10,15 @@ from services.subscriptions import (
     fortnight_for_date,
     format_frequency,
     FREQUENCY_LABELS,
+    monthly_cost,
+    monthly_cost_by_category,
+    monthly_cost_total,
     subscription_category_label,
     SUBSCRIPTION_CATEGORY_LOOKUP,
     SUBSCRIPTION_CATEGORIES,
     suggest_from_purchases,
     suggest_from_unclassified,
+    upcoming_weeks,
 )
 from services.spend_analysis import load_purchases
 from services.recurring import detect_recurring
@@ -43,6 +47,15 @@ def subscription_list():
         "SELECT * FROM subscriptions WHERE active = 0 ORDER BY category, name"
     ).fetchall()]
 
+    monthly_total = monthly_cost_total(subscriptions)
+    cost_by_category = [
+        {**row, "label": subscription_category_label(row["category"])}
+        for row in monthly_cost_by_category(subscriptions)
+    ]
+    weeks = upcoming_weeks(subscriptions, weeks=8)
+    biggest = max(subscriptions, key=monthly_cost) if subscriptions else None
+    biggest_monthly = monthly_cost(biggest) if biggest else 0
+
     return render_template(
         "subscriptions/list.html",
         by_category=by_category,
@@ -51,6 +64,11 @@ def subscription_list():
         format_frequency=format_frequency,
         inactive=inactive,
         inactive_count=len(inactive),
+        monthly_total=monthly_total,
+        cost_by_category=cost_by_category,
+        weeks=weeks,
+        biggest=biggest,
+        biggest_monthly=biggest_monthly,
     )
 
 

@@ -8,13 +8,18 @@ from services.subscriptions import (
     fortnightly_subscription_total,
     format_frequency,
     is_due_in_range,
+    make_subscription,
     mark_paid,
+    monthly_cost,
+    monthly_cost_by_category,
+    monthly_cost_total,
     next_occurrence,
     subscription_category_label,
     subscriptions_due_in_range,
     suggest_from_purchases,
     suggest_from_unclassified,
     suggested_next_due,
+    upcoming_weeks,
 )
 
 
@@ -415,3 +420,69 @@ class TestSuggestFromPurchases:
 
     def test_empty_list(self):
         assert suggest_from_purchases([]) == []
+
+
+# ---------------------------------------------------------------------------
+# Charts: monthly cost and upcoming weeks
+# ---------------------------------------------------------------------------
+
+class TestMonthlyCost:
+    def test_converts_each_frequency(self):
+        assert monthly_cost(make_subscription(amount=12, frequency="weekly")) == 52.0
+        assert monthly_cost(make_subscription(amount=10, frequency="fortnightly")) == 21.67
+        assert monthly_cost(make_subscription(amount=20, frequency="monthly")) == 20.0
+        assert monthly_cost(make_subscription(amount=90, frequency="quarterly")) == 30.0
+        assert monthly_cost(make_subscription(amount=120, frequency="yearly")) == 10.0
+
+    def test_unknown_frequency_is_zero(self):
+        assert monthly_cost(make_subscription(frequency="daily")) == 0.0
+
+    def test_total_skips_inactive(self):
+        subs = [
+            make_subscription(id=1, amount=20),
+            make_subscription(id=2, amount=30, active=0),
+        ]
+        assert monthly_cost_total(subs) == 20.0
+
+    def test_category_split_sorted_with_shares(self):
+        subs = [
+            make_subscription(id=1, amount=30, category="bills"),
+            make_subscription(id=2, amount=10, category="entertainment"),
+            make_subscription(id=3, amount=60, category="utilities", active=0),
+        ]
+        result = monthly_cost_by_category(subs)
+        assert [(r["category"], r["total"], r["share"]) for r in result] == [
+            ("bills", 30.0, 75), ("entertainment", 10.0, 25),
+        ]
+
+    def test_category_split_empty(self):
+        assert monthly_cost_by_category([]) == []
+
+
+class TestUpcomingWeeks:
+    START = date(2026, 10, 5)  # a Monday
+
+    def test_monthly_bill_lands_in_the_right_week(self):
+        subs = [make_subscription(amount=20, next_due="2026-10-07")]
+        weeks = upcoming_weeks(subs, weeks=4, start=self.START)
+        assert [w["label"] for w in weeks] == ["05 Oct", "12 Oct", "19 Oct", "26 Oct"]
+        assert weeks[0]["total"] == 20.0
+        assert weeks[0]["names"] == ["Test Subscription"]
+        assert weeks[1]["total"] == 0.0
+
+    def test_weekly_bill_appears_every_week(self):
+        subs = [make_subscription(amount=5, frequency="weekly",
+                                  next_due="2026-10-05")]
+        weeks = upcoming_weeks(subs, weeks=4, start=self.START)
+        assert [w["total"] for w in weeks] == [5.0, 5.0, 5.0, 5.0]
+
+    def test_yearly_bill_outside_window_is_zero(self):
+        subs = [make_subscription(amount=500, frequency="yearly",
+                                  next_due="2027-03-01")]
+        weeks = upcoming_weeks(subs, weeks=8, start=self.START)
+        assert all(w["total"] == 0 for w in weeks)
+
+    def test_inactive_bills_are_skipped(self):
+        subs = [make_subscription(amount=20, next_due="2026-10-07", active=0)]
+        weeks = upcoming_weeks(subs, weeks=4, start=self.START)
+        assert all(w["total"] == 0 for w in weeks)

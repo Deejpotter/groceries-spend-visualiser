@@ -39,6 +39,7 @@ def analyze_purchases(purchases: Iterable[Dict], top_n: int = 20) -> Optional[Di
     baskets: Dict[tuple, Dict] = {}
     monthly: Dict[str, float] = defaultdict(float)
     by_category: Dict[str, float] = defaultdict(float)
+    by_store: Dict[str, float] = defaultdict(float)
     products: Dict[str, Dict] = {}
 
     for r in rows:
@@ -52,6 +53,7 @@ def analyze_purchases(purchases: Iterable[Dict], top_n: int = 20) -> Optional[Di
         basket["total"] += total
         monthly[d.strftime("%Y-%m")] += total
         by_category[r.get("category") or "unlinked"] += total
+        by_store[r.get("store") or "Unknown"] += total
 
         p = products.setdefault(r["product_name"], {
             "product_name": r["product_name"], "baskets": set(), "total_qty": 0.0,
@@ -91,6 +93,11 @@ def analyze_purchases(purchases: Iterable[Dict], top_n: int = 20) -> Optional[Di
         "avg_spend_per_shop": round(total_spend / shops, 2),
         "monthly_spend": [(m, round(v, 2)) for m, v in sorted(monthly.items())],
         "category_spend": sorted(((c, round(v, 2)) for c, v in by_category.items()), key=lambda x: -x[1]),
+        "store_spend": [
+            {"store": store, "total": round(value, 2),
+             "share": round(100 * value / total_spend) if total_spend else 0}
+            for store, value in sorted(by_store.items(), key=lambda x: -x[1])
+        ],
         "top_by_frequency": sorted(product_rows, key=lambda p: (-p["orders"], -p["total_spend"]))[:top_n],
         "top_by_spend": sorted(product_rows, key=lambda p: -p["total_spend"])[:top_n],
     }

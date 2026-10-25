@@ -1911,6 +1911,19 @@ class TestSubscriptions:
             )
         db.commit()
 
+    def test_list_shows_monthly_cost_and_upcoming_charts(self, client, db):
+        from datetime import date, timedelta
+        _login(client, "subuser", "test123")
+        next_due = (date.today() + timedelta(days=2)).isoformat()
+        self._add(client, name="Netflix", amount="18.99", next_due=next_due)
+        resp = client.get("/subscriptions")
+        assert resp.status_code == 200
+        assert b"Bills per month" in resp.data
+        assert b"billCategoryChart" in resp.data
+        assert b"billWeekChart" in resp.data
+        assert b"How to read this" in resp.data
+        assert b"Netflix" in resp.data
+
     def test_suggest_detects_recurring_bank_transactions(self, client, db):
         _login(client, "subuser", "test123")
         self._bank_rows(db, "BINGE.COM", 16.00,

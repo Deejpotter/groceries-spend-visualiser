@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import csrf, post_button %}
+{% from "_macros.html" import csrf, post_button, icon %}
 
 {% block title %}Bills — Grocery Visualiser{% endblock %}
 
@@ -24,6 +24,70 @@
 {% set secondary_url = url_for('subscriptions.subscription_suggest') %}
 {% set secondary_label = "See suggestions" %}
 {% include "_empty_state.html" %}
+{% endif %}
+
+{% if by_category %}
+<div class="kpi-row mb-4">
+    <div class="kpi-tile" data-tone="neutral">
+        <div class="kpi-label">{{ icon('credit-card') }} Bills per month</div>
+        <div class="kpi-value">{{ monthly_total|money }}</div>
+        <div class="kpi-context">every active bill, converted to a monthly figure</div>
+    </div>
+    {% if biggest %}
+    <div class="kpi-tile" data-tone="neutral">
+        <div class="kpi-label">{{ icon('receipt') }} Biggest monthly cost</div>
+        <div class="kpi-value">{{ biggest_monthly|money }}</div>
+        <div class="kpi-context">{{ biggest.name }} &middot; {{ biggest.amount|money }} {{ format_frequency(biggest.frequency)|lower }}</div>
+    </div>
+    {% endif %}
+</div>
+
+<div class="row">
+    <div class="col-lg-5 mb-4">
+        <div class="card h-100 section-card">
+            <div class="card-header py-2"><strong>Where your bill money goes</strong>
+                <span class="small text-muted ml-2">monthly, by category</span></div>
+            <div class="card-body">
+                <div class="chart-box" style="height: 260px"><canvas id="billCategoryChart" aria-label="Doughnut chart of monthly bill cost by category" role="img"></canvas></div>
+                {% if cost_by_category %}
+                <p class="small text-muted mb-0 mt-2">
+                    {{ cost_by_category[0].label }} is the biggest slice at
+                    {{ cost_by_category[0].share }}% of your monthly bills.
+                </p>
+                {% endif %}
+                <details class="mt-2 small">
+                    <summary>How to read this</summary>
+                    <p class="mb-0">Weekly, fortnightly and yearly bills are all converted to a
+                    monthly amount so they can sit on the same chart. A yearly insurance bill
+                    looks small here because its cost is spread across twelve months.</p>
+                </details>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-7 mb-4">
+        <div class="card h-100 section-card">
+            <div class="card-header py-2"><strong>Bills in the next 8 weeks</strong>
+                <span class="small text-muted ml-2">each bar is one week, starting with the current week</span></div>
+            <div class="card-body">
+                <div class="chart-box" style="height: 260px"><canvas id="billWeekChart" aria-label="Bar chart of bill amounts due in each of the next eight weeks" role="img"></canvas></div>
+                <p class="small text-muted mb-0 mt-2">
+                    {% set week_total = weeks|sum(attribute='total') %}
+                    {% if week_total %}
+                    {{ week_total|money }} of bills fall due over the next eight weeks.
+                    {% else %}
+                    Nothing is due in the next eight weeks.
+                    {% endif %}
+                </p>
+                <details class="mt-2 small">
+                    <summary>How to read this</summary>
+                    <p class="mb-0">Look for tall bars: those are expensive weeks. If a week looks
+                    tight, open the <a href="{{ url_for('subscriptions.subscription_fortnight') }}">fortnightly view</a>
+                    to see the bills behind the bar.</p>
+                </details>
+            </div>
+        </div>
+    </div>
+</div>
 {% endif %}
 
 {% for cat_code, cat_label in categories %}
@@ -91,4 +155,92 @@
         </ul>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+{% if by_category %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"
+        integrity="sha384-NrKB+u6Ts6AtkIhwPixiKTzgSKNblyhlk0Sohlgar9UHUBzai/sgnNNWWd291xqt" crossorigin="anonymous"></script>
+<script>
+(function () {
+    const css = getComputedStyle(document.documentElement);
+    const brand = (css.getPropertyValue('--brand') || '#c25e3a').trim();
+    const inkSoft = (css.getPropertyValue('--ink-soft') || '#7a6c58').trim();
+    const line = (css.getPropertyValue('--line') || '#e2d6c1').trim();
+    const surface = (css.getPropertyValue('--surface') || '#ece3d2').trim();
+    const ok = (css.getPropertyValue('--ok') || '#6c7a45').trim();
+    const warn = (css.getPropertyValue('--warn') || '#c8912f').trim();
+    const palette = [brand, ok, warn, '#6f8fa8', '#8a6fa8', '#b58b4f', '#7a9e9f'];
+    const money = value => '$' + Number(value).toFixed(2);
+
+    const categories = {{ cost_by_category|tojson }};
+    const categoryEl = document.getElementById('billCategoryChart');
+    if (categoryEl && categories.length) {
+        new Chart(categoryEl, {
+            type: 'doughnut',
+            data: {
+                labels: categories.map(c => c.label),
+                datasets: [{
+                    data: categories.map(c => c.total),
+                    backgroundColor: palette,
+                    borderColor: surface,
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                maintainAspectRatio: false,
+                cutout: '58%',
+                plugins: {
+                    legend: { position: 'bottom', labels: { color: inkSoft, boxWidth: 12 } },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => ctx.label + ': ' + money(ctx.parsed)
+                                + '/month (' + categories[ctx.dataIndex].share + '%)'
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    const weekLabels = {{ weeks|map(attribute='label')|list|tojson }};
+    const weekTotals = {{ weeks|map(attribute='total')|list|tojson }};
+    const weekNames = {{ weeks|map(attribute='names')|list|tojson }};
+    const weekEl = document.getElementById('billWeekChart');
+    if (weekEl && weekLabels.length) {
+        new Chart(weekEl, {
+            type: 'bar',
+            data: {
+                labels: weekLabels,
+                datasets: [{
+                    data: weekTotals,
+                    backgroundColor: brand,
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => {
+                                const names = weekNames[ctx.dataIndex];
+                                return names.length ? names.join(', ') : 'Nothing due';
+                            },
+                            footer: ctx => weekTotals[ctx[0].dataIndex]
+                                ? 'Total: ' + money(weekTotals[ctx[0].dataIndex]) : ''
+                        }
+                    }
+                },
+                scales: {
+                    x: { grid: { display: false }, ticks: { color: inkSoft } },
+                    y: { beginAtZero: true, grid: { color: line }, ticks: { color: inkSoft, callback: v => '$' + v } }
+                }
+            }
+        });
+    }
+})();
+</script>
+{% endif %}
 {% endblock %}
