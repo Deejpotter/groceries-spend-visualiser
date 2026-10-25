@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-25
 - **Investigator:** OpenCode (DeepSeek V4.1 Flash)
-- **Status:** Fixes implemented on `dev` and verified on staging (`516ba07`), PR pending
+- **Status:** Merged to `main` (`1cac765`), deployed to production and staging; production healthy
 
 ## 1. What was asked
 
@@ -80,6 +80,8 @@ Test the newly released bill detection and charts against realistic data, then i
   previous 500 is gone), and Purge 204. The page carried the reload and theme
   listeners and both charts. The temporary bill was purged and the page returned
   to "No bills yet".
+- Production deploy (`1cac765`) verified at the infrastructure level: Coolify
+  rolling update completed, container healthy, `/health` 200, no startup errors.
 
 ## 7. Open items
 

@@ -17,13 +17,43 @@ from services.subscriptions import (
     SUBSCRIPTION_CATEGORY_LOOKUP,
     SUBSCRIPTION_CATEGORIES,
     suggest_from_purchases,
-    suggest_from_unclassified,
     upcoming_weeks,
 )
 from services.spend_analysis import load_purchases
 from services.recurring import detect_recurring
+from services.price_history import group_price_history, payment_rows, summarise
+from services.dashboard import sparkline
+from services.ai_review import (
+    AIReviewError,
+    build_candidates,
+    cached_reviews,
+    merge_suggestions,
+    resolve_config,
+    review_candidates,
+    save_reviews,
+)
 
 subscriptions_bp = Blueprint("subscriptions", __name__)
+
+
+def _all_histories(db):
+    """Price history for every merchant, keyed by merchant key."""
+    rows = [dict(row) for row in db.execute(
+        """SELECT txn_date, amount, merchant_key, direction
+           FROM bank_transactions"""
+    ).fetchall()]
+    return group_price_history(rows)
+
+
+def _decorate_subscription(sub, histories):
+    """Attach price history and a sparkline to a subscription row."""
+    sub = dict(sub)
+    points = histories.get(sub.get("merchant_key") or "", [])
+    sub["price_points"] = points
+    sub["price_summary"] = summarise(points)
+    sub["price_spark"] = (sparkline([p["amount"] for p in points], 64, 18)
+                          if len(points) >= 2 else "")
+    return sub
 
 
 @subscriptions_bp.route("/subscriptions")
@@ -31,10 +61,11 @@ subscriptions_bp = Blueprint("subscriptions", __name__)
 def subscription_list():
     """List all active subscriptions, grouped by category."""
     db = get_db()
+    histories = _all_histories(db)
     rows = db.execute(
         "SELECT * FROM subscriptions WHERE active = 1 ORDER BY category, name"
     ).fetchall()
-    subscriptions = [dict(r) for r in rows]
+    subscriptions = [_decorate_subscription(r, histories) for r in rows]
 
     # Group by category.
     by_category = {}
@@ -43,7 +74,7 @@ def subscription_list():
         by_category.setdefault(cat, []).append(s)
 
     # Inactive subscriptions (paused or soft-deleted) get their own section.
-    inactive = [dict(r) for r in db.execute(
+    inactive = [_decorate_subscription(r, histories) for r in db.execute(
         "SELECT * FROM subscriptions WHERE active = 0 ORDER BY category, name"
     ).fetchall()]
 
@@ -70,6 +101,49 @@ def subscription_list():
         biggest=biggest,
         biggest_monthly=biggest_monthly,
     )
+
+
+@subscriptions_bp.route("/subscriptions/<int:sub_id>")
+@login_required
+def subscription_detail(sub_id):
+    """One bill, with the price it has been charged at over time."""
+    db = get_db()
+    row = db.execute("SELECT * FROM subscriptions WHERE id = ?", (sub_id,)).fetchone()
+    if not row:
+        flash("Subscription not found.", "error")
+        return redirect(url_for("subscriptions.subscription_list"))
+    sub = _decorate_subscription(row, _all_histories(db))
+    return render_template(
+        "subscriptions/detail.html",
+        s=sub,
+        summary=sub["price_summary"],
+        points=sub["price_points"],
+        payments=payment_rows(sub["price_points"]),
+        price_differs=bool(sub["price_summary"]
+                           and abs(sub["price_summary"]["latest"] - sub["amount"]) >= 0.01),
+        format_frequency=format_frequency,
+        category_label=subscription_category_label,
+    )
+
+
+@subscriptions_bp.route("/subscriptions/<int:sub_id>/use-latest", methods=["POST"])
+@login_required
+def subscription_use_latest(sub_id):
+    """Set the subscription amount to the latest observed payment."""
+    db = get_db()
+    row = db.execute("SELECT * FROM subscriptions WHERE id = ?", (sub_id,)).fetchone()
+    if not row:
+        flash("Subscription not found.", "error")
+        return redirect(url_for("subscriptions.subscription_list"))
+    points = _decorate_subscription(row, _all_histories(db))["price_points"]
+    if not points:
+        flash("No linked payments to take a price from yet.", "error")
+        return redirect(url_for("subscriptions.subscription_detail", sub_id=sub_id))
+    latest = points[-1]["amount"]
+    db.execute("UPDATE subscriptions SET amount = ? WHERE id = ?", (latest, sub_id))
+    db.commit()
+    flash(f"Updated '{row['name']}' to ${latest:.2f} from the latest payment.", "success")
+    return redirect(url_for("subscriptions.subscription_detail", sub_id=sub_id))
 
 
 @subscriptions_bp.route("/subscriptions/add", methods=["GET", "POST"])
@@ -229,7 +303,8 @@ def subscription_toggle(sub_id):
         if new_active:
             sub = db.execute("SELECT * FROM subscriptions WHERE id = ?", (sub_id,)).fetchone()
             if sub:
-                return render_template("subscriptions/_sub_row.html", s=dict(sub),
+                return render_template("subscriptions/_sub_row.html",
+                                       s=_decorate_subscription(sub, _all_histories(db)),
                                        format_frequency=format_frequency)
         return "", 204
     flash(f"Subscription '{sub['name']}' {status}.", "success")
@@ -253,7 +328,8 @@ def subscription_resume(sub_id):
     if request.headers.get("HX-Request"):
         sub = db.execute("SELECT * FROM subscriptions WHERE id = ?", (sub_id,)).fetchone()
         if sub:
-            return render_template("subscriptions/_sub_row.html", s=dict(sub),
+            return render_template("subscriptions/_sub_row.html",
+                                   s=_decorate_subscription(sub, _all_histories(db)),
                                    format_frequency=format_frequency)
         return "", 204
     flash(f"Subscription '{sub['name']}' resumed.", "success")
@@ -321,7 +397,8 @@ def subscription_mark_paid(sub_id):
         if request.headers.get("HX-Request"):
             sub = db.execute("SELECT * FROM subscriptions WHERE id = ?", (sub_id,)).fetchone()
             if sub:
-                return render_template("subscriptions/_sub_row.html", s=dict(sub),
+                return render_template("subscriptions/_sub_row.html",
+                                       s=_decorate_subscription(sub, _all_histories(db)),
                                        format_frequency=format_frequency)
             return "", 204
         note = f"Marked '{sub['name']}' as paid. Next due: {next_due}."
@@ -390,11 +467,10 @@ def subscription_fortnight():
 @subscriptions_bp.route("/subscriptions/suggest")
 @login_required
 def subscription_suggest():
-    """Show subscription suggestions from bank transactions and purchase history."""
+    """Show bill suggestions from bank transactions, with optional AI review."""
     db = get_db()
 
-    # Recurring payments detected from every stored bank transaction. Merchants
-    # already accepted or dismissed are excluded so they don't nag.
+    # Merchants already accepted or dismissed are excluded so they don't nag.
     decisions = [dict(r) for r in db.execute(
         "SELECT * FROM merchant_decisions ORDER BY display_name"
     ).fetchall()]
@@ -405,8 +481,32 @@ def subscription_suggest():
     ).fetchall()]
     detected = detect_recurring(transactions, excluded_keys=excluded_keys)
 
-    # Suggestions from purchase history (about 13 months back from the
-    # newest purchase, so old one-offs don't re-qualify as "recurring").
+    existing = {
+        (row["name"] or "").strip().lower()
+        for row in db.execute("SELECT name FROM subscriptions").fetchall()
+    }
+    linked_keys = {
+        row["merchant_key"] for row in db.execute(
+            "SELECT merchant_key FROM subscriptions WHERE merchant_key IS NOT NULL"
+        ).fetchall()
+    }
+    candidates = build_candidates(
+        transactions, excluded_keys=set(excluded_keys) | linked_keys)
+    reviews = cached_reviews(db, candidates)
+    suggestions = merge_suggestions(detected, candidates, reviews)
+
+    # Filter names already tracked, then deduplicate.
+    seen = set()
+    filtered = []
+    for suggestion in suggestions:
+        key = suggestion["name"].lower()
+        if key in seen or key in existing:
+            continue
+        seen.add(key)
+        filtered.append(suggestion)
+    suggestions = filtered
+
+    # Repeat grocery purchases are useful context, but not bills.
     from datetime import timedelta
     latest = db.execute("SELECT MAX(order_date) FROM purchases").fetchone()[0]
     if latest:
@@ -414,51 +514,82 @@ def subscription_suggest():
     else:
         start = None
     purchases = load_purchases(db, start=start)
-    purchase_suggestions = suggest_from_purchases(purchases)
-
-    # Suggestions from BankSync unclassified (stored in settings as JSON).
-    # Kept for data imported before transactions were stored in their own table.
-    import json
-    unclassified_raw = (get_setting("banksync_unclassified") or "[]").strip()
-    try:
-        unclassified = json.loads(unclassified_raw) if unclassified_raw else []
-    except (ValueError, TypeError):
-        unclassified = []
-    banksync_suggestions = suggest_from_unclassified(unclassified)
-
-    # Merge bill sources and deduplicate by name, skipping anything already
-    # tracked. Repeat grocery buys are kept separate: they are useful context,
-    # but a weekly milk purchase is not a bill.
-    existing = {
-        (row["name"] or "").strip().lower()
-        for row in db.execute("SELECT name FROM subscriptions").fetchall()
-    }
-    seen = set()
-    suggestions = []
-    for s in detected + banksync_suggestions:
-        key = s["name"].lower()
-        if key in seen or key in existing:
-            continue
-        seen.add(key)
-        suggestions.append(s)
-
     repeat_purchases = []
-    for s in purchase_suggestions:
-        key = s["name"].lower()
+    for suggestion in suggest_from_purchases(purchases):
+        key = suggestion["name"].lower()
         if key in seen or key in existing:
             continue
         seen.add(key)
-        repeat_purchases.append(s)
+        repeat_purchases.append(suggestion)
 
+    ai = resolve_config(get_setting)
+    unreviewed = [c for c in candidates
+                  if c["merchant_key"] not in reviews]
+    reviewed_at = max((r.get("reviewed_at") for r in reviews.values()
+                       if r.get("reviewed_at")), default=None)
     dismissed = [d for d in decisions if d["decision"] == "ignored"]
+    suggestion_total = round(sum(monthly_cost(s) for s in suggestions), 2)
 
     return render_template(
         "subscriptions/suggest.html",
         suggestions=suggestions,
+        suggestion_total=suggestion_total,
         repeat_purchases=repeat_purchases,
         dismissed=dismissed,
         format_frequency=format_frequency,
+        ai_configured=ai["configured"],
+        ai_model=ai["model"],
+        ai_from_env=ai["from_env"],
+        ai_candidate_count=len(candidates),
+        ai_unreviewed=len(unreviewed),
+        ai_review_count=len(reviews),
+        ai_reviewed_at=reviewed_at,
     )
+
+
+@subscriptions_bp.route("/subscriptions/suggest/review", methods=["POST"])
+@login_required
+def subscription_ai_review():
+    """Ask OpenRouter to keep or dismiss each candidate merchant."""
+    db = get_db()
+    ai = resolve_config(get_setting)
+    if not ai["configured"]:
+        flash("Add an OpenRouter API key in Settings before using AI review.", "error")
+        return redirect(url_for("subscriptions.subscription_suggest"))
+
+    decisions = [dict(r) for r in db.execute(
+        "SELECT merchant_key FROM merchant_decisions").fetchall()]
+    linked_keys = {
+        row["merchant_key"] for row in db.execute(
+            "SELECT merchant_key FROM subscriptions WHERE merchant_key IS NOT NULL"
+        ).fetchall()
+    }
+    transactions = [dict(r) for r in db.execute(
+        """SELECT txn_date, description, amount, merchant_key, direction, status
+           FROM bank_transactions"""
+    ).fetchall()]
+    candidates = build_candidates(
+        transactions,
+        excluded_keys=set(d["merchant_key"] for d in decisions) | linked_keys,
+    )
+    if not candidates:
+        flash("No merchants with two or more transactions to review yet.", "info")
+        return redirect(url_for("subscriptions.subscription_suggest"))
+
+    try:
+        reviews = review_candidates(candidates, ai["key"], ai["model"])
+    except AIReviewError as exc:
+        flash(f"AI review failed: {exc}", "error")
+        return redirect(url_for("subscriptions.subscription_suggest"))
+
+    saved = save_reviews(db, reviews)
+    kept = sum(1 for review in reviews if review["bill"])
+    flash(
+        f"AI reviewed {saved} merchant{'s' if saved != 1 else ''}: "
+        f"{kept} kept, {saved - kept} dismissed.",
+        "success",
+    )
+    return redirect(url_for("subscriptions.subscription_suggest"))
 
 
 @subscriptions_bp.route("/subscriptions/suggest/accept", methods=["POST"])

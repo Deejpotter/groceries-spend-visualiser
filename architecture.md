@@ -32,6 +32,7 @@ app.py (factory, auth, dashboard, template filters, CLI)
 │   ├── spend_analysis.py          — pure spend statistics
 │   ├── bank_import.py             — bank CSV parsing, merchant classification, transaction storage
 │   ├── recurring.py               — recurring bill/subscription detection over bank transactions
+│   ├── ai_review.py               — optional OpenRouter review that filters, names and categorises candidates
 │   ├── subscriptions.py           — bill/subscription schedules, next due, mark paid
 │   └── repository.py              — loads DB rows into the dicts the pure services use
 │
@@ -80,6 +81,7 @@ Single SQLite file (default `./data/groceries.db`). Schema is created idempotent
 | `bank_transactions` | Every imported or synced bank row, kept for recurring-payment detection |
 | `subscriptions` | Tracked bills and subscriptions with schedule, category and next due date |
 | `merchant_decisions` | Merchants the user accepted or dismissed, so detection does not re-suggest them |
+| `ai_reviews` | Cached AI verdicts per merchant, keyed to a hash of the evidence |
 | `import_batches` / `import_staged_lines` | Pending PDF-import review batches and their editable lines |
 
 Indexes: `idx_purchases_date` on `purchases(order_date)`, `idx_plan_date` on `meal_plan_entries(date, meal_type)`, `idx_bank_transactions_date` and `idx_bank_transactions_merchant` on `bank_transactions`.
@@ -191,6 +193,9 @@ Because silent loss is the failure mode, `init_db()` reports whether the databas
 | `PORT` | `5000` | Listen port. |
 | `GUNICORN_WORKERS` | `2` | Worker processes (keep low: SQLite allows one writer at a time). |
 | `APP_ENV` | — | Set to `staging` to show the staging banner. |
+| `GUNICORN_TIMEOUT` | `90` | Worker timeout. Raised from 30s so an optional AI review can finish. |
+| `OPENROUTER_API_KEY` | — | Optional. Enables AI review of bill suggestions. Can also be saved on the settings page. |
+| `OPENROUTER_MODEL` | `openrouter/free` | Optional model override for AI review. |
 
 ## Testing
 
@@ -199,7 +204,7 @@ pip install -r requirements.txt -r requirements-dev.txt
 python -m pytest
 ```
 
-181 tests across 8 files. Each test gets an isolated temp database. Service modules are unit-tested with dict factories; routes are tested through Flask's test client.
+161 tests across 8 files. Each test gets an isolated temp database. Service modules are unit-tested with dict factories; routes are tested through Flask's test client.
 
 | Test File | Coverage |
 |---|---|

@@ -183,6 +183,58 @@
         </details>
 
         <details class="card mb-4 settings-section">
+            <summary class="card-header"><h5 class="mb-0 d-inline">AI review (optional)</h5></summary>
+            <div class="card-body">
+                <form method="post" action="{{ url_for('settings.save') }}"
+                      hx-post="{{ url_for('settings.save') }}"
+                      hx-target="#save-status-ai"
+                      hx-swap="afterend">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="save_ai">
+                    {% if error_form == 'ai' %}{{ form_errors(errors) }}{% endif %}
+                    <p class="text-muted small">
+                        When enabled, the suggestions page can ask an AI model to keep or dismiss
+                        each detected merchant and give it a clean name. The rules still decide
+                        amounts and dates. Only merchant descriptions, amounts and dates are sent;
+                        card and account numbers are removed first.
+                    </p>
+                    <div class="form-group">
+                        <label for="openrouter_api_key">OpenRouter API key</label>
+                        <input type="password" class="form-control" id="openrouter_api_key"
+                               name="openrouter_api_key" placeholder="Saved — leave blank to keep"
+                               autocomplete="off">
+                        {% if openrouter_from_env %}
+                        <small class="text-success">✓ Using OPENROUTER_API_KEY from the environment.</small>
+                        {% elif openrouter_key_set %}
+                        <small class="text-success">✓ Key saved.</small>
+                        {% else %}
+                        <small class="text-muted">No key saved yet. Create one at openrouter.ai/keys.</small>
+                        {% endif %}
+                    </div>
+                    <div class="form-group">
+                        <label for="openrouter_model">Model</label>
+                        <input type="text" class="form-control" id="openrouter_model"
+                               name="openrouter_model" value="{{ openrouter_model }}"
+                               placeholder="openrouter/free">
+                        <small class="text-muted">
+                            <code>openrouter/free</code> routes to a free model and costs nothing.
+                            You can name a specific free or paid model here.
+                        </small>
+                    </div>
+                    {% if openrouter_key_set and not openrouter_from_env %}
+                    <div class="custom-control custom-checkbox mb-3">
+                        <input type="checkbox" class="custom-control-input" id="remove_ai_key"
+                               name="remove_ai_key">
+                        <label class="custom-control-label" for="remove_ai_key">Remove the saved key</label>
+                    </div>
+                    {% endif %}
+                    <button type="submit" class="btn btn-primary">Save AI Settings</button>
+                    <div id="save-status-ai"></div>
+                </form>
+            </div>
+        </details>
+
+        <details class="card mb-4 settings-section">
             <summary class="card-header"><h5 class="mb-0 d-inline">API Keys</h5></summary>
             <div class="card-body">
                 <p class="text-muted">

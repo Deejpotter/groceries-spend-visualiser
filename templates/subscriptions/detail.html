@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf, icon %}
+
+{% block title %}{{ s.name }} — Bills{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="mb-0">{{ s.name }}</h1>
+        <p class="page-sub">
+            {{ category_label(s.category or 'other') }}
+            &middot; {{ format_frequency(s.frequency) }}
+            &middot; {% if s.next_due %}next due {{ s.next_due|nice_date }}{% else %}no next due date{% endif %}
+        </p>
+    </div>
+    <div class="d-flex flex-wrap">
+        <a href="{{ url_for('subscriptions.subscription_list') }}" class="btn btn-outline-primary mr-2 mb-2">Back to bills</a>
+        <a href="{{ url_for('subscriptions.subscription_edit', sub_id=s.id) }}" class="btn btn-outline-secondary mb-2">Edit</a>
+    </div>
+</div>
+
+<div class="kpi-row mb-4">
+    <div class="kpi-tile" data-tone="neutral">
+        <div class="kpi-label">{{ icon('receipt') }} Current price</div>
+        <div class="kpi-value">{{ s.amount|money }}</div>
+        <div class="kpi-context">per {{ format_frequency(s.frequency)|lower }}</div>
+    </div>
+    {% if summary %}
+    <div class="kpi-tile" data-tone="{{ 'danger' if summary.direction == 'up' else ('ok' if summary.direction == 'down' else 'neutral') }}">
+        <div class="kpi-label">{{ icon('chart-line') }} Price change</div>
+        <div class="kpi-value">{% if summary.change > 0 %}+{% endif %}{{ summary.change|money }}</div>
+        <div class="kpi-context">
+            {% if summary.direction == 'flat' %}
+            No change since {{ summary.started|nice_date }}
+            {% else %}
+            {{ summary.pct }}% {% if summary.direction == 'up' %}higher{% else %}lower{% endif %}
+            since {{ summary.started|nice_date }}
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+    <div class="kpi-tile" data-tone="neutral">
+        <div class="kpi-label">{{ icon('calendar-check') }} Payments tracked</div>
+        <div class="kpi-value">{{ points|length }}</div>
+        <div class="kpi-context">from linked bank transactions</div>
+    </div>
+    {% if price_differs %}
+    <div class="kpi-tile" data-tone="warn">
+        <div class="kpi-label">{{ icon('refresh-cw') }} Latest payment</div>
+        <div class="kpi-value">{{ summary.latest|money }}</div>
+        <div class="kpi-context">
+            {% if summary.latest > s.amount %}Higher than the stored price{% else %}Lower than the stored price{% endif %}
+            <form method="post" action="{{ url_for('subscriptions.subscription_use_latest', sub_id=s.id) }}" class="mt-1">
+                {{ csrf() }}
+                <button type="submit" class="btn btn-sm btn-outline-primary">Use this price</button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+{% if points|length >= 2 %}
+<div class="card mb-4 section-card">
+    <div class="card-header">
+        <span class="section-title">{{ icon('chart-line') }} Price over time</span>
+        <span class="small text-muted ml-2">each point is a payment</span>
+    </div>
+    <div class="card-body">
+        <div class="chart-box"><canvas id="priceChart" aria-label="Line chart of payments for {{ s.name }} over time" role="img"></canvas></div>
+        <p class="small text-muted mb-0 mt-2">
+            A rising line means this bill is getting more expensive. The table below has
+            the exact dates and amounts.
+        </p>
+        <details class="mt-2 small">
+            <summary>How to read this</summary>
+            <p class="mb-0">The line is the amount charged each time. A step is a price
+            change; a flat line means the price has not moved. Gaps are periods with no
+            payment captured.</p>
+        </details>
+    </div>
+</div>
+{% elif points %}
+<div class="alert alert-light border">
+    One payment is tracked so far. The chart will appear once there are at least two.
+</div>
+{% else %}
+<div class="alert alert-light border">
+    No price history yet.{% if not s.merchant_key %}
+    This bill is not linked to a merchant, so bank payments cannot be matched to it.
+    Accept it from <a href="{{ url_for('subscriptions.subscription_suggest') }}">Suggestions</a>
+    to create the link.{% else %}
+    No payments have been matched to <strong>{{ s.name }}</strong> yet.{% endif %}
+</div>
+{% endif %}
+
+<div class="card mb-4 section-card">
+    <div class="card-header"><span class="section-title">{{ icon('receipt') }} Payment history</span></div>
+    {% if payments %}
+    <div class="table-responsive">
+        <table class="table table-sm mb-0">
+            <thead>
+                <tr><th>Date</th><th class="num">Amount</th><th>Change</th></tr>
+            </thead>
+            <tbody>
+                {% for payment in payments|reverse %}
+                <tr>
+                    <td>{{ payment.date|nice_date }}</td>
+                    <td class="num">{{ payment.amount|money }}</td>
+                    <td>
+                        {% if payment.change is not none and payment.change != 0 %}
+                        <span class="price-change" data-dir="{{ payment.direction }}">
+                            {% if payment.change > 0 %}+{% endif %}{{ payment.change|money }}
+                        </span>
+                        {% else %}
+                        <span class="text-muted">&mdash;</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="card-body text-muted">No payments linked to this bill yet.</div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if points|length >= 2 %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"
+        integrity="sha384-NrKB+u6Ts6AtkIhwPixiKTzgSKNblyhlk0Sohlgar9UHUBzai/sgnNNWWd291xqt" crossorigin="anonymous"></script>
+<script>
+(function () {
+    const points = {{ points|tojson }};
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        Chart.defaults.animation = false;
+    }
+    function theme() {
+        const css = getComputedStyle(document.documentElement);
+        return {
+            brand: (css.getPropertyValue('--brand') || '#c25e3a').trim(),
+            inkSoft: (css.getPropertyValue('--ink-soft') || '#7a6c58').trim(),
+            line: (css.getPropertyValue('--line') || '#e2d6c1').trim()
+        };
+    }
+    let colours = theme();
+    const chart = new Chart(document.getElementById('priceChart'), {
+        type: 'line',
+        data: {
+            labels: points.map(p => new Date(p.date + 'T00:00:00')
+                .toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: '2-digit' })),
+            datasets: [{
+                data: points.map(p => p.amount),
+                borderColor: colours.brand,
+                backgroundColor: colours.brand + '22',
+                fill: true,
+                tension: 0,
+                pointRadius: 3,
+                pointBackgroundColor: colours.brand,
+                borderWidth: 2
+            }]
+        },
+        options: {
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: ctx => '$' + ctx.parsed.y.toFixed(2) } }
+            },
+            scales: {
+                x: { grid: { display: false }, ticks: { color: colours.inkSoft } },
+                y: {
+                    beginAtZero: false,
+                    grace: '8%',
+                    grid: { color: colours.line },
+                    ticks: { color: colours.inkSoft, callback: v => '$' + v }
+                }
+            }
+        }
+    });
+    document.addEventListener('gv:themechange', function () {
+        colours = theme();
+        chart.data.datasets[0].borderColor = colours.brand;
+        chart.data.datasets[0].backgroundColor = colours.brand + '22';
+        chart.data.datasets[0].pointBackgroundColor = colours.brand;
+        chart.options.scales.x.ticks.color = colours.inkSoft;
+        chart.options.scales.y.ticks.color = colours.inkSoft;
+        chart.options.scales.y.grid.color = colours.line;
+        chart.update('none');
+    });
+})();
+</script>
+{% endif %}
+{% endblock %}

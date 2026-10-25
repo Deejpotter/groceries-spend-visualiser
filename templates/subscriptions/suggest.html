@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import csrf %}
+{% from "_macros.html" import csrf, icon %}
 
 {% block title %}Suggested Bills — Grocery Visualiser{% endblock %}
 
@@ -24,52 +24,114 @@
 </div>
 {% endif %}
 
+{% if ai_configured %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-2">
+    <div class="small text-muted">
+        {% if ai_review_count %}
+        AI reviewed {{ ai_review_count }} merchant{{ 's' if ai_review_count != 1 }}
+        {% if ai_reviewed_at %} &middot; last {{ ai_reviewed_at[:10] }}{% endif %}
+        {% if ai_unreviewed %} &middot; {{ ai_unreviewed }} new{% endif %}
+        {% else %}
+        AI can filter out transfers, fees and one-off purchases.
+        {% endif %}
+    </div>
+    {% if ai_candidate_count %}
+    <form method="post" action="{{ url_for('subscriptions.subscription_ai_review') }}"
+          onsubmit="var b=this.querySelector('button'); b.disabled=true; b.textContent='Reviewing…';">
+        {{ csrf() }}
+        <button type="submit" class="btn btn-outline-primary btn-sm">
+            {% if ai_review_count %}Review again{% else %}Review {{ ai_candidate_count }} merchant{{ 's' if ai_candidate_count != 1 }} with AI{% endif %}
+        </button>
+    </form>
+    {% endif %}
+</div>
+<p class="small text-muted mb-3">
+    Uses <code>{{ ai_model }}</code> via OpenRouter. Merchant descriptions, amounts and
+    dates are sent; card and account numbers are removed first. The review can take up to a minute.
+</p>
+{% else %}
+<div class="alert alert-light border small">
+    Seeing transfers or fees that are not bills?
+    <a href="{{ url_for('settings.settings') }}">Add an OpenRouter key in Settings</a>
+    to have AI filter and name the suggestions.
+</div>
+{% endif %}
+
 {% if suggestions %}
+<div class="suggest-summary">
+    <div>
+        <strong>{{ suggestions|length }}</strong>
+        <span>bill{{ 's' if suggestions|length != 1 }} detected</span>
+    </div>
+    {% if suggestion_total %}
+    <div>
+        <strong>{{ suggestion_total|money }}</strong>
+        <span>a month if you add them all</span>
+    </div>
+    {% endif %}
+</div>
 <div class="card mb-4 section-card">
     <div class="card-header">
-        <span class="section-title">{{ suggestions|length }} suggestion{{ 's' if suggestions|length != 1 }}</span>
+        <span class="section-title">{{ icon('receipt') }} Detected payments</span>
+        <span class="small text-muted ml-2">review before adding</span>
     </div>
     <div class="card-body py-2">
         {% for s in suggestions %}
-        <div class="d-flex justify-content-between align-items-start py-2 {{ 'border-top' if not loop.first }}">
-            <div>
-                <strong>{{ s.name }}</strong>
-                <span class="badge badge-pill badge-{{ 'success' if s.confidence == 'high' else 'warning' }} ml-2">{{ s.confidence }}</span>
-                {% if s.kind %}
-                <span class="badge badge-pill badge-{{ 'info' if s.kind == 'subscription' else 'secondary' }} ml-1">{{ s.kind }}</span>
+        <div class="suggestion">
+            <span class="cat-dot" data-cat="{{ s.category or 'other' }}" aria-hidden="true"></span>
+            <div class="suggestion-body">
+                <div class="suggestion-head">
+                    <strong>{{ s.name }}</strong>
+                    <span class="confidence" data-level="{{ s.confidence }}">{{ s.confidence }} confidence</span>
+                </div>
+                <div class="mt-1">
+                    {% if s.occurrences %}<span class="chip">{{ s.occurrences }} payments</span>{% endif %}
+                    <span class="chip">{{ format_frequency(s.frequency) }}</span>
+                    {% if s.category %}<span class="chip">{{ s.category|title }}</span>{% endif %}
+                    {% if s.next_due %}<span class="chip">next {{ s.next_due|nice_date }}</span>{% endif %}
+                    {% if s.kind == 'bill' %}<span class="chip">variable amount</span>{% endif %}
+                    {% if s.price_direction and s.first_seen %}
+                        {% if s.price_direction == 'up' %}
+                        <span class="chip price-up">&uarr; {{ s.price_pct }}% since {{ s.first_seen|nice_date }}</span>
+                        {% elif s.price_direction == 'down' %}
+                        <span class="chip price-down">&darr; {{ s.price_pct }}% since {{ s.first_seen|nice_date }}</span>
+                        {% else %}
+                        <span class="chip">price steady</span>
+                        {% endif %}
+                    {% endif %}
+                </div>
+                <small class="text-muted d-block mt-1">{{ s.reason }}</small>
+                {% if s.ai_reason and s.source != 'ai' %}
+                <small class="text-muted d-block">AI: {{ s.ai_reason }}</small>
                 {% endif %}
-                <br>
-                <small class="text-muted">{{ s.reason }}</small>
-                <br>
-                <small>
-                    {% if s.kind == 'bill' %}avg {% endif %}${{ "%.2f"|format(s.amount) }} {{ format_frequency(s.frequency) }}
-                    {% if s.monthly_cost %} &middot; ${{ "%.2f"|format(s.monthly_cost) }}/month{% endif %}
-                    {% if s.category %} &middot; {{ s.category|title }}{% endif %}
-                    {% if s.source %} &middot; from {{ s.source }}{% endif %}
-                    {% if s.next_due %} &middot; next {{ s.next_due }}{% endif %}
-                </small>
             </div>
-            <div class="ml-3 text-right">
-                <form method="post" action="{{ url_for('subscriptions.subscription_accept_suggestion') }}" class="d-inline">
-                    {{ csrf() }}
-                    {% if s.merchant_key %}<input type="hidden" name="merchant_key" value="{{ s.merchant_key }}">{% endif %}
-                    <input type="hidden" name="name" value="{{ s.name }}">
-                    <input type="hidden" name="amount" value="{{ s.amount }}">
-                    <input type="hidden" name="frequency" value="{{ s.frequency }}">
-                    <input type="hidden" name="category" value="{{ s.category }}">
-                    {% if s.next_due %}<input type="hidden" name="next_due" value="{{ s.next_due }}">{% endif %}
-                    <button type="submit" class="btn btn-sm btn-outline-success">Add</button>
-                </form>
-                {% if s.merchant_key %}
-                <form method="post" action="{{ url_for('subscriptions.subscription_ignore_suggestion') }}" class="d-inline">
-                    {{ csrf() }}
-                    <input type="hidden" name="merchant_key" value="{{ s.merchant_key }}">
-                    <input type="hidden" name="name" value="{{ s.name }}">
-                    <input type="hidden" name="amount" value="{{ s.amount }}">
-                    <input type="hidden" name="frequency" value="{{ s.frequency }}">
-                    <button type="submit" class="btn btn-sm btn-outline-secondary">Dismiss</button>
-                </form>
+            <div class="suggestion-amount">
+                <div class="amount">{% if s.kind == 'bill' %}avg {% endif %}{{ s.amount|money }}</div>
+                {% if s.monthly_cost and s.frequency != 'monthly' %}
+                <small>{{ s.monthly_cost|money }}/month</small>
                 {% endif %}
+                <div class="suggestion-actions">
+                    <form method="post" action="{{ url_for('subscriptions.subscription_accept_suggestion') }}" class="d-inline">
+                        {{ csrf() }}
+                        {% if s.merchant_key %}<input type="hidden" name="merchant_key" value="{{ s.merchant_key }}">{% endif %}
+                        <input type="hidden" name="name" value="{{ s.name }}">
+                        <input type="hidden" name="amount" value="{{ s.amount }}">
+                        <input type="hidden" name="frequency" value="{{ s.frequency }}">
+                        <input type="hidden" name="category" value="{{ s.category }}">
+                        {% if s.next_due %}<input type="hidden" name="next_due" value="{{ s.next_due }}">{% endif %}
+                        <button type="submit" class="btn btn-sm btn-outline-success">Add</button>
+                    </form>
+                    {% if s.merchant_key %}
+                    <form method="post" action="{{ url_for('subscriptions.subscription_ignore_suggestion') }}" class="d-inline">
+                        {{ csrf() }}
+                        <input type="hidden" name="merchant_key" value="{{ s.merchant_key }}">
+                        <input type="hidden" name="name" value="{{ s.name }}">
+                        <input type="hidden" name="amount" value="{{ s.amount }}">
+                        <input type="hidden" name="frequency" value="{{ s.frequency }}">
+                        <button type="submit" class="btn btn-sm btn-outline-secondary">Dismiss</button>
+                    </form>
+                    {% endif %}
+                </div>
             </div>
         </div>
         {% endfor %}

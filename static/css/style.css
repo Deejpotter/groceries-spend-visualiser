@@ -578,6 +578,146 @@ details[open].pack-others > summary::after {
 .row-expired { background: var(--danger-tint); }
 .row-soon { background: var(--warn-tint); }
 
+/* Plain-language insight strip */
+.insight {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.8rem 1rem;
+    margin-bottom: 1rem;
+    background: var(--brand-tint);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    color: var(--ink);
+}
+.insight .ic {
+    color: var(--brand);
+    font-size: 1.3rem;
+    margin-top: 0.15rem;
+}
+.insight p { margin: 0; }
+.insight strong { font-weight: 700; }
+
+/* Suggested bills: a summary strip and calmer rows */
+.suggest-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.35rem 1.75rem;
+    padding: 0.85rem 1.15rem;
+    margin-bottom: 1rem;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+}
+.suggest-summary strong {
+    font-size: 1.35rem;
+    font-variant-numeric: tabular-nums;
+}
+.suggest-summary span {
+    color: var(--ink-soft);
+    margin-left: 0.3rem;
+}
+.suggestion {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.85rem;
+    padding: 0.95rem 0;
+    border-top: 1px solid var(--line);
+}
+.suggestion:first-child { border-top: 0; padding-top: 0.35rem; }
+.cat-dot {
+    width: 0.65rem;
+    height: 0.65rem;
+    margin-top: 0.45rem;
+    border-radius: 50%;
+    background: var(--brand);
+    flex: none;
+}
+.cat-dot[data-cat="utilities"] { background: #6f8fa8; }
+.cat-dot[data-cat="insurance"] { background: #8a6fa8; }
+.cat-dot[data-cat="entertainment"] { background: #c8912f; }
+.cat-dot[data-cat="health"] { background: #6c7a45; }
+.cat-dot[data-cat="rent"] { background: #a64b2c; }
+.cat-dot[data-cat="transport"] { background: #7a9e9f; }
+.cat-dot[data-cat="education"] { background: #b58b4f; }
+.cat-dot[data-cat="other"] { background: var(--ink-soft); }
+.section-title .cat-dot { margin-top: 0; }
+.suggestion-body { flex: 1 1 auto; min-width: 0; }
+.suggestion-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+.suggestion-head strong { font-size: 1.02rem; }
+.confidence {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.7rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+}
+.confidence::before {
+    content: "";
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--warn);
+}
+.confidence[data-level="high"]::before { background: var(--ok); }
+.chip {
+    display: inline-block;
+    margin: 0.2rem 0.25rem 0 0;
+    padding: 0.08rem 0.5rem;
+    font-size: 0.74rem;
+    color: var(--ink-soft);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    white-space: nowrap;
+}
+.chip.price-up { color: var(--danger); border-color: var(--danger-tint); }
+.chip.price-down { color: var(--ok); border-color: var(--ok-tint); }
+.suggestion-amount {
+    flex: none;
+    min-width: 7.25rem;
+    text-align: right;
+}
+.suggestion-amount .amount {
+    font-size: 1.15rem;
+    font-weight: 700;
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+}
+.suggestion-amount small {
+    display: block;
+    color: var(--ink-soft);
+}
+.suggestion-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.35rem;
+    margin-top: 0.4rem;
+}
+@media (max-width: 575.98px) {
+    .suggestion { flex-wrap: wrap; }
+    .suggestion-amount {
+        display: flex;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        width: 100%;
+        min-width: 0;
+        text-align: left;
+        padding-left: 1.5rem;
+    }
+    .suggestion-actions { margin-top: 0; margin-left: auto; }
+}
+
 /* Section headers */
 .section-card .card-header {
     background: transparent;
@@ -602,6 +742,22 @@ details[open].pack-others > summary::after {
     margin: 0.15rem 0 0;
 }
 .sparkline { display: block; }
+.bill-spark {
+    display: block;
+    margin-top: 0.15rem;
+    color: var(--brand);
+}
+.price-change {
+    display: inline-block;
+    margin-top: 0.1rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+}
+.price-change[data-dir="up"] { color: var(--danger); }
+.price-change[data-dir="down"] { color: var(--ok); }
+.price-change[data-dir="flat"] { color: var(--ink-soft); }
+.bill-link { color: inherit; text-decoration: none; }
+.bill-link:hover { color: var(--brand); text-decoration: underline; }
 
 /* Numbers that update or stack stay aligned */
 .stat-value,

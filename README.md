@@ -117,6 +117,8 @@ are already there.
 | `PORT` | `5000` | Listen port. |
 | `GUNICORN_WORKERS` | `2` | Worker processes (keep low: SQLite allows one writer at a time). |
 | `APP_ENV` | — | Set to `staging` to show the staging banner. Leave unset in production. |
+| `OPENROUTER_API_KEY` | — | Optional. Enables AI review of bill suggestions. Can also be saved on the settings page. |
+| `OPENROUTER_MODEL` | `openrouter/free` | Optional model override for AI review. |
 
 ---
 

@@ -1755,6 +1755,29 @@ class TestSettings:
                             ("subtract_pantry_from_list",)).fetchone()
         assert pantry["value"] == "1"
 
+    def test_save_ai_settings(self, client, db):
+        _login(client, "setuser", "test123")
+        resp = client.post("/settings/save", data={
+            "action": "save_ai",
+            "openrouter_api_key": "sk-or-test",
+            "openrouter_model": "openrouter/free",
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+        assert b"AI review settings saved." in resp.data
+        key = db.execute("SELECT value FROM settings WHERE key = 'openrouter_api_key'").fetchone()
+        assert key["value"] == "sk-or-test"
+        model = db.execute("SELECT value FROM settings WHERE key = 'openrouter_model'").fetchone()
+        assert model["value"] == "openrouter/free"
+
+        client.post("/settings/save", data={
+            "action": "save_ai",
+            "openrouter_api_key": "",
+            "openrouter_model": "openrouter/free",
+            "remove_ai_key": "on",
+        }, follow_redirects=True)
+        key = db.execute("SELECT value FROM settings WHERE key = 'openrouter_api_key'").fetchone()
+        assert key["value"] == ""
+
     def test_save_settings_metric_default(self, client, db):
         """Metric is the default unit preference."""
         _login(client, "setuser", "test123")
@@ -1885,17 +1908,19 @@ class TestSubscriptions:
         from datetime import date
         assert db.execute("SELECT next_due FROM subscriptions WHERE name = 'Bread'").fetchone()["next_due"] == date.today().isoformat()
 
-    def test_suggest_reads_stored_bank_rows(self, client, db):
+    def test_suggest_ignores_legacy_unclassified_json(self, client, db):
+        """The old banksync_unclassified cache is no longer a suggestion source."""
         _login(client, "subuser", "test123")
         import json
         db.execute(
             "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
-            ("banksync_unclassified", json.dumps([{"description": "NETFLIX.COM", "amount": 18.99}])))
+            ("banksync_unclassified", json.dumps([
+                {"description": "LEGACY MERCHANT", "amount": 18.99},
+            ])))
         db.commit()
         resp = client.get("/subscriptions/suggest")
         assert resp.status_code == 200
-        assert b"Netflix" in resp.data
-        assert b"Monthly" in resp.data  # formatted, not the raw code
+        assert b"LEGACY MERCHANT" not in resp.data
 
     def _bank_rows(self, db, description, amount, dates,
                    direction="debit", status="other"):
@@ -1906,7 +1931,7 @@ class TestSubscriptions:
                    (source, external_id, txn_date, description, merchant_key,
                     amount, direction, status)
                    VALUES ('csv', ?, ?, ?, ?, ?, ?, ?)""",
-                (f"{description}-{i}", txn_date, description,
+                (f"{description}-{txn_date}-{i}", txn_date, description,
                  normalise_merchant(description), amount, direction, status),
             )
         db.commit()
@@ -2017,6 +2042,107 @@ class TestSubscriptions:
         assert db.execute("SELECT COUNT(*) FROM merchant_decisions").fetchone()[0] == 0
         resp = client.get("/subscriptions/suggest")
         assert b"3 payments" in resp.data
+
+    def test_ai_review_requires_a_key(self, client, db):
+        _login(client, "subuser", "test123")
+        self._bank_rows(db, "BINGE.COM", 16.00,
+                        ["2026-01-10", "2026-02-10"])
+        resp = client.post("/subscriptions/suggest/review", follow_redirects=True)
+        assert b"Add an OpenRouter API key" in resp.data
+
+    def test_ai_review_filters_and_promotes(self, client, db, monkeypatch):
+        _login(client, "subuser", "test123")
+        db.execute("INSERT OR REPLACE INTO settings (key, value)"
+                   " VALUES ('openrouter_api_key', 'test-key')")
+        db.execute("INSERT OR REPLACE INTO settings (key, value)"
+                   " VALUES ('openrouter_model', 'openrouter/free')")
+        db.commit()
+        self._bank_rows(db, "BINGE.COM", 16.00,
+                        ["2026-01-10", "2026-02-10", "2026-03-10"])
+        self._bank_rows(db, "AMAZON AU MARKETPLACE", 45.00,
+                        ["2026-01-05", "2026-02-05"])
+        self._bank_rows(db, "CITY COUNCIL RATES", 300.00,
+                        ["2026-08-01", "2026-11-01"])
+        self._bank_rows(db, "AUTO SMART SAVINGS DEBIT", 112.00,
+                        ["2026-09-01", "2026-10-01"])
+
+        def fake_review(candidates, api_key, model, timeout=60):
+            assert api_key == "test-key"
+            reviews = []
+            for candidate in candidates:
+                key = candidate["merchant_key"]
+                if key == "binge":
+                    reviews.append({
+                        "merchant_key": key,
+                        "evidence_hash": candidate["evidence_hash"],
+                        "bill": True, "name": "Binge Streaming",
+                        "category": "entertainment", "frequency": "monthly",
+                        "reason": "Streaming subscription.",
+                    })
+                elif key == "amazon":
+                    reviews.append({
+                        "merchant_key": key,
+                        "evidence_hash": candidate["evidence_hash"],
+                        "bill": False, "name": "Amazon",
+                        "category": "other", "frequency": None,
+                        "reason": "Marketplace shopping, not a bill.",
+                    })
+                elif key == "city":
+                    reviews.append({
+                        "merchant_key": key,
+                        "evidence_hash": candidate["evidence_hash"],
+                        "bill": True, "name": "Council Rates",
+                        "category": "bills", "frequency": "quarterly",
+                        "reason": "Council rates notice.",
+                    })
+            return reviews
+
+        monkeypatch.setattr("routes.subscriptions.review_candidates", fake_review)
+        resp = client.post("/subscriptions/suggest/review", follow_redirects=True)
+        assert b"AI reviewed 3 merchants: 2 kept, 1 dismissed" in resp.data
+        assert b"Binge Streaming" in resp.data
+        assert b"Council Rates" in resp.data
+        assert b"Amazon" not in resp.data
+        assert b"AUTO SMART SAVINGS" not in resp.data
+        # Verdicts are cached: a later page load keeps them without another call.
+        resp = client.get("/subscriptions/suggest")
+        assert b"Binge Streaming" in resp.data
+        assert b"Review again" in resp.data
+
+    def test_bill_detail_shows_price_history_and_can_use_latest(self, client, db):
+        _login(client, "subuser", "test123")
+        self._bank_rows(db, "BINGE.COM", 16.00,
+                        ["2026-01-10", "2026-02-10"])
+        self._bank_rows(db, "BINGE.COM", 18.00, ["2026-03-10"])
+        client.post("/subscriptions/suggest/accept", data={
+            "merchant_key": "binge", "name": "Binge", "amount": "16.67",
+            "frequency": "monthly", "category": "entertainment",
+        })
+        sub_id = db.execute("SELECT id FROM subscriptions").fetchone()["id"]
+
+        resp = client.get(f"/subscriptions/{sub_id}")
+        assert resp.status_code == 200
+        assert b"Price over time" in resp.data
+        assert b"priceChart" in resp.data
+        assert b"12.5%" in resp.data
+        assert b"Payment history" in resp.data
+
+        resp = client.get("/subscriptions")
+        assert b"bill-spark" in resp.data
+        assert b"12.5%" in resp.data
+
+        client.post(f"/subscriptions/{sub_id}/use-latest", follow_redirects=True)
+        amount = db.execute("SELECT amount FROM subscriptions WHERE id = ?",
+                            (sub_id,)).fetchone()["amount"]
+        assert amount == 18.00
+
+    def test_bill_detail_without_linked_history(self, client, db):
+        _login(client, "subuser", "test123")
+        self._add(client, name="Manual Bill", amount="20.00")
+        sub_id = db.execute("SELECT id FROM subscriptions").fetchone()["id"]
+        resp = client.get(f"/subscriptions/{sub_id}")
+        assert resp.status_code == 200
+        assert b"No price history yet" in resp.data
 
     def test_repeat_groceries_are_not_offered_as_bills(self, client, db):
         _login(client, "subuser", "test123")
