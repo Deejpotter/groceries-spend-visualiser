@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-25
 - **Investigator:** OpenCode (DeepSeek V4.1 Flash)
-- **Status:** Fixes implemented on `dev`, full suite green (608 passed)
+- **Status:** Fixes implemented on `dev` and verified on staging (`516ba07`), PR pending
 
 ## 1. What was asked
 
@@ -75,6 +75,11 @@ Test the newly released bill detection and charts against realistic data, then i
   - theme toggle changes bar colours, axis text, grid lines and doughnut borders on both pages;
   - mobile 390 px: no horizontal overflow, charts fit.
 - Temp database, seed script, screenshots and browser session removed; port 5099 free.
+- Staging deploy (`516ba07`) verified with a temporary bill, using the real
+  HTMX headers: Mark paid returned 200 with a row, Pause 204, Resume 200 (the
+  previous 500 is gone), and Purge 204. The page carried the reload and theme
+  listeners and both charts. The temporary bill was purged and the page returned
+  to "No bills yet".
 
 ## 7. Open items
 
