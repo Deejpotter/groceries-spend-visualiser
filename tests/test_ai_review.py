@@ -56,6 +56,15 @@ class TestBuildCandidates:
         ]
         assert build_candidates(rows) == []
 
+    def test_merges_similar_merchant_variants(self):
+        rows = [
+            txn("2026-09-01", "AMAZON AU MARKETPLACE", 45.00),
+            txn("2026-10-01", "AMAZONAU PTY", 45.00),
+        ]
+        candidates = build_candidates(rows)
+        assert len(candidates) == 1
+        assert candidates[0]["occurrences"] == 2
+
     def test_evidence_hash_changes_with_new_data(self):
         base = [
             txn("2026-09-01", "BINGE.COM", 16.00),

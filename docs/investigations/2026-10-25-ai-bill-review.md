@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-25
 - **Investigator:** OpenCode (DeepSeek V4.1 Flash)
-- **Status:** Implemented on `dev` and deployed to staging (`9a20462`); PR pending
+- **Status:** Merged to `main` (`2d7f437`), deployed to production and staging; production healthy
 
 ## 1. What was asked
 
@@ -102,6 +102,9 @@ through a Coolify environment variable or the settings page.
 - Live free-router check with five realistic candidates: correct keep/drop, 17.5s.
 - Visual review with a seeded database at 1280 px and 390 px, with chart canvases read
   directly because headless screenshots catch them mid-animation.
+- Staging `9a20462` and production `2d7f437` deployed healthy, `/health` 200 and no
+  startup errors. The Settings page on staging confirmed the environment key and
+  `openrouter/free`.
 - Temporary database, seed script, screenshots and browser sessions removed.
 
 ## 7. Open items

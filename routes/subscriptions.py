@@ -527,6 +527,15 @@ def subscription_suggest():
                   if c["merchant_key"] not in reviews]
     reviewed_at = max((r.get("reviewed_at") for r in reviews.values()
                        if r.get("reviewed_at")), default=None)
+    ai_dismissed = [
+        {"name": review.get("display_name") or key,
+         "reason": review.get("reason") or ""}
+        for key, review in reviews.items() if review["verdict"] == "noise"
+    ]
+    bank_count = db.execute("SELECT COUNT(*) FROM bank_transactions").fetchone()[0]
+    history = db.execute(
+        "SELECT MIN(txn_date), MAX(txn_date) FROM bank_transactions"
+    ).fetchone()
     dismissed = [d for d in decisions if d["decision"] == "ignored"]
     suggestion_total = round(sum(monthly_cost(s) for s in suggestions), 2)
 
@@ -544,6 +553,11 @@ def subscription_suggest():
         ai_unreviewed=len(unreviewed),
         ai_review_count=len(reviews),
         ai_reviewed_at=reviewed_at,
+        ai_dismissed=ai_dismissed,
+        bank_transaction_count=bank_count,
+        bank_history_first=history[0] if history else None,
+        bank_history_last=history[1] if history else None,
+        banksync_configured=bool(get_setting("banksync_api_key")),
     )
 
 

@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-25
 - **Investigator:** OpenCode (DeepSeek V4.1 Flash)
-- **Status:** Implemented on `dev` and deployed to staging (`9a20462`); PR pending
+- **Status:** Merged to `main` (`2d7f437`), deployed to production and staging; production healthy
 
 ## 1. What was asked
 
@@ -78,6 +78,8 @@ Show the price of a subscription over time, not just its current amount.
 - Visual check with a seeded database: a flat Netflix line, then a second run with a
   $20.99 final payment showing +$2.00 (10.5%), the latest-payment tile and the use
   button.
+- Staging `9a20462` and production `2d7f437` deployed healthy, `/health` 200 and no
+  startup errors.
 - Temporary database and screenshots removed.
 
 ## 7. Open items

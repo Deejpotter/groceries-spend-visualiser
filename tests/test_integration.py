@@ -2102,8 +2102,11 @@ class TestSubscriptions:
         assert b"AI reviewed 3 merchants: 2 kept, 1 dismissed" in resp.data
         assert b"Binge Streaming" in resp.data
         assert b"Council Rates" in resp.data
-        assert b"Amazon" not in resp.data
+        assert b"Amazon" in resp.data  # listed under "What the AI dismissed"
+        assert b"Marketplace shopping" in resp.data
         assert b"AUTO SMART SAVINGS" not in resp.data
+        assert b"What the AI dismissed" in resp.data
+        assert b"Marketplace shopping" in resp.data
         # Verdicts are cached: a later page load keeps them without another call.
         resp = client.get("/subscriptions/suggest")
         assert b"Binge Streaming" in resp.data
@@ -2143,6 +2146,14 @@ class TestSubscriptions:
         resp = client.get(f"/subscriptions/{sub_id}")
         assert resp.status_code == 200
         assert b"No price history yet" in resp.data
+
+    def test_suggest_prompts_for_history_backfill(self, client, db):
+        _login(client, "subuser", "test123")
+        db.execute("INSERT OR REPLACE INTO settings (key, value)"
+                   " VALUES ('banksync_api_key', 'bsk_test')")
+        db.commit()
+        resp = client.get("/subscriptions/suggest")
+        assert b"Backfill 12 months of bank history" in resp.data
 
     def test_repeat_groceries_are_not_offered_as_bills(self, client, db):
         _login(client, "subuser", "test123")

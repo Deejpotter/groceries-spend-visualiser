@@ -14,6 +14,30 @@
     </div>
 </div>
 
+{% if bank_transaction_count < 40 or ai_candidate_count < 3 %}
+<div class="alert alert-warning">
+    <p class="mb-2">
+        <strong>Only {{ bank_transaction_count }} transaction{{ 's' if bank_transaction_count != 1 }} stored</strong>
+        {% if bank_history_first %}
+        (from {{ bank_history_first|nice_date }} to {{ bank_history_last|nice_date }})
+        {% endif %}
+        and {{ ai_candidate_count or 'no' }} repeat merchant{{ 's' if ai_candidate_count != 1 }}
+        to review. Older payments are not in the app yet, so regular bills cannot be found.
+    </p>
+    {% if banksync_configured %}
+    <form method="post" action="{{ url_for('spend.banksync_backfill') }}"
+          onsubmit="var b=this.querySelector('button'); b.disabled=true; b.textContent='Backfilling…';">
+        {{ csrf() }}
+        <input type="hidden" name="next" value="suggest">
+        <button type="submit" class="btn btn-primary btn-sm">Backfill 12 months of bank history</button>
+    </form>
+    <small class="d-block text-muted mt-1">Safe to run again — rows already stored are skipped.</small>
+    {% else %}
+    <a href="{{ url_for('spend.spend_import') }}" class="btn btn-primary btn-sm">Import bank history</a>
+    {% endif %}
+</div>
+{% endif %}
+
 {% if not suggestions and not repeat_purchases %}
 <div class="card mb-4 section-card">
     <div class="card-body">
@@ -55,6 +79,17 @@
     <a href="{{ url_for('settings.settings') }}">Add an OpenRouter key in Settings</a>
     to have AI filter and name the suggestions.
 </div>
+{% endif %}
+
+{% if ai_dismissed %}
+<details class="mt-2 mb-3 small">
+    <summary><strong>What the AI dismissed ({{ ai_dismissed|length }})</strong> &mdash; open if a real bill is missing</summary>
+    <ul class="mb-0 mt-2">
+        {% for item in ai_dismissed %}
+        <li><strong>{{ item.name }}</strong>{% if item.reason %} &mdash; {{ item.reason }}{% endif %}</li>
+        {% endfor %}
+    </ul>
+</details>
 {% endif %}
 
 {% if suggestions %}

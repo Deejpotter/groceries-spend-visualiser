@@ -104,6 +104,32 @@ def _as_date(value) -> Optional[date]:
         return None
 
 
+def merge_similar_groups(groups: Dict[str, List[Dict]]) -> Dict[str, List[Dict]]:
+    """Fold merchant keys that are variants of one another.
+
+    Bank descriptions often append a suffix (``AMAZONAU`` next to ``AMAZON``),
+    which would otherwise split a regular payment into two weak groups. Only
+    keys of four or more characters are folded, so short codes stay distinct.
+    """
+    keys = sorted(groups, key=lambda key: (len(key), key))
+    merged: Dict[str, List[Dict]] = {}
+    used = set()
+    for key in keys:
+        if key in used:
+            continue
+        rows = list(groups[key])
+        used.add(key)
+        for other in keys:
+            if other in used:
+                continue
+            shorter, longer = sorted((key, other), key=len)
+            if len(shorter) >= 4 and longer.startswith(shorter):
+                rows.extend(groups[other])
+                used.add(other)
+        merged[key] = rows
+    return merged
+
+
 def normalise_merchant(description: str) -> str:
     """A stable key for a bank description, so variants group together.
 
@@ -219,6 +245,7 @@ def detect_recurring(transactions: List[Dict],
         })
 
     suggestions = []
+    groups = merge_similar_groups(groups)
     for key, rows in groups.items():
         # A yearly bill only comes around once a year, so waiting for three
         # sightings would mean three years of history. Two is enough when the
