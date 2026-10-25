@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-25
 - **Investigator:** OpenCode (DeepSeek V4.1 Flash)
-- **Status:** Implemented on `dev`, awaiting full-suite sign-off and review
+- **Status:** Implemented on `dev`, deployed to staging (`faf17d6`), PR #62 open
 
 ## 1. What was asked
 
@@ -128,6 +128,10 @@ feature after the existing app work was verified complete.
   through fixtures and the Flask test client rather than live data.
 - Not verified: production behaviour with real transaction history. That is the
   calibration task below.
+- Staging deploy (`faf17d6`) verified: container healthy, `/health` 200, clean
+  startup logs, and an authenticated session confirmed both the Spend and Bills
+  pages render. Bills detection has not yet been exercised against real bank
+  transactions in staging.
 
 ## 7. Open items
 

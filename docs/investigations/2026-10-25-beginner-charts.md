@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-25
 - **Investigator:** OpenCode (DeepSeek V4.1 Flash)
-- **Status:** Implemented on `dev`, full suite green (601 passed), not yet merged or deployed
+- **Status:** Implemented on `dev`, deployed to staging (`faf17d6`), PR #62 open
 
 ## 1. What was asked
 
@@ -98,6 +98,11 @@ SRI hash, and carry `aria-label` text with an adjacent written summary.
   the page capture was the artifact, not the app.
 - Environment cleaned up: temp database, seed script, screenshots and browser
   session removed; port 5099 confirmed free.
+- Staging deploy (`faf17d6`) verified with an authenticated session: `/spend`
+  rendered the monthly, product and store charts and the budget line;
+  `/subscriptions` was empty, so a clearly named temporary bill was added,
+  both bill charts and the monthly KPI were confirmed, then the bill was purged
+  and the page returned to its empty state.
 
 ## 7. Open items
 
