@@ -682,6 +682,7 @@ details[open].pack-others > summary::after {
 }
 .chip.price-up { color: var(--danger); border-color: var(--danger-tint); }
 .chip.price-down { color: var(--ok); border-color: var(--ok-tint); }
+.chip.revived { color: var(--brand); border-color: var(--brand-tint); }
 .suggestion-amount {
     flex: none;
     min-width: 7.25rem;

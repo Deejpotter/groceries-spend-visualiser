@@ -23,6 +23,7 @@ from services.recurring import (
     is_ignored_description,
     merge_similar_groups,
     normalise_merchant,
+    split_amount_clusters,
 )
 from services.subscriptions import (
     FREQUENCIES,
@@ -111,14 +112,24 @@ def _evidence_hash(candidate: Dict) -> str:
     return hashlib.sha1("|".join(parts).encode()).hexdigest()[:20]
 
 
-def build_candidates(transactions: List[Dict], excluded_keys=None) -> List[Dict]:
+def build_candidates(transactions: List[Dict], excluded_keys=None,
+                     revive_after=None) -> List[Dict]:
     """Group spend transactions into merchants worth asking the model about.
 
     Ignores income, internal transfers, fees and grocery rows up front. Any
     merchant seen twice or more is a candidate; the model decides whether it is
     a bill. Returns at most MAX_CANDIDATES, busiest first.
+
+    Dismissed merchants are limited to payments after their dismissal date, so
+    a genuinely new pattern can be reviewed again.
     """
     excluded = {str(key) for key in (excluded_keys or ()) if key}
+    revive = {}
+    for key, value in (revive_after or {}).items():
+        cutoff = _as_date(value)
+        if cutoff is not None:
+            revive[str(key)] = cutoff
+    revived_keys = set()
     groups: Dict[str, List[Dict]] = {}
     for row in transactions:
         if (row.get("direction") or "debit") == "credit":
@@ -136,8 +147,13 @@ def build_candidates(transactions: List[Dict], excluded_keys=None) -> List[Dict]
         if seen is None or amount <= 0:
             continue
         key = row.get("merchant_key") or normalise_merchant(description)
-        if not key or key in excluded:
+        if not key:
             continue
+        if key in excluded:
+            cutoff = revive.get(key)
+            if cutoff is None or seen <= cutoff:
+                continue
+            revived_keys.add(key)
         groups.setdefault(key, []).append({
             "date": seen, "amount": amount, "description": description,
         })
@@ -145,6 +161,11 @@ def build_candidates(transactions: List[Dict], excluded_keys=None) -> List[Dict]
     candidates = []
     groups = merge_similar_groups(groups)
     for key, rows in groups.items():
+        # A merchant with clearly separate amounts is handled by the rule
+        # detector as multiple streams. Sending the combined merchant to the
+        # model would average them back into one bill.
+        if len(split_amount_clusters(rows)) > 1:
+            continue
         if len(rows) < 2:
             continue
         rows.sort(key=lambda r: r["date"])
@@ -169,6 +190,8 @@ def build_candidates(transactions: List[Dict], excluded_keys=None) -> List[Dict]
                 unique_descriptions.append(cleaned)
         candidates.append({
             "merchant_key": key,
+            "stream_key": key,
+            "stream_amount": None,
             "name": rows[-1]["description"],
             "descriptions": unique_descriptions[:3],
             "amounts": [round(a, 2) for a in amounts[-8:]],
@@ -184,6 +207,9 @@ def build_candidates(transactions: List[Dict], excluded_keys=None) -> List[Dict]
             "first_seen": dates[0].isoformat(),
             "median_interval_days": round(median(intervals), 1) if intervals else None,
             "rule_frequency": classify_frequency(intervals),
+            "revived": key in revived_keys,
+            "revived_since": (revive[key].isoformat()
+                              if key in revived_keys else None),
         })
 
     candidates.sort(key=lambda c: (-c["occurrences"], -c["mean_amount"]))
@@ -361,12 +387,13 @@ def merge_suggestions(detected: List[Dict], candidates: List[Dict],
     Rule-detected amounts and schedules always win. The model only decides
     whether to keep a merchant, and supplies its name, category and reason.
     """
-    by_key = {c["merchant_key"]: c for c in candidates}
+    by_key = {(c.get("stream_key") or c["merchant_key"]): c
+              for c in candidates}
     merged = []
     seen = set()
 
     for suggestion in detected:
-        key = suggestion["merchant_key"]
+        key = suggestion.get("stream_key") or suggestion["merchant_key"]
         review = reviews.get(key)
         if review and review["verdict"] == "noise":
             continue
@@ -393,7 +420,9 @@ def merge_suggestions(detected: List[Dict], candidates: List[Dict],
         monthly_factor = {"weekly": 52 / 12, "fortnightly": 26 / 12,
                           "monthly": 1, "quarterly": 1 / 3, "yearly": 1 / 12}[frequency]
         merged.append({
-            "merchant_key": key,
+            "merchant_key": candidate.get("merchant_key") or key,
+            "stream_key": key,
+            "stream_amount": None,
             "name": review.get("display_name") or _clean_name(candidate),
             "amount": amount,
             "frequency": frequency,
@@ -409,6 +438,8 @@ def merge_suggestions(detected: List[Dict], candidates: List[Dict],
             "price_change": candidate.get("price_change"),
             "price_pct": candidate.get("price_pct"),
             "price_direction": candidate.get("price_direction"),
+            "revived": candidate.get("revived", False),
+            "revived_since": candidate.get("revived_since"),
             "next_due": suggested_next_due(frequency, last_seen),
             "monthly_cost": round(amount * monthly_factor, 2),
             "reason": review.get("reason") or "AI review",

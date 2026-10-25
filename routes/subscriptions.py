@@ -49,6 +49,11 @@ def _decorate_subscription(sub, histories):
     """Attach price history and a sparkline to a subscription row."""
     sub = dict(sub)
     points = histories.get(sub.get("merchant_key") or "", [])
+    stream_amount = sub.get("stream_amount")
+    if stream_amount:
+        tolerance = max(5.0, float(stream_amount) * 0.35)
+        points = [point for point in points
+                  if abs(point["amount"] - float(stream_amount)) <= tolerance]
     sub["price_points"] = points
     sub["price_summary"] = summarise(points)
     sub["price_spark"] = (sparkline([p["amount"] for p in points], 64, 18)
@@ -464,34 +469,40 @@ def subscription_fortnight():
     )
 
 
-@subscriptions_bp.route("/subscriptions/suggest")
-@login_required
-def subscription_suggest():
-    """Show bill suggestions from bank transactions, with optional AI review."""
-    db = get_db()
+def _suggest_context(db):
+    """Everything the suggestions page and its HTMX panel need."""
 
     # Merchants already accepted or dismissed are excluded so they don't nag.
     decisions = [dict(r) for r in db.execute(
         "SELECT * FROM merchant_decisions ORDER BY display_name"
     ).fetchall()]
     excluded_keys = [d["merchant_key"] for d in decisions]
+    ignored_after = {
+        d["merchant_key"]: d["created_at"]
+        for d in decisions if d["decision"] == "ignored"
+    }
     transactions = [dict(r) for r in db.execute(
         """SELECT txn_date, description, amount, merchant_key, direction, status
            FROM bank_transactions"""
     ).fetchall()]
-    detected = detect_recurring(transactions, excluded_keys=excluded_keys)
-
     existing = {
         (row["name"] or "").strip().lower()
         for row in db.execute("SELECT name FROM subscriptions").fetchall()
     }
     linked_keys = {
-        row["merchant_key"] for row in db.execute(
-            "SELECT merchant_key FROM subscriptions WHERE merchant_key IS NOT NULL"
+        (row["stream_key"] or row["merchant_key"])
+        for row in db.execute(
+            "SELECT stream_key, merchant_key FROM subscriptions"
         ).fetchall()
+        if row["stream_key"] or row["merchant_key"]
     }
+    detected = detect_recurring(
+        transactions, excluded_keys=set(excluded_keys) | linked_keys,
+        revive_after=ignored_after)
+
     candidates = build_candidates(
-        transactions, excluded_keys=set(excluded_keys) | linked_keys)
+        transactions, excluded_keys=set(excluded_keys) | linked_keys,
+        revive_after=ignored_after)
     reviews = cached_reviews(db, candidates)
     suggestions = merge_suggestions(detected, candidates, reviews)
 
@@ -539,26 +550,43 @@ def subscription_suggest():
     dismissed = [d for d in decisions if d["decision"] == "ignored"]
     suggestion_total = round(sum(monthly_cost(s) for s in suggestions), 2)
 
+    return {
+        "suggestions": suggestions,
+        "suggestion_total": suggestion_total,
+        "repeat_purchases": repeat_purchases,
+        "dismissed": dismissed,
+        "format_frequency": format_frequency,
+        "ai_configured": ai["configured"],
+        "ai_model": ai["model"],
+        "ai_from_env": ai["from_env"],
+        "ai_candidate_count": len(candidates),
+        "ai_unreviewed": len(unreviewed),
+        "ai_review_count": len(reviews),
+        "ai_reviewed_at": reviewed_at,
+        "ai_dismissed": ai_dismissed,
+        "bank_transaction_count": bank_count,
+        "bank_history_first": history[0] if history else None,
+        "bank_history_last": history[1] if history else None,
+        "banksync_configured": bool(get_setting("banksync_api_key")),
+        "suggest_error": None,
+        "suggest_notice": None,
+    }
+
+
+def _suggest_response(db, error=None, notice=None):
+    """Render the suggestions panel after an in-page action."""
+    context = _suggest_context(db)
+    context["suggest_error"] = error
+    context["suggest_notice"] = notice
+    return render_template("subscriptions/suggest.html", **context)
+
+
+@subscriptions_bp.route("/subscriptions/suggest")
+@login_required
+def subscription_suggest():
+    """Show bill suggestions from bank transactions, with optional AI review."""
     return render_template(
-        "subscriptions/suggest.html",
-        suggestions=suggestions,
-        suggestion_total=suggestion_total,
-        repeat_purchases=repeat_purchases,
-        dismissed=dismissed,
-        format_frequency=format_frequency,
-        ai_configured=ai["configured"],
-        ai_model=ai["model"],
-        ai_from_env=ai["from_env"],
-        ai_candidate_count=len(candidates),
-        ai_unreviewed=len(unreviewed),
-        ai_review_count=len(reviews),
-        ai_reviewed_at=reviewed_at,
-        ai_dismissed=ai_dismissed,
-        bank_transaction_count=bank_count,
-        bank_history_first=history[0] if history else None,
-        bank_history_last=history[1] if history else None,
-        banksync_configured=bool(get_setting("banksync_api_key")),
-    )
+        "subscriptions/suggest.html", **_suggest_context(get_db()))
 
 
 @subscriptions_bp.route("/subscriptions/suggest/review", methods=["POST"])
@@ -572,11 +600,17 @@ def subscription_ai_review():
         return redirect(url_for("subscriptions.subscription_suggest"))
 
     decisions = [dict(r) for r in db.execute(
-        "SELECT merchant_key FROM merchant_decisions").fetchall()]
+        "SELECT merchant_key, decision, created_at FROM merchant_decisions").fetchall()]
+    ignored_after = {
+        d["merchant_key"]: d["created_at"]
+        for d in decisions if d["decision"] == "ignored"
+    }
     linked_keys = {
-        row["merchant_key"] for row in db.execute(
-            "SELECT merchant_key FROM subscriptions WHERE merchant_key IS NOT NULL"
+        (row["stream_key"] or row["merchant_key"])
+        for row in db.execute(
+            "SELECT stream_key, merchant_key FROM subscriptions"
         ).fetchall()
+        if row["stream_key"] or row["merchant_key"]
     }
     transactions = [dict(r) for r in db.execute(
         """SELECT txn_date, description, amount, merchant_key, direction, status
@@ -585,6 +619,7 @@ def subscription_ai_review():
     candidates = build_candidates(
         transactions,
         excluded_keys=set(d["merchant_key"] for d in decisions) | linked_keys,
+        revive_after=ignored_after,
     )
     if not candidates:
         flash("No merchants with two or more transactions to review yet.", "info")
@@ -615,14 +650,19 @@ def subscription_accept_suggestion():
     frequency = request.form.get("frequency", "monthly").strip().lower()
     category = request.form.get("category", "other").strip()
     merchant_key = request.form.get("merchant_key", "").strip()
+    is_htmx = bool(request.headers.get("HX-Request"))
 
     if not name:
+        if is_htmx:
+            return _suggest_response(get_db(), error="Suggestion is missing a name.")
         flash("Suggestion is missing a name.", "error")
         return redirect(url_for("subscriptions.subscription_suggest"))
 
     try:
         amount = float(amount_raw)
     except (ValueError, TypeError):
+        if is_htmx:
+            return _suggest_response(get_db(), error="Suggestion has an invalid amount.")
         flash("Suggestion has an invalid amount.", "error")
         return redirect(url_for("subscriptions.subscription_suggest"))
 
@@ -637,12 +677,16 @@ def subscription_accept_suggestion():
         next_due = date.today().isoformat()
 
     db = get_db()
+    stream_key = (request.form.get("stream_key", "").strip()
+                  or merchant_key or name.lower())
+    stream_amount = _amount_or_none(request.form.get("stream_amount"))
     cursor = db.execute(
         """INSERT INTO subscriptions
-           (name, amount, frequency, category, next_due, notes, merchant_key)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+           (name, amount, frequency, category, next_due, notes, merchant_key,
+            stream_key, stream_amount)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (name, amount, frequency, category, next_due, "Added from suggestion",
-         merchant_key or None),
+         merchant_key or None, stream_key, stream_amount),
     )
     if merchant_key:
         db.execute(
@@ -655,9 +699,11 @@ def subscription_accept_suggestion():
                  amount = excluded.amount,
                  frequency = excluded.frequency,
                  subscription_id = excluded.subscription_id""",
-            (merchant_key, name, amount, frequency, cursor.lastrowid),
+            (stream_key, name, amount, frequency, cursor.lastrowid),
         )
     db.commit()
+    if is_htmx:
+        return _suggest_response(db, notice=f"Added '{name}' to Bills.")
     flash(f"Added subscription '{name}'.", "success")
     return redirect(url_for("subscriptions.subscription_list"))
 
@@ -667,7 +713,12 @@ def subscription_accept_suggestion():
 def subscription_ignore_suggestion():
     """Dismiss a detected merchant so it stops being suggested."""
     merchant_key = request.form.get("merchant_key", "").strip()
-    if not merchant_key:
+    stream_key = request.form.get("stream_key", "").strip() or merchant_key
+    is_htmx = bool(request.headers.get("HX-Request"))
+    if not stream_key:
+        if is_htmx:
+            return _suggest_response(get_db(),
+                                     error="That suggestion can't be dismissed.")
         flash("That suggestion can't be dismissed.", "error")
         return redirect(url_for("subscriptions.subscription_suggest"))
 
@@ -680,13 +731,17 @@ def subscription_ignore_suggestion():
              decision = 'ignored',
              display_name = excluded.display_name,
              amount = excluded.amount,
-             frequency = excluded.frequency""",
-        (merchant_key,
+             frequency = excluded.frequency,
+             created_at = CURRENT_TIMESTAMP""",
+        (stream_key,
          request.form.get("name", "").strip() or merchant_key,
          _amount_or_none(request.form.get("amount")),
          request.form.get("frequency", "").strip() or None),
     )
     db.commit()
+    if is_htmx:
+        dismissed_name = request.form.get("name", "").strip() or merchant_key
+        return _suggest_response(db, notice=f"Dismissed '{dismissed_name}'.")
     flash("Suggestion dismissed. It won't be suggested again.", "success")
     return redirect(url_for("subscriptions.subscription_suggest"))
 
@@ -701,6 +756,8 @@ def subscription_restore_suggestion(decision_id):
         (decision_id,),
     )
     db.commit()
+    if request.headers.get("HX-Request"):
+        return _suggest_response(db, notice="Suggestion restored.")
     flash("Suggestion restored.", "success")
     return redirect(url_for("subscriptions.subscription_suggest"))
 

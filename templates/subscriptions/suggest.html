@@ -14,15 +14,22 @@
     </div>
 </div>
 
+<div id="suggest-content">
+{% if suggest_notice %}
+<div class="alert alert-success">{{ suggest_notice }}</div>
+{% endif %}
+{% if suggest_error %}
+<div class="alert alert-danger">{{ suggest_error }}</div>
+{% endif %}
+
 {% if bank_transaction_count < 40 or ai_candidate_count < 3 %}
 <div class="alert alert-warning">
     <p class="mb-2">
         <strong>Only {{ bank_transaction_count }} transaction{{ 's' if bank_transaction_count != 1 }} stored</strong>
         {% if bank_history_first %}
-        (from {{ bank_history_first|nice_date }} to {{ bank_history_last|nice_date }})
+        (from {{ bank_history_first|nice_date }} to {{ bank_history_last|nice_date }}).
         {% endif %}
-        and {{ ai_candidate_count or 'no' }} repeat merchant{{ 's' if ai_candidate_count != 1 }}
-        to review. Older payments are not in the app yet, so regular bills cannot be found.
+        Older payments are not in the app yet, so regular bills cannot be found.
     </p>
     {% if banksync_configured %}
     <form method="post" action="{{ url_for('spend.banksync_backfill') }}"
@@ -125,6 +132,9 @@
                     {% if s.category %}<span class="chip">{{ s.category|title }}</span>{% endif %}
                     {% if s.next_due %}<span class="chip">next {{ s.next_due|nice_date }}</span>{% endif %}
                     {% if s.kind == 'bill' %}<span class="chip">variable amount</span>{% endif %}
+                    {% if s.revived %}
+                    <span class="chip revived">new pattern since {{ s.revived_since|nice_date }}</span>
+                    {% endif %}
                     {% if s.price_direction and s.first_seen %}
                         {% if s.price_direction == 'up' %}
                         <span class="chip price-up">&uarr; {{ s.price_pct }}% since {{ s.first_seen|nice_date }}</span>
@@ -146,9 +156,14 @@
                 <small>{{ s.monthly_cost|money }}/month</small>
                 {% endif %}
                 <div class="suggestion-actions">
-                    <form method="post" action="{{ url_for('subscriptions.subscription_accept_suggestion') }}" class="d-inline">
+                    <form method="post" action="{{ url_for('subscriptions.subscription_accept_suggestion') }}"
+                          hx-post="{{ url_for('subscriptions.subscription_accept_suggestion') }}"
+                          hx-target="#suggest-content" hx-select="#suggest-content"
+                          hx-swap="outerHTML" hx-disabled-elt="find button" class="d-inline">
                         {{ csrf() }}
                         {% if s.merchant_key %}<input type="hidden" name="merchant_key" value="{{ s.merchant_key }}">{% endif %}
+                        {% if s.stream_key %}<input type="hidden" name="stream_key" value="{{ s.stream_key }}">{% endif %}
+                        {% if s.stream_amount %}<input type="hidden" name="stream_amount" value="{{ s.stream_amount }}">{% endif %}
                         <input type="hidden" name="name" value="{{ s.name }}">
                         <input type="hidden" name="amount" value="{{ s.amount }}">
                         <input type="hidden" name="frequency" value="{{ s.frequency }}">
@@ -157,9 +172,13 @@
                         <button type="submit" class="btn btn-sm btn-outline-success">Add</button>
                     </form>
                     {% if s.merchant_key %}
-                    <form method="post" action="{{ url_for('subscriptions.subscription_ignore_suggestion') }}" class="d-inline">
+                    <form method="post" action="{{ url_for('subscriptions.subscription_ignore_suggestion') }}"
+                          hx-post="{{ url_for('subscriptions.subscription_ignore_suggestion') }}"
+                          hx-target="#suggest-content" hx-select="#suggest-content"
+                          hx-swap="outerHTML" hx-disabled-elt="find button" class="d-inline">
                         {{ csrf() }}
                         <input type="hidden" name="merchant_key" value="{{ s.merchant_key }}">
+                        {% if s.stream_key %}<input type="hidden" name="stream_key" value="{{ s.stream_key }}">{% endif %}
                         <input type="hidden" name="name" value="{{ s.name }}">
                         <input type="hidden" name="amount" value="{{ s.amount }}">
                         <input type="hidden" name="frequency" value="{{ s.frequency }}">
@@ -221,7 +240,10 @@
                     {% if d.frequency %} {{ format_frequency(d.frequency) }}{% endif %}
                 </small>
             </div>
-            <form method="post" action="{{ url_for('subscriptions.subscription_restore_suggestion', decision_id=d.id) }}">
+            <form method="post" action="{{ url_for('subscriptions.subscription_restore_suggestion', decision_id=d.id) }}"
+                  hx-post="{{ url_for('subscriptions.subscription_restore_suggestion', decision_id=d.id) }}"
+                  hx-target="#suggest-content" hx-select="#suggest-content"
+                  hx-swap="outerHTML" hx-disabled-elt="find button">
                 {{ csrf() }}
                 <button type="submit" class="btn btn-sm btn-outline-secondary">Restore</button>
             </form>
@@ -238,8 +260,9 @@
             <li><strong>Bank transactions:</strong> every imported or synced transaction is stored. A merchant with three or more payments on a regular cadence becomes a suggestion (two is enough for a yearly bill). Fixed amounts are marked as subscriptions; variable amounts (utilities) as bills.</li>
             <li><strong>Merchant names:</strong> known Australian brands (Netflix, Telstra, AGL, insurers) are named and categorised automatically. Everything else uses the description on the transaction.</li>
             <li><strong>Purchase history:</strong> regularly bought groceries appear separately below as "Often bought — not bills". They are never added to your subscriptions.</li>
-            <li>Suggestions are opt-in: nothing is added until you click <strong>Add</strong>. <strong>Dismiss</strong> hides a merchant for good, and dismissed merchants can be restored below.</li>
+            <li>Suggestions are opt-in: nothing is added until you click <strong>Add</strong>. <strong>Dismiss</strong> hides a merchant until a new regular pattern starts (three payments after the dismissal); dismissed merchants can also be restored from the list above.</li>
         </ul>
     </div>
+</div>
 </div>
 {% endblock %}

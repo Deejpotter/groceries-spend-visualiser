@@ -284,6 +284,8 @@ MIGRATIONS = [
     ("pantry_items", "origin", "TEXT"),
     ("purchases", "origin", "TEXT"),
     ("subscriptions", "merchant_key", "TEXT"),
+    ("subscriptions", "stream_key", "TEXT"),
+    ("subscriptions", "stream_amount", "REAL"),
 ]
 
 
@@ -324,6 +326,10 @@ def _apply_migrations(db):
                            ) WHERE continuation.is_continuation = 1"""
                     )
     _migrate_purchase_identity(db)
+    db.execute(
+        "UPDATE subscriptions SET stream_key = merchant_key"
+        " WHERE stream_key IS NULL AND merchant_key IS NOT NULL"
+    )
 
 
 def init_db() -> bool:

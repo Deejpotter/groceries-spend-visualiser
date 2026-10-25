@@ -56,6 +56,28 @@ class TestBuildCandidates:
         ]
         assert build_candidates(rows) == []
 
+    def test_revive_after_limits_a_dismissed_merchant_to_new_rows(self):
+        rows = [
+            txn("2026-01-01", "BINGE.COM", 16.00),
+            txn("2026-02-01", "BINGE.COM", 16.00),
+            txn("2026-05-01", "BINGE.COM", 16.00),
+            txn("2026-06-01", "BINGE.COM", 16.00),
+        ]
+        candidates = build_candidates(
+            rows, excluded_keys={"binge"},
+            revive_after={"binge": "2026-03-01"})
+        assert len(candidates) == 1
+        assert candidates[0]["occurrences"] == 2
+        assert candidates[0]["dates"] == ["2026-05-01", "2026-06-01"]
+        assert candidates[0]["revived"] is True
+
+    def test_skips_a_merchant_with_two_amount_streams(self):
+        rows = []
+        for month in range(1, 4):
+            rows.append(txn(f"2026-{month:02d}-01", "PAYPAL *BELONG", 90.00))
+            rows.append(txn(f"2026-{month:02d}-15", "PAYPAL *BELONG", 25.00))
+        assert build_candidates(rows) == []
+
     def test_merges_similar_merchant_variants(self):
         rows = [
             txn("2026-09-01", "AMAZON AU MARKETPLACE", 45.00),

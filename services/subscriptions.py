@@ -56,6 +56,7 @@ KNOWN_MERCHANTS = [
     ("bupa", "Bupa Health", "monthly", "health"),
     ("medibank", "Medibank Health", "monthly", "health"),
     ("telstra", "Telstra", "monthly", "bills"),
+    ("belong", "Belong", "monthly", "bills"),
     ("optus", "Optus", "monthly", "bills"),
     ("vodafone", "Vodafone", "monthly", "bills"),
     ("foxtel", "Foxtel", "monthly", "entertainment"),

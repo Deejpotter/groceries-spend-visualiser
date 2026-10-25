@@ -108,6 +108,46 @@ class TestDetectRecurring:
         assert suggestion["price_direction"] == "up"
         assert suggestion["price_pct"] == 12.5
 
+    def test_dismissed_merchant_revives_after_a_new_pattern(self):
+        rows = monthly("NETFLIX.COM", 18.99,
+                       dates=["2026-01-15", "2026-02-15", "2026-03-15",
+                              "2026-05-15", "2026-06-15", "2026-07-15"])
+        result = detect_recurring(
+            rows, excluded_keys=["netflix"],
+            revive_after={"netflix": "2026-04-30"})
+        assert len(result) == 1
+        assert result[0]["revived"] is True
+        assert result[0]["revived_since"] == "2026-04-30"
+        assert result[0]["occurrences"] == 3
+        assert result[0]["first_seen"] == "2026-05-15"
+
+    def test_two_payments_after_dismissal_are_not_enough(self):
+        rows = monthly("NETFLIX.COM", 18.99,
+                       dates=["2026-01-15", "2026-02-15", "2026-03-15",
+                              "2026-05-15", "2026-06-15"])
+        assert detect_recurring(
+            rows, excluded_keys=["netflix"],
+            revive_after={"netflix": "2026-04-30"}) == []
+
+    def test_two_amount_streams_become_two_bills(self):
+        rows = []
+        for month in range(1, 13):
+            rows.append(make_transaction(
+                f"2026-{month:02d}-01", "PAYPAL *BELONG AU", 90.00))
+            rows.append(make_transaction(
+                f"2026-{month:02d}-15", "PAYPAL *BELONG AU", 25.00))
+        result = detect_recurring(rows)
+        assert len(result) == 2
+        by_amount = {s["amount"]: s for s in result}
+        assert set(by_amount) == {25.00, 90.00}
+        assert by_amount[90.00]["frequency"] == "monthly"
+        assert by_amount[25.00]["frequency"] == "monthly"
+        assert by_amount[90.00]["name"] == "Belong (90.00)"
+        assert by_amount[25.00]["name"] == "Belong (25.00)"
+        assert by_amount[90.00]["stream_key"].startswith("belong#")
+        assert by_amount[25.00]["stream_key"].startswith("belong#")
+        assert by_amount[90.00]["stream_key"] != by_amount[25.00]["stream_key"]
+
     def test_variable_amount_is_a_bill(self):
         dates = ["2026-01-20", "2026-02-20", "2026-03-20", "2026-04-20"]
         rows = [

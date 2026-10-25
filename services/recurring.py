@@ -200,25 +200,164 @@ def _display_name(descriptions: List[str]) -> str:
     if not counts:
         return "Unknown merchant"
     raw = counts.most_common(1)[0][0]
+    raw = re.sub(r"(?i)^(paypal\s*\*?|sq\s*\*?|square\s*\*?|google\s*\*?)\s*",
+                 "", raw)
+    raw = re.sub(r"(?i)\bcard\s+(?:xx)?\d+\b", "", raw)
+    raw = re.sub(r"(?i)\bvalue\s+date\b.*$", "", raw)
     raw = re.sub(r"\.(com\.au|com|net|org)(\.au)?\b", "", raw, flags=re.IGNORECASE)
     raw = re.sub(r"[^a-zA-Z0-9&' ]+", " ", raw)
+    noise = {"au", "aus", "aud", "usd", "card", "value", "date", "pos",
+             "eftpos", "purchase", "payment", "debit", "credit"}
     tokens = [t for t in raw.split()
-              if not (t.isdigit() and len(t) >= 3)]
+              if t.lower() not in noise and not (t.isdigit() and len(t) >= 3)]
     cleaned = re.sub(r"\s+", " ", " ".join(tokens)).strip()
     return (cleaned or raw.strip())[:60].title()
 
 
+def split_amount_clusters(rows: List[Dict]) -> List[List[Dict]]:
+    """Split one merchant's payments into distinct amount streams.
+
+    A single merchant can charge two different bills (for example $90 for
+    internet on the 1st and $25 for a phone mid-month). Amounts are sorted and
+    a new stream starts when the jump is larger than 25% or $5, whichever is
+    greater. A normal price rise stays in one stream.
+    """
+    if not rows:
+        return []
+    ordered = sorted(rows, key=lambda row: row["amount"])
+    clusters = [[ordered[0]]]
+    for row in ordered[1:]:
+        previous = clusters[-1][-1]["amount"]
+        gap = row["amount"] - previous
+        if gap > max(5.0, previous * 0.25):
+            clusters.append([row])
+        else:
+            clusters[-1].append(row)
+    return clusters
+
+
+def _suggestion_for_rows(base_key: str, stream_key: str, rows: List[Dict],
+                         excluded, revive, today, multi: bool = False,
+                         stream_count: int = 0) -> Optional[Dict]:
+    """Build one suggestion from a merchant, or one amount stream of it."""
+    excluded_key = stream_key if stream_key in excluded else (
+        base_key if base_key in excluded else None)
+    revived = False
+    revived_since = None
+    if excluded_key:
+        cutoff = revive.get(stream_key) or revive.get(base_key)
+        if cutoff is None:
+            return None
+        rows = [row for row in rows if row["date"] > cutoff]
+        if len(rows) < 2:
+            return None
+        revived = True
+        revived_since = cutoff.isoformat()
+
+    if len(rows) < 2:
+        return None
+    rows.sort(key=lambda row: row["date"])
+    dates = [row["date"] for row in rows]
+    amounts = [row["amount"] for row in rows]
+
+    intervals = [(dates[i + 1] - dates[i]).days for i in range(len(dates) - 1)]
+    frequency = classify_frequency(intervals)
+    if frequency is None:
+        return None
+    # A yearly bill only comes around once a year, so waiting for three
+    # sightings would mean three years of history. Two is enough when the gap
+    # lands cleanly on a year.
+    if len(rows) < MIN_OCCURRENCES and frequency != "yearly":
+        return None
+
+    target = next(t for f, t, _ in CADENCES if f == frequency)
+    tolerance = next(tol for f, _, tol in CADENCES if f == frequency)
+    consistent = sum(1 for i in intervals if abs(i - target) <= tolerance)
+    consistency = consistent / len(intervals)
+    if consistency < 0.5:
+        return None
+
+    mean_amount = sum(amounts) / len(amounts)
+    variance = max(abs(a - mean_amount) for a in amounts) / mean_amount
+
+    known = known_merchant([row["description"] for row in rows])
+    is_utility = bool(known and known["category"] == "utilities")
+    limit = _UTILITY_VARIANCE if is_utility else _BILL_VARIANCE
+    if variance > limit:
+        return None
+
+    last_seen = dates[-1]
+    first_amount = round(amounts[0], 2)
+    latest_amount = round(amounts[-1], 2)
+    price_change = round(latest_amount - first_amount, 2)
+    price_pct = round(abs(price_change) / first_amount * 100, 1) if first_amount else 0
+    price_direction = ("flat" if abs(price_change) < 0.005
+                       else ("up" if price_change > 0 else "down"))
+    kind = "subscription" if variance <= _SUBSCRIPTION_VARIANCE else "bill"
+    high = (len(rows) >= 4 and consistency >= 0.8
+            and variance <= 0.25 and intervals[-1] <= target + tolerance)
+    base_name = known["name"] if known else _display_name(
+        [row["description"] for row in rows])
+    category = known["category"] if known else guess_category(
+        " ".join(row["description"] for row in rows))
+    name = f"{base_name} ({mean_amount:.2f})" if multi else base_name
+
+    reason = (f"{len(rows)} payments, about {int(median(intervals))} days apart, "
+              f"last seen {last_seen.isoformat()}")
+    if multi:
+        reason += f" — one of {stream_count} amounts at this merchant"
+
+    return {
+        "merchant_key": base_key,
+        "stream_key": stream_key,
+        "stream_amount": round(mean_amount, 2) if multi else None,
+        "name": name,
+        "amount": round(mean_amount, 2),
+        "frequency": frequency,
+        "category": category,
+        "kind": kind,
+        "confidence": "high" if high else "medium",
+        "source": "transactions",
+        "revived": revived,
+        "revived_since": revived_since,
+        "occurrences": len(rows),
+        "first_seen": dates[0].isoformat(),
+        "last_seen": last_seen.isoformat(),
+        "first_amount": first_amount,
+        "latest_amount": latest_amount,
+        "price_change": price_change,
+        "price_pct": price_pct,
+        "price_direction": price_direction,
+        "next_due": suggested_next_due(frequency, last_seen.isoformat()),
+        "monthly_cost": round(mean_amount * _MONTHLY_MULTIPLIER[frequency], 2),
+        "reason": reason,
+    }
+
+
 def detect_recurring(transactions: List[Dict],
                      excluded_keys=None,
+                     revive_after=None,
                      today: Optional[date] = None) -> List[Dict]:
     """Detect recurring bills and subscriptions from bank transactions.
 
     ``transactions`` are dicts with txn_date (or order_date), description,
     amount, optional merchant_key, direction and status. Only debits that were
     not already classified as groceries are considered. ``excluded_keys`` are
-    merchants the user has accepted or dismissed.
+    stream keys the user has accepted or dismissed.
+
+    ``revive_after`` maps a dismissed stream to the date it was dismissed. Only
+    payments after that date are considered, so a new regular pattern can
+    surface even though the old one was dismissed.
+
+    A merchant with clearly separate amounts is split into separate streams, so
+    two bills from one provider are not averaged into one fortnightly payment.
     """
     excluded = {str(k) for k in (excluded_keys or ()) if k}
+    revive = {}
+    for key, value in (revive_after or {}).items():
+        cutoff = _as_date(value)
+        if cutoff is not None:
+            revive[str(key)] = cutoff
     groups: Dict[str, List[Dict]] = defaultdict(list)
 
     for row in transactions:
@@ -236,7 +375,7 @@ def detect_recurring(transactions: List[Dict],
         if amount <= 0 or seen is None:
             continue
         key = row.get("merchant_key") or normalise_merchant(description)
-        if not key or key in excluded:
+        if not key:
             continue
         groups[key].append({
             "date": seen,
@@ -244,79 +383,38 @@ def detect_recurring(transactions: List[Dict],
             "description": description,
         })
 
-    suggestions = []
     groups = merge_similar_groups(groups)
-    for key, rows in groups.items():
-        # A yearly bill only comes around once a year, so waiting for three
-        # sightings would mean three years of history. Two is enough when the
-        # gap lands cleanly on a year.
-        if len(rows) < 2:
-            continue
-        rows.sort(key=lambda r: r["date"])
-        dates = [r["date"] for r in rows]
-        amounts = [r["amount"] for r in rows]
-
-        intervals = [(dates[i + 1] - dates[i]).days for i in range(len(dates) - 1)]
-        frequency = classify_frequency(intervals)
-        if frequency is None:
-            continue
-        if len(rows) < MIN_OCCURRENCES and frequency != "yearly":
+    suggestions = []
+    for base_key, rows in groups.items():
+        clusters = split_amount_clusters(rows)
+        if len(clusters) <= 1:
+            suggestion = _suggestion_for_rows(
+                base_key, base_key, rows, excluded, revive, today)
+            if suggestion:
+                suggestions.append(suggestion)
             continue
 
-        target = next(t for f, t, _ in CADENCES if f == frequency)
-        tolerance = next(tol for f, _, tol in CADENCES if f == frequency)
-        consistent = sum(1 for i in intervals if abs(i - target) <= tolerance)
-        consistency = consistent / len(intervals)
-        if consistency < 0.5:
+        found = []
+        for index, cluster in enumerate(clusters, start=1):
+            suggestion = _suggestion_for_rows(
+                base_key, f"{base_key}#{index}", cluster, excluded, revive,
+                today, multi=True, stream_count=len(clusters))
+            if suggestion:
+                found.append(suggestion)
+        if found:
+            suggestions.extend(found)
             continue
 
-        mean_amount = sum(amounts) / len(amounts)
-        variance = max(abs(a - mean_amount) for a in amounts) / mean_amount
-
-        known = known_merchant([r["description"] for r in rows])
-        is_utility = bool(known and known["category"] == "utilities")
-        limit = _UTILITY_VARIANCE if is_utility else _BILL_VARIANCE
-        if variance > limit:
-            continue
-
-        last_seen = dates[-1]
-        kind = "subscription" if variance <= _SUBSCRIPTION_VARIANCE else "bill"
-        first_amount = round(amounts[0], 2)
-        latest_amount = round(amounts[-1], 2)
-        price_change = round(latest_amount - first_amount, 2)
-        price_pct = (round(abs(price_change) / first_amount * 100, 1)
-                     if first_amount else 0)
-        price_direction = ("flat" if abs(price_change) < 0.005
-                           else ("up" if price_change > 0 else "down"))
-        high = (len(rows) >= 4 and consistency >= 0.8
-                and variance <= 0.25 and intervals[-1] <= target + tolerance)
-        name = known["name"] if known else _display_name(
-            [r["description"] for r in rows])
-        category = known["category"] if known else guess_category(
-            " ".join(r["description"] for r in rows))
-
-        suggestions.append({
-            "merchant_key": key,
-            "name": name,
-            "amount": round(mean_amount, 2),
-            "frequency": frequency,
-            "category": category,
-            "kind": kind,
-            "confidence": "high" if high else "medium",
-            "source": "transactions",
-            "occurrences": len(rows),
-            "first_seen": dates[0].isoformat(),
-            "last_seen": last_seen.isoformat(),
-            "first_amount": first_amount,
-            "latest_amount": latest_amount,
-            "price_change": price_change,
-            "price_pct": price_pct,
-            "price_direction": price_direction,
-            "next_due": suggested_next_due(frequency, last_seen.isoformat()),
-            "monthly_cost": round(mean_amount * _MONTHLY_MULTIPLIER[frequency], 2),
-            "reason": (f"{len(rows)} payments, about {int(median(intervals))} days "
-                       f"apart, last seen {last_seen.isoformat()}"),
-        })
+        # The split may have been too aggressive for a variable utility. Only
+        # fall back when the amounts are close enough to be one variable bill;
+        # 90/25 is clearly two bills and must not become one fortnightly one.
+        means = [sum(r["amount"] for r in cluster) / len(cluster)
+                 for cluster in clusters if cluster]
+        if means and max(means) / min(means) < 1.6:
+            suggestion = _suggestion_for_rows(
+                base_key, base_key, rows, excluded, revive, today)
+            if suggestion:
+                suggestions.append(suggestion)
 
     return sorted(suggestions,
                   key=lambda s: (s["confidence"] != "high", -s["monthly_cost"]))
