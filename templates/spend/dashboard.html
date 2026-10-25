@@ -213,13 +213,20 @@
         integrity="sha384-NrKB+u6Ts6AtkIhwPixiKTzgSKNblyhlk0Sohlgar9UHUBzai/sgnNNWWd291xqt" crossorigin="anonymous"></script>
 <script>
 (function () {
-    const css = getComputedStyle(document.documentElement);
-    const brand = (css.getPropertyValue('--brand') || '#c25e3a').trim();
-    const inkSoft = (css.getPropertyValue('--ink-soft') || '#7a6c58').trim();
-    const line = (css.getPropertyValue('--line') || '#e2d6c1').trim();
-    const ok = (css.getPropertyValue('--ok') || '#6c7a45').trim();
-    const warn = (css.getPropertyValue('--warn') || '#c8912f').trim();
-    const palette = [brand, ok, warn, '#6f8fa8', '#8a6fa8', '#b58b4f', '#7a9e9f'];
+    const charts = [];
+    function theme() {
+        const css = getComputedStyle(document.documentElement);
+        const brand = (css.getPropertyValue('--brand') || '#c25e3a').trim();
+        const inkSoft = (css.getPropertyValue('--ink-soft') || '#7a6c58').trim();
+        const line = (css.getPropertyValue('--line') || '#e2d6c1').trim();
+        const surface = (css.getPropertyValue('--surface') || '#ece3d2').trim();
+        const ok = (css.getPropertyValue('--ok') || '#6c7a45').trim();
+        const warn = (css.getPropertyValue('--warn') || '#c8912f').trim();
+        return {
+            brand, inkSoft, line, surface,
+            palette: [brand, ok, warn, '#6f8fa8', '#8a6fa8', '#b58b4f', '#7a9e9f']
+        };
+    }
     const money = value => '$' + Number(value).toFixed(2);
     const short = (text, max) => text.length > max
         ? text.slice(0, max - 1) + '…' : text;
@@ -228,6 +235,7 @@
         return new Date(+y, +m - 1, 1).toLocaleDateString(undefined,
             { month: 'short', year: '2-digit' });
     };
+    let colours = theme();
 
     const monthly = {{ stats.monthly_spend|tojson }};
     const target = {{ (budget.target if budget else none)|tojson }};
@@ -235,44 +243,44 @@
     if (monthlyEl && monthly.length) {
         const datasets = [{
             type: 'bar', label: 'Spend', data: monthly.map(d => d[1]),
-            backgroundColor: brand, borderRadius: 6
+            backgroundColor: colours.brand, borderRadius: 6
         }];
         if (target) {
             datasets.push({
                 type: 'line', label: 'Monthly target',
                 data: monthly.map(() => target),
-                borderColor: inkSoft, borderDash: [6, 4], borderWidth: 2,
+                borderColor: colours.inkSoft, borderDash: [6, 4], borderWidth: 2,
                 pointRadius: 0, fill: false
             });
         }
-        new Chart(monthlyEl, {
+        charts.push(new Chart(monthlyEl, {
             type: 'bar',
             data: { labels: monthly.map(monthLabel), datasets },
             options: {
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: { display: !!target, labels: { color: inkSoft, boxWidth: 12 } },
+                    legend: { display: !!target, labels: { color: colours.inkSoft, boxWidth: 12 } },
                     tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + money(ctx.parsed.y) } }
                 },
                 scales: {
-                    x: { grid: { display: false }, ticks: { color: inkSoft } },
-                    y: { beginAtZero: true, grid: { color: line }, ticks: { color: inkSoft, callback: v => '$' + v } }
+                    x: { grid: { display: false }, ticks: { color: colours.inkSoft } },
+                    y: { beginAtZero: true, grid: { color: colours.line }, ticks: { color: colours.inkSoft, callback: v => '$' + v } }
                 }
             }
-        });
+        }));
     }
 
     const stores = {{ stats.store_spend|tojson }};
     const storeEl = document.getElementById('storeChart');
     if (storeEl && stores.length > 1) {
-        new Chart(storeEl, {
+        charts.push(new Chart(storeEl, {
             type: 'doughnut',
             data: {
                 labels: stores.map(s => s.store),
                 datasets: [{
                     data: stores.map(s => s.total),
-                    backgroundColor: palette,
-                    borderColor: css.getPropertyValue('--surface').trim() || '#ece3d2',
+                    backgroundColor: colours.palette,
+                    borderColor: colours.surface,
                     borderWidth: 2
                 }]
             },
@@ -280,7 +288,7 @@
                 maintainAspectRatio: false,
                 cutout: '58%',
                 plugins: {
-                    legend: { position: 'bottom', labels: { color: inkSoft, boxWidth: 12 } },
+                    legend: { position: 'bottom', labels: { color: colours.inkSoft, boxWidth: 12 } },
                     tooltip: {
                         callbacks: {
                             label: ctx => ctx.label + ': ' + money(ctx.parsed)
@@ -289,19 +297,19 @@
                     }
                 }
             }
-        });
+        }));
     }
 
     const products = {{ stats.top_by_spend|tojson }}.slice(0, 6);
     const productEl = document.getElementById('productChart');
     if (productEl && products.length) {
-        new Chart(productEl, {
+        charts.push(new Chart(productEl, {
             type: 'bar',
             data: {
                 labels: products.map(p => short(p.product_name, 30)),
                 datasets: [{
                     data: products.map(p => p.total_spend),
-                    backgroundColor: brand, borderRadius: 4
+                    backgroundColor: colours.brand, borderRadius: 4
                 }]
             },
             options: {
@@ -317,12 +325,38 @@
                     }
                 },
                 scales: {
-                    x: { beginAtZero: true, grid: { color: line }, ticks: { color: inkSoft, callback: v => '$' + v } },
-                    y: { grid: { display: false }, ticks: { color: inkSoft } }
+                    x: { beginAtZero: true, grid: { color: colours.line }, ticks: { color: colours.inkSoft, callback: v => '$' + v } },
+                    y: { grid: { display: false }, ticks: { color: colours.inkSoft } }
                 }
             }
-        });
+        }));
     }
+
+    document.addEventListener('gv:themechange', function () {
+        colours = theme();
+        charts.forEach(function (chart) {
+            if (chart.options.scales) {
+                Object.keys(chart.options.scales).forEach(function (key) {
+                    const scale = chart.options.scales[key];
+                    if (scale.ticks) scale.ticks.color = colours.inkSoft;
+                    if (scale.grid && scale.grid.display !== false) scale.grid.color = colours.line;
+                });
+            }
+            const legend = chart.options.plugins && chart.options.plugins.legend;
+            if (legend && legend.labels) legend.labels.color = colours.inkSoft;
+            chart.data.datasets.forEach(function (dataset) {
+                if (chart.config.type === 'doughnut') {
+                    dataset.backgroundColor = colours.palette;
+                    dataset.borderColor = colours.surface;
+                } else if (dataset.type === 'line') {
+                    dataset.borderColor = colours.inkSoft;
+                } else if (dataset.backgroundColor && !Array.isArray(dataset.backgroundColor)) {
+                    dataset.backgroundColor = colours.brand;
+                }
+            });
+            chart.update('none');
+        });
+    });
 })();
 </script>
 {% endif %}

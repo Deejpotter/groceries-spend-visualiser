@@ -158,32 +158,48 @@
 {% endblock %}
 
 {% block scripts %}
+<script>
+// Bills figures are server-rendered, so a successful HTMX action (pause,
+// resume, mark paid, remove, purge) needs a page refresh to update the
+// sections and both charts. Without this the row disappears but the totals
+// and charts keep the old values.
+document.body.addEventListener('htmx:afterRequest', function (event) {
+    if (event.detail.successful) window.location.reload();
+});
+</script>
 {% if by_category %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"
         integrity="sha384-NrKB+u6Ts6AtkIhwPixiKTzgSKNblyhlk0Sohlgar9UHUBzai/sgnNNWWd291xqt" crossorigin="anonymous"></script>
 <script>
 (function () {
-    const css = getComputedStyle(document.documentElement);
-    const brand = (css.getPropertyValue('--brand') || '#c25e3a').trim();
-    const inkSoft = (css.getPropertyValue('--ink-soft') || '#7a6c58').trim();
-    const line = (css.getPropertyValue('--line') || '#e2d6c1').trim();
-    const surface = (css.getPropertyValue('--surface') || '#ece3d2').trim();
-    const ok = (css.getPropertyValue('--ok') || '#6c7a45').trim();
-    const warn = (css.getPropertyValue('--warn') || '#c8912f').trim();
-    const palette = [brand, ok, warn, '#6f8fa8', '#8a6fa8', '#b58b4f', '#7a9e9f'];
+    const charts = [];
+    function theme() {
+        const css = getComputedStyle(document.documentElement);
+        const brand = (css.getPropertyValue('--brand') || '#c25e3a').trim();
+        const inkSoft = (css.getPropertyValue('--ink-soft') || '#7a6c58').trim();
+        const line = (css.getPropertyValue('--line') || '#e2d6c1').trim();
+        const surface = (css.getPropertyValue('--surface') || '#ece3d2').trim();
+        const ok = (css.getPropertyValue('--ok') || '#6c7a45').trim();
+        const warn = (css.getPropertyValue('--warn') || '#c8912f').trim();
+        return {
+            brand, inkSoft, line, surface,
+            palette: [brand, ok, warn, '#6f8fa8', '#8a6fa8', '#b58b4f', '#7a9e9f']
+        };
+    }
     const money = value => '$' + Number(value).toFixed(2);
+    let colours = theme();
 
     const categories = {{ cost_by_category|tojson }};
     const categoryEl = document.getElementById('billCategoryChart');
     if (categoryEl && categories.length) {
-        new Chart(categoryEl, {
+        charts.push(new Chart(categoryEl, {
             type: 'doughnut',
             data: {
                 labels: categories.map(c => c.label),
                 datasets: [{
                     data: categories.map(c => c.total),
-                    backgroundColor: palette,
-                    borderColor: surface,
+                    backgroundColor: colours.palette,
+                    borderColor: colours.surface,
                     borderWidth: 2
                 }]
             },
@@ -191,7 +207,7 @@
                 maintainAspectRatio: false,
                 cutout: '58%',
                 plugins: {
-                    legend: { position: 'bottom', labels: { color: inkSoft, boxWidth: 12 } },
+                    legend: { position: 'bottom', labels: { color: colours.inkSoft, boxWidth: 12 } },
                     tooltip: {
                         callbacks: {
                             label: ctx => ctx.label + ': ' + money(ctx.parsed)
@@ -200,7 +216,7 @@
                     }
                 }
             }
-        });
+        }));
     }
 
     const weekLabels = {{ weeks|map(attribute='label')|list|tojson }};
@@ -208,13 +224,13 @@
     const weekNames = {{ weeks|map(attribute='names')|list|tojson }};
     const weekEl = document.getElementById('billWeekChart');
     if (weekEl && weekLabels.length) {
-        new Chart(weekEl, {
+        charts.push(new Chart(weekEl, {
             type: 'bar',
             data: {
                 labels: weekLabels,
                 datasets: [{
                     data: weekTotals,
-                    backgroundColor: brand,
+                    backgroundColor: colours.brand,
                     borderRadius: 6
                 }]
             },
@@ -234,12 +250,38 @@
                     }
                 },
                 scales: {
-                    x: { grid: { display: false }, ticks: { color: inkSoft } },
-                    y: { beginAtZero: true, grid: { color: line }, ticks: { color: inkSoft, callback: v => '$' + v } }
+                    x: { grid: { display: false }, ticks: { color: colours.inkSoft } },
+                    y: { beginAtZero: true, grid: { color: colours.line }, ticks: { color: colours.inkSoft, callback: v => '$' + v } }
                 }
             }
-        });
+        }));
     }
+
+    document.addEventListener('gv:themechange', function () {
+        colours = theme();
+        charts.forEach(function (chart) {
+            if (chart.options.scales) {
+                Object.keys(chart.options.scales).forEach(function (key) {
+                    const scale = chart.options.scales[key];
+                    if (scale.ticks) scale.ticks.color = colours.inkSoft;
+                    if (scale.grid && scale.grid.display !== false) scale.grid.color = colours.line;
+                });
+            }
+            const legend = chart.options.plugins && chart.options.plugins.legend;
+            if (legend && legend.labels) legend.labels.color = colours.inkSoft;
+            chart.data.datasets.forEach(function (dataset) {
+                if (chart.config.type === 'doughnut') {
+                    dataset.backgroundColor = colours.palette;
+                    dataset.borderColor = colours.surface;
+                } else if (dataset.type === 'line') {
+                    dataset.borderColor = colours.inkSoft;
+                } else if (dataset.backgroundColor && !Array.isArray(dataset.backgroundColor)) {
+                    dataset.backgroundColor = colours.brand;
+                }
+            });
+            chart.update('none');
+        });
+    });
 })();
 </script>
 {% endif %}

@@ -159,6 +159,7 @@ def test_upload_and_dashboard(client, db):
     assert b"monthlyChart" in resp.data
     assert b"productChart" in resp.data
     assert b"How to read this" in resp.data
+    assert b"gv:themechange" in resp.data
     for rng in ("3m", "6m", "12m", "all", "bogus"):
         assert client.get(f"/spend?range={rng}").status_code == 200
 

@@ -21,6 +21,7 @@ document.addEventListener('DOMContentLoaded', function () {
             document.documentElement.setAttribute('data-bs-theme', next);
             try { localStorage.setItem('gv-theme', next); } catch (e) {}
             paint();
+            document.dispatchEvent(new CustomEvent('gv:themechange', { detail: { theme: next } }));
         });
         paint();
     })();

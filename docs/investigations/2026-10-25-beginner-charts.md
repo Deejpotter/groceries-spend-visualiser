@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-25
 - **Investigator:** OpenCode (DeepSeek V4.1 Flash)
-- **Status:** Implemented on `dev`, deployed to staging (`faf17d6`), PR #62 open
+- **Status:** Merged to `main` (`cdf1c44`), deployed to production and staging; production deploy healthy
 
 ## 1. What was asked
 
@@ -103,6 +103,11 @@ SRI hash, and carry `aria-label` text with an adjacent written summary.
   `/subscriptions` was empty, so a clearly named temporary bill was added,
   both bill charts and the monthly KPI were confirmed, then the bill was purged
   and the page returned to its empty state.
+- Production deploy (`cdf1c44`) verified at the infrastructure level: rolling
+  update completed, container healthy, `/health` 200, no startup errors. The
+  authenticated production UI check was not possible with the stored admin env
+  credentials (they only seed a new install), so production chart rendering is
+  covered by the staging and local checks rather than a live production login.
 
 ## 7. Open items
 

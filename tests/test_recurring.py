@@ -96,6 +96,32 @@ class TestDetectRecurring:
                        dates=["2026-02-15", "2026-03-15"])
         assert detect_recurring(rows) == []
 
+    def test_internal_transfers_are_ignored(self):
+        rows = monthly("TRANSFER TO SAVINGS", 500.00)
+        assert detect_recurring(rows) == []
+
+    def test_monthly_needs_three_sightings(self):
+        rows = monthly("NETFLIX.COM", 18.99, dates=["2026-09-15", "2026-10-15"])
+        assert detect_recurring(rows) == []
+
+    def test_yearly_bill_needs_only_two_sightings(self):
+        rows = [
+            make_transaction("2025-11-01", "AAMI INSURANCE", 780.00),
+            make_transaction("2026-11-01", "AAMI INSURANCE", 790.00),
+        ]
+        result = detect_recurring(rows)
+        assert len(result) == 1
+        assert result[0]["name"] == "AAMI Insurance"
+        assert result[0]["frequency"] == "yearly"
+        assert result[0]["confidence"] == "medium"
+
+    def test_specific_gym_brand_beats_generic_keyword(self):
+        rows = [
+            make_transaction(d, "JETTS FITNESS 001", 9.95)
+            for d in ["2026-09-07", "2026-09-14", "2026-09-21", "2026-09-28"]
+        ]
+        assert detect_recurring(rows)[0]["name"] == "Jetts Fitness"
+
     def test_credits_are_ignored(self):
         rows = [
             make_transaction("2026-01-01", "MY OB PAYROLL", 3000.00,

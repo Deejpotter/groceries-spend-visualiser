@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-25
 - **Investigator:** OpenCode (DeepSeek V4.1 Flash)
-- **Status:** Implemented on `dev`, deployed to staging (`faf17d6`), PR #62 open
+- **Status:** Merged to `main` (`cdf1c44`), deployed to production and staging; production deploy healthy
 
 ## 1. What was asked
 
@@ -132,6 +132,11 @@ feature after the existing app work was verified complete.
   startup logs, and an authenticated session confirmed both the Spend and Bills
   pages render. Bills detection has not yet been exercised against real bank
   transactions in staging.
+- Production deploy (`cdf1c44`) verified at the infrastructure level: Coolify
+  rolling update completed, container healthy, `/health` 200, no startup errors.
+  An authenticated production UI check was not possible: the admin credentials
+  stored in the Coolify env no longer log in, which is expected because the
+  password env only seeds a brand-new install.
 
 ## 7. Open items
 

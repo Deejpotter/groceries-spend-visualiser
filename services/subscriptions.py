@@ -65,11 +65,11 @@ KNOWN_MERCHANTS = [
     ("tpg", "TPG Internet", "monthly", "bills"),
     ("austar", "Austar", "monthly", "entertainment"),
     ("drops", "Gym/Health", "monthly", "health"),
-    ("fitness", "Gym/Fitness", "monthly", "health"),
     ("jetts", "Jetts Fitness", "monthly", "health"),
     ("anytime", "Anytime Fitness", "monthly", "health"),
-    ("snap", "Snap Fitness", "monthly", "health"),
+    ("snap fitness", "Snap Fitness", "monthly", "health"),
     ("jim", "Jim's Fitness", "monthly", "health"),
+    ("fitness", "Gym/Fitness", "monthly", "health"),
 ]
 
 # Fixed-day intervals for weekly/fortnightly. Monthly/quarterly/yearly use

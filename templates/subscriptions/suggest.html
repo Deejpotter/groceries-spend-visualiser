@@ -14,10 +14,10 @@
     </div>
 </div>
 
-{% if not suggestions %}
+{% if not suggestions and not repeat_purchases %}
 <div class="card mb-4 section-card">
     <div class="card-body">
-        <p class="text-muted mb-2">No suggestions right now. Detection needs at least three payments to the same merchant on a regular schedule, so import more bank history and check back.</p>
+        <p class="text-muted mb-2">No suggestions right now. Detection needs at least three payments to the same merchant on a regular schedule (two for yearly bills), so import more bank history and check back.</p>
         <a href="{{ url_for('spend.spend_import') }}" class="btn btn-outline-primary btn-sm">Import spend data</a>
         <a href="{{ url_for('subscriptions.subscription_add') }}" class="btn btn-outline-secondary btn-sm ml-2">Add manually</a>
     </div>
@@ -42,7 +42,7 @@
                 <small class="text-muted">{{ s.reason }}</small>
                 <br>
                 <small>
-                    ${{ "%.2f"|format(s.amount) }} {{ format_frequency(s.frequency) }}
+                    {% if s.kind == 'bill' %}avg {% endif %}${{ "%.2f"|format(s.amount) }} {{ format_frequency(s.frequency) }}
                     {% if s.monthly_cost %} &middot; ${{ "%.2f"|format(s.monthly_cost) }}/month{% endif %}
                     {% if s.category %} &middot; {{ s.category|title }}{% endif %}
                     {% if s.source %} &middot; from {{ s.source }}{% endif %}
@@ -77,6 +77,38 @@
 </div>
 {% endif %}
 
+{% if repeat_purchases %}
+<div class="card mb-4 section-card">
+    <div class="card-header">
+        <span class="section-title">Often bought &mdash; not bills</span>
+        <span class="small text-muted ml-2">from your grocery history</span>
+    </div>
+    <div class="card-body py-2">
+        <p class="small text-muted mb-2">
+            These repeat regularly at a similar price, but they are groceries rather than
+            subscriptions. Nothing here is added to your bills.
+        </p>
+        <div class="table-responsive">
+            <table class="table table-sm mb-0">
+                <thead>
+                    <tr><th>Item</th><th class="num">Usual price</th><th>How often</th><th>Last bought</th></tr>
+                </thead>
+                <tbody>
+                    {% for s in repeat_purchases %}
+                    <tr>
+                        <td>{{ s.name }}</td>
+                        <td class="num">${{ "%.2f"|format(s.amount) }}</td>
+                        <td>{{ format_frequency(s.frequency) }}</td>
+                        <td>{{ s.last_seen or '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 {% if dismissed %}
 <div class="card mb-4 section-card">
     <div class="card-header">
@@ -106,9 +138,9 @@
     <div class="card-header">How suggestions work</div>
     <div class="card-body">
         <ul>
-            <li><strong>Bank transactions:</strong> every imported or synced transaction is stored. A merchant with three or more payments on a regular cadence becomes a suggestion. Fixed amounts are marked as subscriptions; variable amounts (utilities) as bills.</li>
+            <li><strong>Bank transactions:</strong> every imported or synced transaction is stored. A merchant with three or more payments on a regular cadence becomes a suggestion (two is enough for a yearly bill). Fixed amounts are marked as subscriptions; variable amounts (utilities) as bills.</li>
             <li><strong>Merchant names:</strong> known Australian brands (Netflix, Telstra, AGL, insurers) are named and categorised automatically. Everything else uses the description on the transaction.</li>
-            <li><strong>Purchase history:</strong> the same product bought 3+ times at similar amounts is also suggested.</li>
+            <li><strong>Purchase history:</strong> regularly bought groceries appear separately below as "Often bought — not bills". They are never added to your subscriptions.</li>
             <li>Suggestions are opt-in: nothing is added until you click <strong>Add</strong>. <strong>Dismiss</strong> hides a merchant for good, and dismissed merchants can be restored below.</li>
         </ul>
     </div>

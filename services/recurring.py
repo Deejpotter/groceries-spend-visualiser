@@ -61,6 +61,15 @@ _INCOME_KEYWORDS = (
     "transfer from", "deposit",
 )
 
+# Moving money between your own accounts is not a bill. A generic "transfer"
+# is left alone because it can be a rent or school payment.
+_INTERNAL_TRANSFER_PATTERNS = (
+    "transfer to savings", "transfer to offset", "transfer to credit",
+    "transfer to visa", "transfer from savings", "transfer from offset",
+    "internal transfer", "transfer between", "own account",
+    "credit card payment", "payment to card", "card payment received",
+)
+
 _CATEGORY_KEYWORDS = [
     ("utilities", ("energy", "water", "gas", "electric", "ausnet", "jemena",
                    "agl", "origin", "alinta", "red energy", "simply energy")),
@@ -172,7 +181,10 @@ def detect_recurring(transactions: List[Dict],
         if (row.get("direction") or "debit") == "credit":
             continue
         description = row.get("description") or ""
-        if any(word in description.lower() for word in _INCOME_KEYWORDS):
+        lowered = description.lower()
+        if any(word in lowered for word in _INCOME_KEYWORDS):
+            continue
+        if any(pattern in lowered for pattern in _INTERNAL_TRANSFER_PATTERNS):
             continue
         if (row.get("status") or "") == "grocery":
             continue
@@ -191,7 +203,10 @@ def detect_recurring(transactions: List[Dict],
 
     suggestions = []
     for key, rows in groups.items():
-        if len(rows) < MIN_OCCURRENCES:
+        # A yearly bill only comes around once a year, so waiting for three
+        # sightings would mean three years of history. Two is enough when the
+        # gap lands cleanly on a year.
+        if len(rows) < 2:
             continue
         rows.sort(key=lambda r: r["date"])
         dates = [r["date"] for r in rows]
@@ -200,6 +215,8 @@ def detect_recurring(transactions: List[Dict],
         intervals = [(dates[i + 1] - dates[i]).days for i in range(len(dates) - 1)]
         frequency = classify_frequency(intervals)
         if frequency is None:
+            continue
+        if len(rows) < MIN_OCCURRENCES and frequency != "yearly":
             continue
 
         target = next(t for f, t, _ in CADENCES if f == frequency)

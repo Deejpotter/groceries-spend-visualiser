@@ -1922,6 +1922,8 @@ class TestSubscriptions:
         assert b"billCategoryChart" in resp.data
         assert b"billWeekChart" in resp.data
         assert b"How to read this" in resp.data
+        assert b"gv:themechange" in resp.data
+        assert b"htmx:afterRequest" in resp.data
         assert b"Netflix" in resp.data
 
     def test_suggest_detects_recurring_bank_transactions(self, client, db):
@@ -1982,6 +1984,58 @@ class TestSubscriptions:
                         ["2026-01-10", "2026-02-10", "2026-03-10", "2026-04-10"])
         resp = client.get("/subscriptions/suggest")
         assert b"4 payments" not in resp.data
+
+    def test_htmx_row_updates_render_without_a_500(self, client, db):
+        """Mark paid, pause and resume each return a usable HTMX response."""
+        _login(client, "subuser", "test123")
+        self._add(client, frequency="weekly", next_due="2026-09-01")
+        sub_id = db.execute("SELECT id FROM subscriptions").fetchone()["id"]
+        headers = {"HX-Request": "true"}
+
+        mark = client.post(f"/subscriptions/{sub_id}/mark-paid", headers=headers)
+        assert mark.status_code == 200
+        assert b"Mark paid" in mark.data
+
+        pause = client.post(f"/subscriptions/{sub_id}/toggle", headers=headers)
+        assert pause.status_code == 204
+
+        resume = client.post(f"/subscriptions/{sub_id}/resume", headers=headers)
+        assert resume.status_code == 200
+        assert b"Mark paid" in resume.data
+
+    def test_purging_a_linked_bill_allows_it_to_be_suggested_again(self, client, db):
+        _login(client, "subuser", "test123")
+        self._bank_rows(db, "BINGE.COM", 16.00,
+                        ["2026-01-10", "2026-02-10", "2026-03-10"])
+        client.post("/subscriptions/suggest/accept", data={
+            "merchant_key": "binge", "name": "Binge", "amount": "16.00",
+            "frequency": "monthly", "category": "entertainment",
+        })
+        sub_id = db.execute("SELECT id FROM subscriptions").fetchone()["id"]
+        client.post(f"/subscriptions/{sub_id}/toggle")
+        client.post(f"/subscriptions/{sub_id}/purge")
+        assert db.execute("SELECT COUNT(*) FROM merchant_decisions").fetchone()[0] == 0
+        resp = client.get("/subscriptions/suggest")
+        assert b"3 payments" in resp.data
+
+    def test_repeat_groceries_are_not_offered_as_bills(self, client, db):
+        _login(client, "subuser", "test123")
+        from datetime import date, timedelta
+        base = date(2026, 8, 3)
+        for i in range(6):
+            day = (base + timedelta(days=7 * i)).isoformat()
+            db.execute(
+                "INSERT INTO purchases (order_date, basket_id, store, product_name,"
+                " quantity, unit_price, line_total, origin)"
+                " VALUES (?, ?, 'Woolworths', 'Weekly Milk', 1, 3.10, 3.10, 'csv')",
+                (day, f"milk-{i}"),
+            )
+        db.commit()
+        resp = client.get("/subscriptions/suggest")
+        assert b"Often bought" in resp.data
+        assert b"Weekly Milk" in resp.data
+        assert b"No suggestions right now" not in resp.data
+        assert b">Add</button>" not in resp.data
 
     def test_suggest_ignores_ancient_purchases(self, client, db):
         _login(client, "subuser", "test123")
