@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-25
 - **Investigator:** OpenCode (DeepSeek V4.1 Flash)
-- **Status:** Implemented on `dev`, full suite green (641 passed)
+- **Status:** Implemented on `dev`, deployed to staging (`c7a9e57`); PR pending
 
 ## 1. What was asked
 
@@ -90,6 +90,9 @@ similar descriptions and filter by likelihood.
   Netflix, Telstra and Council Rates and dropped Amazon/DeepInfra.
 - Live BankSync backfill against production data has not been run yet; it needs the
   user's key and account.
+- Staging `c7a9e57` is healthy and shows the coverage warning. Staging has no
+  BankSync key, so it displays the import path; production has the key and will show
+  **Backfill 12 months of bank history**.
 
 ## 7. Open items
 
