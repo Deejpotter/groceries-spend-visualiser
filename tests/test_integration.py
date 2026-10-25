@@ -2112,6 +2112,29 @@ class TestSubscriptions:
         assert b"Binge Streaming" in resp.data
         assert b"Review again" in resp.data
 
+    def test_ended_bill_is_flagged_and_can_be_kept(self, client, db):
+        _login(client, "subuser", "test123")
+        self._bank_rows(db, "NETFLIX.COM", 18.99,
+                        ["2026-01-04", "2026-02-04", "2026-03-04"])
+        client.post("/subscriptions/suggest/accept", data={
+            "merchant_key": "netflix", "stream_key": "netflix",
+            "name": "Netflix", "amount": "18.99",
+            "frequency": "monthly", "category": "entertainment",
+        })
+        sub_id = db.execute("SELECT id FROM subscriptions").fetchone()["id"]
+
+        page = client.get("/subscriptions")
+        assert b"Possibly ended" in page.data
+        assert b"missed monthly" in page.data
+
+        client.post(f"/subscriptions/{sub_id}/keep-tracking", follow_redirects=True)
+        page = client.get("/subscriptions")
+        assert b"Possibly ended" not in page.data
+        dismissed = db.execute(
+            "SELECT ended_dismissed_at FROM subscriptions WHERE id = ?",
+            (sub_id,)).fetchone()["ended_dismissed_at"]
+        assert dismissed
+
     def test_one_merchant_can_produce_two_bills(self, client, db):
         _login(client, "subuser", "test123")
         firsts = [f"2026-{month:02d}-01" for month in range(1, 13)]

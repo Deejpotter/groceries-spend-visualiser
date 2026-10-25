@@ -760,6 +760,27 @@ details[open].pack-others > summary::after {
 .bill-link { color: inherit; text-decoration: none; }
 .bill-link:hover { color: var(--brand); text-decoration: underline; }
 
+/* Bills that have missed several expected payments */
+.ended-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 0;
+    border-top: 1px solid var(--line);
+}
+.ended-row:first-of-type { border-top: 0; padding-top: 0.25rem; }
+.ended-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.35rem;
+}
+@media (max-width: 575.98px) {
+    .ended-row { flex-wrap: wrap; }
+    .ended-actions { width: 100%; justify-content: flex-start; }
+}
+
 /* Numbers that update or stack stay aligned */
 .stat-value,
 .num,

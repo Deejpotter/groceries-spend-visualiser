@@ -22,6 +22,7 @@ from services.subscriptions import (
 from services.spend_analysis import load_purchases
 from services.recurring import detect_recurring
 from services.price_history import group_price_history, payment_rows, summarise
+from services.subscription_health import ended_subscriptions
 from services.dashboard import sparkline
 from services.ai_review import (
     AIReviewError,
@@ -83,13 +84,17 @@ def subscription_list():
         "SELECT * FROM subscriptions WHERE active = 0 ORDER BY category, name"
     ).fetchall()]
 
-    monthly_total = monthly_cost_total(subscriptions)
+    ended = ended_subscriptions(subscriptions)
+    ended_ids = {row["id"] for row in ended}
+    counted = [s for s in subscriptions if s["id"] not in ended_ids]
+
+    monthly_total = monthly_cost_total(counted)
     cost_by_category = [
         {**row, "label": subscription_category_label(row["category"])}
-        for row in monthly_cost_by_category(subscriptions)
+        for row in monthly_cost_by_category(counted)
     ]
-    weeks = upcoming_weeks(subscriptions, weeks=8)
-    biggest = max(subscriptions, key=monthly_cost) if subscriptions else None
+    weeks = upcoming_weeks(counted, weeks=8)
+    biggest = max(counted, key=monthly_cost) if counted else None
     biggest_monthly = monthly_cost(biggest) if biggest else 0
 
     return render_template(
@@ -105,6 +110,7 @@ def subscription_list():
         weeks=weeks,
         biggest=biggest,
         biggest_monthly=biggest_monthly,
+        ended=ended,
     )
 
 
@@ -129,6 +135,24 @@ def subscription_detail(sub_id):
         format_frequency=format_frequency,
         category_label=subscription_category_label,
     )
+
+
+@subscriptions_bp.route("/subscriptions/<int:sub_id>/keep-tracking", methods=["POST"])
+@login_required
+def subscription_keep_tracking(sub_id):
+    """Dismiss the 'possibly ended' prompt until a new pattern is missed."""
+    db = get_db()
+    sub = db.execute("SELECT * FROM subscriptions WHERE id = ?", (sub_id,)).fetchone()
+    if not sub:
+        flash("Subscription not found.", "error")
+        return redirect(url_for("subscriptions.subscription_list"))
+    db.execute(
+        "UPDATE subscriptions SET ended_dismissed_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (sub_id,),
+    )
+    db.commit()
+    flash(f"Keeping '{sub['name']}' tracked.", "success")
+    return redirect(url_for("subscriptions.subscription_list"))
 
 
 @subscriptions_bp.route("/subscriptions/<int:sub_id>/use-latest", methods=["POST"])

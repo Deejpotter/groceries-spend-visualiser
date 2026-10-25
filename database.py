@@ -286,6 +286,7 @@ MIGRATIONS = [
     ("subscriptions", "merchant_key", "TEXT"),
     ("subscriptions", "stream_key", "TEXT"),
     ("subscriptions", "stream_amount", "REAL"),
+    ("subscriptions", "ended_dismissed_at", "TEXT"),
 ]
 
 

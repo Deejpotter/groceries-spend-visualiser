@@ -119,6 +119,11 @@ def _advance_by_frequency(d: date, freq: str) -> date:
     return d + timedelta(days=_FREQUENCY_DAYS[freq])
 
 
+def advance_occurrence(day: date, frequency: str) -> date:
+    """Advance one billing cycle using calendar arithmetic."""
+    return _advance_by_frequency(day, frequency)
+
+
 def fortnight_for_date(d: date) -> tuple:
     """Return (start, end) of the Monday-Sunday fortnight containing date d.
 
