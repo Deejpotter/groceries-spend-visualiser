@@ -120,6 +120,19 @@ def test_analyze_purchases_stats():
     assert stats["top_by_spend"][0]["total_spend"] == 24.5
 
 
+def test_store_spend_splits_by_store():
+    rows = [
+        {"order_date": "2026-09-01", "basket_id": "a", "store": "Woolworths",
+         "product_name": "Milk", "quantity": 1, "line_total": 10.0},
+        {"order_date": "2026-09-02", "basket_id": "b", "store": "Coles",
+         "product_name": "Bread", "quantity": 1, "line_total": 30.0},
+    ]
+    stats = analyze_purchases(rows)
+    assert [(s["store"], s["total"], s["share"]) for s in stats["store_spend"]] == [
+        ("Coles", 30.0, 75), ("Woolworths", 10.0, 25),
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -142,8 +155,33 @@ def test_upload_and_dashboard(client, db):
     assert b"Imported 4 purchase lines" in resp.data
     assert b"Beef Mince 500g" in resp.data
     assert b"$30.60" in resp.data
+    # Beginner-facing charts are rendered and explained.
+    assert b"monthlyChart" in resp.data
+    assert b"productChart" in resp.data
+    assert b"How to read this" in resp.data
     for rng in ("3m", "6m", "12m", "all", "bogus"):
         assert client.get(f"/spend?range={rng}").status_code == 200
+
+
+def test_spend_chart_includes_budget_line_when_set(client, db):
+    login(client)
+    _upload(client)
+    db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('monthly_budget', '100')")
+    db.commit()
+    resp = client.get("/spend")
+    assert b"Monthly target" in resp.data
+
+
+def test_spend_dashboard_splits_spend_by_store(client, db):
+    login(client)
+    _upload(client)
+    client.post("/spend/import", data={
+        "file": (io.BytesIO(WOOLIES_CSV.encode()), "coles.csv"),
+        "store": "Coles",
+    }, content_type="multipart/form-data", follow_redirects=True)
+    resp = client.get("/spend")
+    assert b"storeChart" in resp.data
+    assert b"Where your money goes" in resp.data
 
 
 def test_link_product_updates_ingredient_price(client, db):

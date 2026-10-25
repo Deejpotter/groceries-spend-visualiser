@@ -7,7 +7,7 @@
 <div class="page-head">
     <div>
         <h1 class="mb-0">Suggested Bills</h1>
-        <p class="page-sub">Potential subscriptions detected from your bank data and purchase history.</p>
+        <p class="page-sub">Recurring payments detected in your bank transactions.</p>
     </div>
     <div class="d-flex flex-wrap">
         <a href="{{ url_for('subscriptions.subscription_list') }}" class="btn btn-outline-primary mr-2 mb-2">Back to list</a>
@@ -17,7 +17,7 @@
 {% if not suggestions %}
 <div class="card mb-4 section-card">
     <div class="card-body">
-        <p class="text-muted mb-2">No suggestions right now. As you import more bank data or purchase history, the app will detect recurring payments here.</p>
+        <p class="text-muted mb-2">No suggestions right now. Detection needs at least three payments to the same merchant on a regular schedule, so import more bank history and check back.</p>
         <a href="{{ url_for('spend.spend_import') }}" class="btn btn-outline-primary btn-sm">Import spend data</a>
         <a href="{{ url_for('subscriptions.subscription_add') }}" class="btn btn-outline-secondary btn-sm ml-2">Add manually</a>
     </div>
@@ -35,19 +35,24 @@
             <div>
                 <strong>{{ s.name }}</strong>
                 <span class="badge badge-pill badge-{{ 'success' if s.confidence == 'high' else 'warning' }} ml-2">{{ s.confidence }}</span>
+                {% if s.kind %}
+                <span class="badge badge-pill badge-{{ 'info' if s.kind == 'subscription' else 'secondary' }} ml-1">{{ s.kind }}</span>
+                {% endif %}
                 <br>
                 <small class="text-muted">{{ s.reason }}</small>
                 <br>
                 <small>
                     ${{ "%.2f"|format(s.amount) }} {{ format_frequency(s.frequency) }}
+                    {% if s.monthly_cost %} &middot; ${{ "%.2f"|format(s.monthly_cost) }}/month{% endif %}
                     {% if s.category %} &middot; {{ s.category|title }}{% endif %}
                     {% if s.source %} &middot; from {{ s.source }}{% endif %}
                     {% if s.next_due %} &middot; next {{ s.next_due }}{% endif %}
                 </small>
             </div>
-            <div class="ml-3">
+            <div class="ml-3 text-right">
                 <form method="post" action="{{ url_for('subscriptions.subscription_accept_suggestion') }}" class="d-inline">
                     {{ csrf() }}
+                    {% if s.merchant_key %}<input type="hidden" name="merchant_key" value="{{ s.merchant_key }}">{% endif %}
                     <input type="hidden" name="name" value="{{ s.name }}">
                     <input type="hidden" name="amount" value="{{ s.amount }}">
                     <input type="hidden" name="frequency" value="{{ s.frequency }}">
@@ -55,7 +60,42 @@
                     {% if s.next_due %}<input type="hidden" name="next_due" value="{{ s.next_due }}">{% endif %}
                     <button type="submit" class="btn btn-sm btn-outline-success">Add</button>
                 </form>
+                {% if s.merchant_key %}
+                <form method="post" action="{{ url_for('subscriptions.subscription_ignore_suggestion') }}" class="d-inline">
+                    {{ csrf() }}
+                    <input type="hidden" name="merchant_key" value="{{ s.merchant_key }}">
+                    <input type="hidden" name="name" value="{{ s.name }}">
+                    <input type="hidden" name="amount" value="{{ s.amount }}">
+                    <input type="hidden" name="frequency" value="{{ s.frequency }}">
+                    <button type="submit" class="btn btn-sm btn-outline-secondary">Dismiss</button>
+                </form>
+                {% endif %}
             </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if dismissed %}
+<div class="card mb-4 section-card">
+    <div class="card-header">
+        <span class="section-title">Dismissed ({{ dismissed|length }})</span>
+    </div>
+    <div class="card-body py-2">
+        {% for d in dismissed %}
+        <div class="d-flex justify-content-between align-items-center py-2 {{ 'border-top' if not loop.first }}">
+            <div>
+                <strong>{{ d.display_name or d.merchant_key }}</strong>
+                <small class="text-muted ml-2">
+                    {% if d.amount %}${{ "%.2f"|format(d.amount) }}{% endif %}
+                    {% if d.frequency %} {{ format_frequency(d.frequency) }}{% endif %}
+                </small>
+            </div>
+            <form method="post" action="{{ url_for('subscriptions.subscription_restore_suggestion', decision_id=d.id) }}">
+                {{ csrf() }}
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Restore</button>
+            </form>
         </div>
         {% endfor %}
     </div>
@@ -66,9 +106,10 @@
     <div class="card-header">How suggestions work</div>
     <div class="card-body">
         <ul>
-            <li><strong>BankSync data:</strong> The app scans unclassified bank transactions for known merchant names (Netflix, Spotify, utilities, insurance) and recurring descriptions.</li>
-            <li><strong>Purchase history:</strong> The app detects when the same product is bought 3+ times at similar amounts on a regular schedule.</li>
-            <li>Suggestions are opt-in: nothing is added until you click "Add".</li>
+            <li><strong>Bank transactions:</strong> every imported or synced transaction is stored. A merchant with three or more payments on a regular cadence becomes a suggestion. Fixed amounts are marked as subscriptions; variable amounts (utilities) as bills.</li>
+            <li><strong>Merchant names:</strong> known Australian brands (Netflix, Telstra, AGL, insurers) are named and categorised automatically. Everything else uses the description on the transaction.</li>
+            <li><strong>Purchase history:</strong> the same product bought 3+ times at similar amounts is also suggested.</li>
+            <li>Suggestions are opt-in: nothing is added until you click <strong>Add</strong>. <strong>Dismiss</strong> hides a merchant for good, and dismissed merchants can be restored below.</li>
         </ul>
     </div>
 </div>

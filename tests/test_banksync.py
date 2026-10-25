@@ -38,10 +38,10 @@ def test_map_transaction_aliases():
     row = map_banksync_transaction(TXN_WOOLWORTHS)
     assert row == {"txn_id": "txn-1", "order_date": "2026-10-01",
                    "description": "WOOLWORTHS MT WAVERLEY 3456",
-                   "amount": 82.40}
+                   "amount": 82.40, "direction": "debit"}
     row = map_banksync_transaction(TXN_COLES)
-    assert (row["txn_id"], row["order_date"], row["amount"]) == \
-        ("txn-2", "2026-10-02", 23.10)
+    assert (row["txn_id"], row["order_date"], row["amount"], row["direction"]) == \
+        ("txn-2", "2026-10-02", 23.10, "unknown")
 
 
 def test_map_transaction_rejects_unreadable():

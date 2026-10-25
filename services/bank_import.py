@@ -69,10 +69,12 @@ def parse_netbank_csv(text: str) -> Tuple[List[Dict], List[str]]:
         description = r.get(desc_key, "")
         if amount_key:
             amount = _num(r.get(amount_key))
+            direction = "debit" if (amount or 0) < 0 else "credit"
         else:
             debit = _num(r.get(debit_key), 0) if debit_key else 0
             credit = _num(r.get(credit_key), 0) if credit_key else 0
             amount = round(debit - credit, 2)
+            direction = "debit" if debit else "credit"
         if not order_date or not description:
             errors.append(f"Line {line_no}: skipped (needs a valid date and description).")
             continue
@@ -85,6 +87,7 @@ def parse_netbank_csv(text: str) -> Tuple[List[Dict], List[str]]:
             "order_date": order_date,
             "description": description,
             "amount": round(abs(amount), 2),
+            "direction": direction,
         })
     return rows, errors
 
@@ -153,6 +156,48 @@ def remember_unclassified(db, rows: List[Dict], limit: int = 200) -> int:
     return len(stored)
 
 
+def store_bank_transactions(db, rows: List[Dict], source: str = "csv",
+                            patterns=None) -> int:
+    """Persist every bank row, so recurring payments can be detected later.
+
+    Grocery classification is stamped on the row but nothing is filtered out:
+    the detection service decides what is a bill. BankSync rows carry their own
+    transaction id; CSV rows are identified by a hash of date, amount and
+    description, so re-importing the same file adds nothing.
+    """
+    from services.recurring import normalise_merchant
+    added = 0
+    for row in rows:
+        description = (row.get("description") or "").strip()
+        order_date = row.get("order_date")
+        try:
+            amount = round(abs(float(row.get("amount") or 0)), 2)
+        except (TypeError, ValueError):
+            continue
+        if not description or not order_date or amount <= 0:
+            continue
+        txn_id = row.get("txn_id")
+        if txn_id:
+            external_id = str(txn_id)
+        else:
+            key = f"{order_date}|{amount:.2f}|{description.lower()}"
+            external_id = hashlib.sha1(key.encode()).hexdigest()[:20]
+        status = ("grocery" if patterns and classify_merchant(description, patterns)
+                  else "other")
+        cur = db.execute(
+            """INSERT OR IGNORE INTO bank_transactions
+               (source, external_id, txn_date, description, merchant_key,
+                amount, direction, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (source, external_id, order_date, description,
+             normalise_merchant(description), amount,
+             row.get("direction") or "debit", status),
+        )
+        added += cur.rowcount
+    db.commit()
+    return added
+
+
 def _basket_id(source: str, order_date: str, amount: float, description: str) -> str:
     """Stable id for a bank row: same file re-imports to the same id."""
     key = f"{order_date}|{amount:.2f}|{description}"
@@ -164,10 +209,13 @@ def to_purchases(rows: List[Dict], patterns,
     """Normalise bank rows to purchase dicts. Returns (purchases, unclassified).
 
     Only rows matching a grocery merchant become purchases; the rest are
-    reported so the patterns can be extended and the file re-imported.
+    reported so the patterns can be extended and the file re-imported. Money
+    coming in (credits and refunds) is never a purchase.
     """
     purchases, unclassified = [], []
     for row in rows:
+        if row.get("direction") == "credit":
+            continue
         store = classify_merchant(row["description"], patterns)
         if not store:
             unclassified.append(dict(row))
