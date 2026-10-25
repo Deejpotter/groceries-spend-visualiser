@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-25
 - **Investigator:** OpenCode (DeepSeek V4.1 Flash)
-- **Status:** Implemented on `dev`, tests passing (623), awaiting staging review
+- **Status:** Implemented on `dev` and deployed to staging (`9a20462`); PR pending
 
 ## 1. What was asked
 
