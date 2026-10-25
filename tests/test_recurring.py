@@ -47,6 +47,25 @@ class TestNormaliseMerchant:
         assert keys == {"netflix"}
 
 
+class TestMergeSimilarGroups:
+    def test_merges_a_longer_variant(self):
+        from services.recurring import merge_similar_groups
+        merged = merge_similar_groups({
+            "amazon": [{"amount": 10}],
+            "amazonau": [{"amount": 20}],
+            "red": [{"amount": 5}],
+            "redenergy": [{"amount": 6}],
+        })
+        assert set(merged) == {"amazon", "red", "redenergy"}
+        assert len(merged["amazon"]) == 2
+        assert len(merged["redenergy"]) == 1  # too short to fold
+
+    def test_short_codes_stay_separate(self):
+        from services.recurring import merge_similar_groups
+        merged = merge_similar_groups({"agl": [1], "aglenergy": [2]})
+        assert set(merged) == {"agl", "aglenergy"}
+
+
 class TestClassifyFrequency:
     def test_known_cadences(self):
         assert classify_frequency([7, 7]) == "weekly"

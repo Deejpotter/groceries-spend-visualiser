@@ -203,6 +203,35 @@ def banksync_sync():
     )
 
 
+@spend_bp.route("/spend/banksync/backfill", methods=["POST"])
+@login_required
+def banksync_backfill():
+    """Pull up to 12 months of bank history for recurring-payment detection."""
+    from services.banksync_client import BankSyncError, run_backfill
+    if not get_setting("banksync_api_key"):
+        flash("Add your BankSync API key on the settings page first.", "error")
+        return redirect(url_for("spend.spend_import"))
+    try:
+        result = run_backfill(get_db(), months=12)
+    except BankSyncError as exc:
+        flash(f"Backfill failed: {exc}", "error")
+        return redirect(url_for("spend.spend_import"))
+    flash(
+        f"Backfilled {result['transactions_added']} transactions "
+        f"({result['added']} new grocery purchases). "
+        "Open Suggestions to review the regular payments.",
+        "success",
+    )
+    if request.form.get("next") == "suggest":
+        return redirect(url_for("subscriptions.subscription_suggest"))
+    return render_template(
+        "spend/bank_result.html", added=result["added"],
+        duplicates=result["duplicates"],
+        unclassified=result["unclassified"],
+        errors=result["errors"],
+    )
+
+
 @spend_bp.route("/spend/import-bank/duplicates", methods=["POST"])
 @login_required
 def import_bank_duplicates():

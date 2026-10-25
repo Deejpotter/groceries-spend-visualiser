@@ -18,7 +18,12 @@ import urllib.request
 from statistics import median
 from typing import Dict, List, Optional
 
-from services.recurring import classify_frequency, is_ignored_description, normalise_merchant
+from services.recurring import (
+    classify_frequency,
+    is_ignored_description,
+    merge_similar_groups,
+    normalise_merchant,
+)
 from services.subscriptions import (
     FREQUENCIES,
     SUBSCRIPTION_CATEGORY_LOOKUP,
@@ -138,6 +143,7 @@ def build_candidates(transactions: List[Dict], excluded_keys=None) -> List[Dict]
         })
 
     candidates = []
+    groups = merge_similar_groups(groups)
     for key, rows in groups.items():
         if len(rows) < 2:
             continue

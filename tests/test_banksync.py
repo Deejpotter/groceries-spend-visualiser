@@ -351,6 +351,30 @@ def test_sync_accounts_resumes_from_cursor(db):
     assert resumed.calls[0][2] == "2026-10-01"  # from_date = cursor date
 
 
+def test_sync_accounts_backfill_does_not_move_cursor(db):
+    sync_accounts(db, FakeBankSync([TXN_WOOLWORTHS]), PATTERNS)
+    before = json.loads(db.execute(
+        "SELECT value FROM settings WHERE key = 'banksync_cursors'"
+    ).fetchone()["value"])
+    client = FakeBankSync([TXN_COLES])
+    result = sync_accounts(
+        db, client, PATTERNS, from_date_override="2025-10-01",
+        update_cursor=False)
+    assert client.calls[0][2] == "2025-10-01"
+    after = json.loads(db.execute(
+        "SELECT value FROM settings WHERE key = 'banksync_cursors'"
+    ).fetchone()["value"])
+    assert after == before
+    assert result["transactions_added"] == 1
+
+
+def test_run_backfill_rejects_a_missing_key(db):
+    import pytest
+    from services.banksync_client import BankSyncError, run_backfill
+    with pytest.raises(BankSyncError):
+        run_backfill(db)
+
+
 def test_sync_accounts_surfaces_account_errors(db, monkeypatch):
     class FailingBankSync(FakeBankSync):
         def list_transactions(self, *args, **kwargs):
@@ -381,6 +405,30 @@ def test_banksync_sync_route_requires_key(client, db):
     login(client)
     resp = client.post("/spend/banksync/sync")
     assert resp.status_code == 302  # redirected with an error flash
+    assert db.execute("SELECT COUNT(*) FROM purchases").fetchone()[0] == 0
+
+
+def test_banksync_backfill_route(client, db, monkeypatch):
+    login(client)
+    db.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+        ("banksync_api_key", "bsk_test"))
+    db.commit()
+
+    def fake_backfill(db_conn, months=12):
+        return {"added": 1, "transactions_added": 10, "duplicates": [],
+                "unclassified": [], "errors": []}
+
+    monkeypatch.setattr("services.banksync_client.run_backfill", fake_backfill)
+    resp = client.post("/spend/banksync/backfill", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"Backfilled 10 transactions" in resp.data
+
+
+def test_banksync_backfill_requires_key(client, db):
+    login(client)
+    resp = client.post("/spend/banksync/backfill")
+    assert resp.status_code == 302
     assert db.execute("SELECT COUNT(*) FROM purchases").fetchone()[0] == 0
 
 

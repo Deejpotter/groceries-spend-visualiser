@@ -203,12 +203,13 @@ def map_banksync_transaction(txn: Dict) -> Optional[Dict]:
             "direction": "debit" if value < 0 else "unknown"}
 
 
-def sync_accounts(db, client, patterns) -> Dict:
-    """Fetch new transactions for every connected account and import them.
+def sync_accounts(db, client, patterns, from_date_override: Optional[str] = None,
+                  update_cursor: bool = True) -> Dict:
+    """Fetch transactions for every connected account and import them.
 
-    Returns {added, duplicates, unclassified, errors}. Each account's cursor
-    (the date of its newest seen transaction) is kept in the
-    banksync_cursors setting, so the next sync only reads fresh rows.
+    ``from_date_override`` pulls a fixed window (used by backfill) instead of
+    each account's cursor. ``update_cursor=False`` leaves the normal sync
+    bookmark alone, so a backfill never skips newer transactions.
     """
     from database import get_setting, set_setting
     from services.bank_import import (
@@ -219,6 +220,7 @@ def sync_accounts(db, client, patterns) -> Dict:
     except ValueError:
         cursors = {}
     added = 0
+    stored = 0
     duplicates: List[Dict] = []
     unclassified: List[Dict] = []
     errors: List[str] = []
@@ -232,7 +234,7 @@ def sync_accounts(db, client, patterns) -> Dict:
             if not account_id:
                 continue
             bookmark = cursors.get(account_id) or {}
-            from_date = bookmark.get("date") or (
+            from_date = from_date_override or bookmark.get("date") or (
                 today - timedelta(days=FIRST_SYNC_DAYS)).isoformat()
             try:
                 txns = client.list_transactions(
@@ -256,17 +258,19 @@ def sync_accounts(db, client, patterns) -> Dict:
                 else:
                     unclassified.append(row)
             store_bank_transactions(db, mapped, "banksync", patterns)
+            stored += len(mapped)
             batch_added, batch_duplicates = import_bank_transactions(
                 db, purchases)
             added += batch_added
             duplicates.extend(batch_duplicates)
-            if latest:
+            if latest and update_cursor:
                 cursors[account_id] = {"date": latest}
     set_setting("banksync_cursors", json.dumps(cursors))
     db.commit()
     from services.bank_import import remember_unclassified
     remember_unclassified(db, unclassified)
-    return {"added": added, "duplicates": duplicates,
+    return {"added": added, "transactions_added": stored,
+            "duplicates": duplicates,
             "unclassified": unclassified, "errors": errors}
 
 
@@ -279,5 +283,27 @@ def run_sync(db) -> Dict:
         load_merchant_patterns(db))
     set_setting("banksync_last_sync",
                 datetime.now(timezone.utc).replace(tzinfo=None).isoformat())
+    db.commit()
+    return result
+
+
+def run_backfill(db, months: int = 12) -> Dict:
+    """Pull a fixed window of bank history without moving the sync cursor.
+
+    The first release of transaction storage only held rows from the deploy
+    date onward, so old regular payments were invisible. Backfilling is
+    idempotent: rows already stored are ignored by their external id.
+    """
+    from database import get_setting
+    from services.bank_import import load_merchant_patterns
+
+    api_key = get_setting("banksync_api_key")
+    if not api_key:
+        raise BankSyncError("Add a BankSync API key on the settings page first.")
+    months = max(1, min(int(months or 12), 24))
+    from_date = (date.today() - timedelta(days=months * 31)).isoformat()
+    result = sync_accounts(
+        db, BankSyncClient(api_key), load_merchant_patterns(db),
+        from_date_override=from_date, update_cursor=False)
     db.commit()
     return result
