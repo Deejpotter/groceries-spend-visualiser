@@ -223,13 +223,21 @@ def _parse_json(content: str) -> Dict:
     text = (content or "").strip()
     text = re.sub(r"^```(?:json)?\s*", "", text)
     text = re.sub(r"\s*```$", "", text)
-    start, end = text.find("{"), text.rfind("}")
-    if start == -1 or end == -1:
+    start = text.find("{")
+    if start == -1:
         raise AIReviewError("The AI reply did not contain JSON.")
-    try:
-        return json.loads(text[start:end + 1])
-    except ValueError as exc:
-        raise AIReviewError("The AI reply was not valid JSON.") from exc
+    # Try to find the correct end brace by working backward from the last }
+    # and attempting json.loads at each step. This handles trailing explanation.
+    for end in range(text.rfind("}"), start, -1):
+        if text[end] != "}":
+            continue
+        try:
+            result = json.loads(text[start:end + 1])
+            if isinstance(result, dict):
+                return result
+        except ValueError:
+            continue
+    raise AIReviewError("The AI reply was not valid JSON.")
 
 
 def _validate_reviews(payload: Dict, candidates: List[Dict]) -> List[Dict]:
@@ -326,15 +334,19 @@ def review_candidates(candidates: List[Dict], api_key: str,
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 result = json.load(response)
             content = result["choices"][0]["message"]["content"]
-            return _validate_reviews(_parse_json(content), candidates)
+            try:
+                return _validate_reviews(_parse_json(content), candidates)
+            except AIReviewError:
+                # JSON parse failed – retry, but only if we still have attempts left
+                last_error = "The AI reply did not contain valid JSON."
         except urllib.error.HTTPError as exc:
             last_error = f"OpenRouter returned HTTP {exc.code}."
             if exc.code not in (429, 500, 502, 503, 504):
                 break
         except (urllib.error.URLError, TimeoutError) as exc:
             last_error = f"Could not reach OpenRouter: {exc.reason}."
-        except (KeyError, IndexError, TypeError, ValueError) as exc:
-            last_error = "OpenRouter returned an unexpected response."
+        except AIReviewError as exc:
+            last_error = str(exc)
         if attempt + 1 < MAX_RETRIES:
             continue
     raise AIReviewError(last_error or "The AI review failed.")
