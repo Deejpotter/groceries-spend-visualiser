@@ -426,25 +426,36 @@ def subscription_suggest():
         unclassified = []
     banksync_suggestions = suggest_from_unclassified(unclassified)
 
-    # Merge and deduplicate by name, skipping anything already tracked.
+    # Merge bill sources and deduplicate by name, skipping anything already
+    # tracked. Repeat grocery buys are kept separate: they are useful context,
+    # but a weekly milk purchase is not a bill.
     existing = {
         (row["name"] or "").strip().lower()
         for row in db.execute("SELECT name FROM subscriptions").fetchall()
     }
     seen = set()
-    all_suggestions = []
-    for s in detected + purchase_suggestions + banksync_suggestions:
+    suggestions = []
+    for s in detected + banksync_suggestions:
         key = s["name"].lower()
         if key in seen or key in existing:
             continue
         seen.add(key)
-        all_suggestions.append(s)
+        suggestions.append(s)
+
+    repeat_purchases = []
+    for s in purchase_suggestions:
+        key = s["name"].lower()
+        if key in seen or key in existing:
+            continue
+        seen.add(key)
+        repeat_purchases.append(s)
 
     dismissed = [d for d in decisions if d["decision"] == "ignored"]
 
     return render_template(
         "subscriptions/suggest.html",
-        suggestions=all_suggestions,
+        suggestions=suggestions,
+        repeat_purchases=repeat_purchases,
         dismissed=dismissed,
         format_frequency=format_frequency,
     )
