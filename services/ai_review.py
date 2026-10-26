@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -39,6 +40,9 @@ API_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_CANDIDATES = 40
 MAX_RETRIES = 3
 BATCH_SIZE = 10
+# The whole review must finish inside Gunicorn's 90s worker timeout, or the
+# worker is killed and the page's review panel never updates.
+REVIEW_BUDGET_SECONDS = 70
 PRIORITIES = ["high", "normal", "low"]
 
 _SYSTEM_PROMPT = """You review bank merchants for an Australian household budgeting app.
@@ -254,6 +258,21 @@ def build_candidates(transactions: List[Dict], excluded_keys=None,
     return candidates
 
 
+def _salvage_reviews(content: str) -> Dict:
+    """The complete review objects from a reply that was cut off mid-JSON."""
+    reviews = []
+    for match in re.finditer(r"\{[^{}]*\}", content or ""):
+        try:
+            item = json.loads(match.group(0))
+        except ValueError:
+            continue
+        if isinstance(item, dict) and "merchant_key" in item:
+            reviews.append(item)
+    if not reviews:
+        raise AIReviewError("The AI reply was not valid JSON.")
+    return {"reviews": reviews}
+
+
 def _parse_json(content: str) -> Dict:
     text = (content or "").strip()
     text = re.sub(r"^```(?:json)?\s*", "", text)
@@ -341,7 +360,9 @@ def review_candidates(candidates: List[Dict], api_key: str,
                for i in range(0, len(candidates), BATCH_SIZE)]
     reviews, errors = [], []
     with ThreadPoolExecutor(max_workers=len(batches)) as pool:
-        futures = [pool.submit(_review_batch, batch, api_key, model, timeout)
+        deadline = time.monotonic() + REVIEW_BUDGET_SECONDS
+        futures = [pool.submit(_review_batch, batch, api_key, model, timeout,
+                               deadline)
                    for batch in batches]
         for future in futures:
             try:
@@ -354,8 +375,8 @@ def review_candidates(candidates: List[Dict], api_key: str,
 
 
 def _review_batch(candidates: List[Dict], api_key: str, model: str,
-                  timeout: int) -> List[Dict]:
-    """One OpenRouter request for a batch of candidates."""
+                  timeout: int, deadline: Optional[float] = None) -> List[Dict]:
+    """One OpenRouter request for a batch of candidates, retried until ``deadline``."""
 
     payload_candidates = [
         {
@@ -378,7 +399,9 @@ def _review_batch(candidates: List[Dict], api_key: str, model: str,
     payload = {
         "model": model,
         "temperature": 0.1,
-        "max_tokens": 2500,
+        # Reasoning models count hidden thinking against this limit, so a
+        # small reply still needs headroom.
+        "max_tokens": 6000,
         "messages": [
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
@@ -387,6 +410,10 @@ def _review_batch(candidates: List[Dict], api_key: str, model: str,
     body = json.dumps(payload).encode("utf-8")
     last_error = None
     for attempt in range(MAX_RETRIES):
+        remaining = (deadline - time.monotonic()) if deadline else timeout
+        if remaining < 5:
+            last_error = last_error or "The AI review ran out of time."
+            break
         request = urllib.request.Request(
             API_URL, data=body,
             headers={
@@ -397,14 +424,22 @@ def _review_batch(candidates: List[Dict], api_key: str, model: str,
             },
         )
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
+            with urllib.request.urlopen(request,
+                                        timeout=min(timeout, remaining)) as response:
                 result = json.load(response)
             content = result["choices"][0]["message"]["content"]
             try:
                 return _validate_reviews(_parse_json(content), candidates)
             except AIReviewError:
-                # JSON parse failed – retry, but only if we still have attempts left
                 last_error = "The AI reply did not contain valid JSON."
+            # A reply cut off by the token limit still holds complete reviews.
+            # Keep those; anything missing is reviewed on a later page load.
+            try:
+                salvaged = _validate_reviews(_salvage_reviews(content), candidates)
+            except AIReviewError:
+                salvaged = []
+            if salvaged:
+                return salvaged
         except urllib.error.HTTPError as exc:
             last_error = f"OpenRouter returned HTTP {exc.code}."
             if exc.code not in (429, 500, 502, 503, 504):
