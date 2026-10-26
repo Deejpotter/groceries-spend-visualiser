@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -39,6 +40,9 @@ API_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_CANDIDATES = 40
 MAX_RETRIES = 3
 BATCH_SIZE = 10
+# The whole review must finish inside Gunicorn's 90s worker timeout, or the
+# worker is killed and the page's review panel never updates.
+REVIEW_BUDGET_SECONDS = 70
 PRIORITIES = ["high", "normal", "low"]
 
 _SYSTEM_PROMPT = """You review bank merchants for an Australian household budgeting app.
@@ -341,7 +345,9 @@ def review_candidates(candidates: List[Dict], api_key: str,
                for i in range(0, len(candidates), BATCH_SIZE)]
     reviews, errors = [], []
     with ThreadPoolExecutor(max_workers=len(batches)) as pool:
-        futures = [pool.submit(_review_batch, batch, api_key, model, timeout)
+        deadline = time.monotonic() + REVIEW_BUDGET_SECONDS
+        futures = [pool.submit(_review_batch, batch, api_key, model, timeout,
+                               deadline)
                    for batch in batches]
         for future in futures:
             try:
@@ -354,8 +360,8 @@ def review_candidates(candidates: List[Dict], api_key: str,
 
 
 def _review_batch(candidates: List[Dict], api_key: str, model: str,
-                  timeout: int) -> List[Dict]:
-    """One OpenRouter request for a batch of candidates."""
+                  timeout: int, deadline: Optional[float] = None) -> List[Dict]:
+    """One OpenRouter request for a batch of candidates, retried until ``deadline``."""
 
     payload_candidates = [
         {
@@ -387,6 +393,10 @@ def _review_batch(candidates: List[Dict], api_key: str, model: str,
     body = json.dumps(payload).encode("utf-8")
     last_error = None
     for attempt in range(MAX_RETRIES):
+        remaining = (deadline - time.monotonic()) if deadline else timeout
+        if remaining < 5:
+            last_error = last_error or "The AI review ran out of time."
+            break
         request = urllib.request.Request(
             API_URL, data=body,
             headers={
@@ -397,7 +407,8 @@ def _review_batch(candidates: List[Dict], api_key: str, model: str,
             },
         )
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
+            with urllib.request.urlopen(request,
+                                        timeout=min(timeout, remaining)) as response:
                 result = json.load(response)
             content = result["choices"][0]["message"]["content"]
             try:

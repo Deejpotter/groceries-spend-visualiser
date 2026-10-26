@@ -287,7 +287,7 @@ class TestBatchedReview:
         import services.ai_review as ai
         sizes = []
 
-        def fake_batch(batch, api_key, model, timeout):
+        def fake_batch(batch, api_key, model, timeout, deadline=None):
             sizes.append(len(batch))
             return [{"merchant_key": c["merchant_key"]} for c in batch]
 
@@ -299,7 +299,7 @@ class TestBatchedReview:
     def test_keeps_good_batches_when_one_fails(self, monkeypatch):
         import services.ai_review as ai
 
-        def fake_batch(batch, api_key, model, timeout):
+        def fake_batch(batch, api_key, model, timeout, deadline=None):
             if batch[0]["merchant_key"] == "m10":
                 raise ai.AIReviewError("bad JSON")
             return [{"merchant_key": c["merchant_key"]} for c in batch]
@@ -312,7 +312,7 @@ class TestBatchedReview:
         import pytest
         import services.ai_review as ai
 
-        def fake_batch(batch, api_key, model, timeout):
+        def fake_batch(batch, api_key, model, timeout, deadline=None):
             raise ai.AIReviewError("bad JSON")
 
         monkeypatch.setattr(ai, "_review_batch", fake_batch)
@@ -334,3 +334,20 @@ class TestLoosePromotionRecency:
                    for key in ("wesfarmersp", "binge")}
         merged = merge_suggestions([], candidates, reviews)
         assert [m["stream_key"] for m in merged] == ["binge"]
+
+
+class TestReviewDeadline:
+    def test_stops_retrying_when_the_budget_is_spent(self, monkeypatch):
+        import time
+        import pytest
+        import services.ai_review as ai
+        calls = []
+        monkeypatch.setattr(ai.urllib.request, "urlopen",
+                            lambda *a, **k: calls.append(1))
+        with pytest.raises(ai.AIReviewError, match="ran out of time"):
+            ai._review_batch([{"merchant_key": "x", "descriptions": [],
+                               "amounts": [], "dates": [],
+                               "median_interval_days": None,
+                               "occurrences": 2}],
+                             "key", "model", 60, deadline=time.monotonic() + 1)
+        assert calls == []
