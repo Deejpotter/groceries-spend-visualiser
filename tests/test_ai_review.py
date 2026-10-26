@@ -366,3 +366,24 @@ class TestTruncatedReply:
         from services.ai_review import AIReviewError, _salvage_reviews
         with pytest.raises(AIReviewError):
             _salvage_reviews('{"reviews":[{"merchant_key":"a","bi')
+
+
+class TestHardDeadline:
+    def test_returns_finished_batches_when_one_hangs(self, monkeypatch):
+        import threading
+        import services.ai_review as ai
+        release = threading.Event()
+
+        def fake_batch(batch, api_key, model, timeout, deadline=None):
+            if batch[0]["merchant_key"] == "m10":
+                release.wait(5)
+            return [{"merchant_key": c["merchant_key"]} for c in batch]
+
+        monkeypatch.setattr(ai, "_review_batch", fake_batch)
+        monkeypatch.setattr(ai, "REVIEW_BUDGET_SECONDS", 0.5)
+        candidates = [{"merchant_key": f"m{i}"} for i in range(20)]
+        try:
+            reviews = ai.review_candidates(candidates, "key")
+        finally:
+            release.set()
+        assert len(reviews) == 10
