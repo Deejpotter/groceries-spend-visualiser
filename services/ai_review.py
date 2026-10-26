@@ -258,6 +258,21 @@ def build_candidates(transactions: List[Dict], excluded_keys=None,
     return candidates
 
 
+def _salvage_reviews(content: str) -> Dict:
+    """The complete review objects from a reply that was cut off mid-JSON."""
+    reviews = []
+    for match in re.finditer(r"\{[^{}]*\}", content or ""):
+        try:
+            item = json.loads(match.group(0))
+        except ValueError:
+            continue
+        if isinstance(item, dict) and "merchant_key" in item:
+            reviews.append(item)
+    if not reviews:
+        raise AIReviewError("The AI reply was not valid JSON.")
+    return {"reviews": reviews}
+
+
 def _parse_json(content: str) -> Dict:
     text = (content or "").strip()
     text = re.sub(r"^```(?:json)?\s*", "", text)
@@ -384,7 +399,9 @@ def _review_batch(candidates: List[Dict], api_key: str, model: str,
     payload = {
         "model": model,
         "temperature": 0.1,
-        "max_tokens": 2500,
+        # Reasoning models count hidden thinking against this limit, so a
+        # small reply still needs headroom.
+        "max_tokens": 6000,
         "messages": [
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
@@ -414,8 +431,15 @@ def _review_batch(candidates: List[Dict], api_key: str, model: str,
             try:
                 return _validate_reviews(_parse_json(content), candidates)
             except AIReviewError:
-                # JSON parse failed – retry, but only if we still have attempts left
                 last_error = "The AI reply did not contain valid JSON."
+            # A reply cut off by the token limit still holds complete reviews.
+            # Keep those; anything missing is reviewed on a later page load.
+            try:
+                salvaged = _validate_reviews(_salvage_reviews(content), candidates)
+            except AIReviewError:
+                salvaged = []
+            if salvaged:
+                return salvaged
         except urllib.error.HTTPError as exc:
             last_error = f"OpenRouter returned HTTP {exc.code}."
             if exc.code not in (429, 500, 502, 503, 504):

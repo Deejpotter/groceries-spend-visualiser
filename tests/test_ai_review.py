@@ -351,3 +351,18 @@ class TestReviewDeadline:
                                "occurrences": 2}],
                              "key", "model", 60, deadline=time.monotonic() + 1)
         assert calls == []
+
+
+class TestTruncatedReply:
+    def test_keeps_complete_reviews_from_a_cut_off_reply(self):
+        from services.ai_review import _salvage_reviews
+        content = ('\n\n{"reviews":[{"merchant_key":"a","bill":false,"name":"A",'
+                   '"category":"other","frequency":null,"reason":"x"},'
+                   '{"merchant_key":"b","bill":true,"name":"B","categ')
+        assert [r["merchant_key"] for r in _salvage_reviews(content)["reviews"]] == ["a"]
+
+    def test_nothing_salvageable_raises(self):
+        import pytest
+        from services.ai_review import AIReviewError, _salvage_reviews
+        with pytest.raises(AIReviewError):
+            _salvage_reviews('{"reviews":[{"merchant_key":"a","bi')
