@@ -16,7 +16,7 @@ import re
 import time
 import urllib.error
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from statistics import median
 from typing import Dict, List, Optional
 
@@ -359,16 +359,24 @@ def review_candidates(candidates: List[Dict], api_key: str,
     batches = [candidates[i:i + BATCH_SIZE]
                for i in range(0, len(candidates), BATCH_SIZE)]
     reviews, errors = [], []
-    with ThreadPoolExecutor(max_workers=len(batches)) as pool:
-        deadline = time.monotonic() + REVIEW_BUDGET_SECONDS
-        futures = [pool.submit(_review_batch, batch, api_key, model, timeout,
-                               deadline)
-                   for batch in batches]
-        for future in futures:
-            try:
-                reviews.extend(future.result())
-            except AIReviewError as exc:
-                errors.append(str(exc))
+    deadline = time.monotonic() + REVIEW_BUDGET_SECONDS
+    pool = ThreadPoolExecutor(max_workers=len(batches))
+    futures = [pool.submit(_review_batch, batch, api_key, model, timeout,
+                           deadline)
+               for batch in batches]
+    # The socket timeout only limits each read, and OpenRouter can keep a slow
+    # free model's connection alive indefinitely. Stop waiting at the deadline
+    # and drop unfinished batches; they are reviewed on a later page load.
+    done, late = wait(futures, timeout=REVIEW_BUDGET_SECONDS)
+    pool.shutdown(wait=False, cancel_futures=True)
+    for future in futures:
+        if future in late:
+            errors.append("The AI review ran out of time.")
+            continue
+        try:
+            reviews.extend(future.result())
+        except AIReviewError as exc:
+            errors.append(str(exc))
     if errors and not reviews:
         raise AIReviewError(errors[0])
     return reviews
