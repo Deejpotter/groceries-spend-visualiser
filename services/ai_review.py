@@ -146,7 +146,7 @@ def build_candidates(transactions: List[Dict], excluded_keys=None,
             continue
         if seen is None or amount <= 0:
             continue
-        key = row.get("merchant_key") or normalise_merchant(description)
+        key = normalise_merchant(description) or row.get("merchant_key")
         if not key:
             continue
         if key in excluded:
@@ -347,6 +347,8 @@ def review_candidates(candidates: List[Dict], api_key: str,
             last_error = f"Could not reach OpenRouter: {exc.reason}."
         except AIReviewError as exc:
             last_error = str(exc)
+        except (KeyError, IndexError, TypeError, ValueError) as exc:
+            last_error = "OpenRouter returned an unexpected response."
         if attempt + 1 < MAX_RETRIES:
             continue
     raise AIReviewError(last_error or "The AI review failed.")

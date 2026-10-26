@@ -275,3 +275,38 @@ class TestDetectRecurring:
             for d in ["2026-01-15", "2026-02-15", "2026-03-15"]
         ]
         assert detect_recurring(rows)[0]["name"] == "Spotify"
+
+
+class TestBankBoilerplate:
+    BELONG = "PAYPAL BELONG AU AUS Card xx2287 Value Date: {}"
+    CLOUDFLARE = "PAYPAL CLOUDFLARE CA USA Card xx2287 AUD 16.92 Value Date: {}"
+
+    def test_paypal_without_star_keys_on_the_real_merchant(self):
+        assert normalise_merchant(self.BELONG.format("20/10/2025")) == "belong"
+        assert normalise_merchant(self.CLOUDFLARE.format("18/10/2025")) == "cloudflare"
+
+    def test_paypal_merchants_are_not_grouped_together(self):
+        rows = [make_transaction(d, self.BELONG.format(d), 60.0, merchant_key="paypal")
+                        for d in ("2026-07-01", "2026-08-01", "2026-09-01", "2026-10-01")]
+        rows += [make_transaction("2026-08-15", self.CLOUDFLARE.format("x"), 16.92,
+                                                            merchant_key="paypal")]
+        result = detect_recurring(rows)
+        assert [s["name"] for s in result] == ["Belong"]
+        assert result[0]["price_direction"] == "flat"
+
+    def test_display_name_drops_card_currency_and_date(self):
+        rows = monthly("VULTR BY CONSTANT MATAWAN NJ USA Card xx2287 USD 5.00 "
+                                      "Value Date: 08/06/2026", 7.80)
+        suggestion = detect_recurring(rows)[0]
+        assert suggestion["name"] == "Vultr By Constant Matawan"
+        assert suggestion["category"] == "other"
+
+    def test_a_missed_month_does_not_hide_a_bill(self):
+        rows = monthly("ACME INTERNET", 79.0,
+                                      ["2026-01-05", "2026-02-05", "2026-04-05", "2026-05-05"])
+        assert detect_recurring(rows)[0]["frequency"] == "monthly"
+
+    def test_misspelt_merchant_variants_merge(self):
+        from services.recurring import merge_similar_groups
+        merged = merge_similar_groups({"telstra": [1], "telsrta": [2]})
+        assert len(merged) == 1

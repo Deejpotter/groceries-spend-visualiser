@@ -12,6 +12,7 @@ amounts are subscriptions; variable amounts (utilities) are bills.
 
 import re
 from collections import Counter, defaultdict
+from difflib import SequenceMatcher
 from datetime import date, datetime
 from statistics import median
 from typing import Dict, List, Optional
@@ -49,6 +50,22 @@ _NOISE_PREFIXES = (
     "visa purchase ", "visa debit ", "card purchase ", "direct debit ",
     "bpay ", "pending ", "pos ",
 )
+
+# Payment processors that front the real merchant, with or without a "*".
+_PROCESSOR_PREFIX = re.compile(
+    r"^(?:paypal|sq|square|zip|afterpay|google|apple\.com/bill)\s*\*\s*"
+    r"|^(?:paypal|sq)\s+", re.IGNORECASE)
+
+# Bank boilerplate appended to card descriptions, e.g.
+# "VULTR NJ USA Card xx2287 USD 5.00 Value Date: 08/06/2026".
+_BOILERPLATE = [
+    re.compile(r"\bvalue\s+date\b.*$", re.IGNORECASE),
+    re.compile(r"\bcard\s+(?:xx|x+)?\d+\b", re.IGNORECASE),
+    re.compile(r"\b(?:usd|aud|eur|gbp|nzd|sgd)\s*\d+(?:[.,]\d{2})?\b",
+               re.IGNORECASE),
+    re.compile(r"\b(?:au|aus|usa|us|nz|gb|gbr|sg|ie|nld|ca|nj|nsw|vic|qld)\b\s*$",
+               re.IGNORECASE),
+]
 
 _NOISE_TOKENS = {
     "pty", "ltd", "limited", "aus", "au", "com", "www", "online", "payment",
@@ -104,12 +121,37 @@ def _as_date(value) -> Optional[date]:
         return None
 
 
+def strip_boilerplate(description: str) -> str:
+    """Remove processor prefixes and bank card boilerplate from a description."""
+    text = (description or "").strip()
+    text = _PROCESSOR_PREFIX.sub("", text)
+    for pattern in _BOILERPLATE:
+        text = pattern.sub(" ", text).strip()
+    # Country codes can stack ("AU AUS"), so strip trailing ones repeatedly.
+    previous = None
+    while previous != text:
+        previous = text
+        text = _BOILERPLATE[-1].sub(" ", text).strip()
+    return re.sub(r"\s+", " ", text)
+
+
+def _similar_keys(a: str, b: str) -> bool:
+    """True when two merchant keys are spelling variants of one merchant."""
+    shorter, longer = sorted((a, b), key=len)
+    if len(shorter) < 4:
+        return False
+    if longer.startswith(shorter):
+        return True
+    return len(shorter) >= 5 and SequenceMatcher(None, a, b).ratio() >= 0.85
+
+
 def merge_similar_groups(groups: Dict[str, List[Dict]]) -> Dict[str, List[Dict]]:
     """Fold merchant keys that are variants of one another.
 
     Bank descriptions often append a suffix (``AMAZONAU`` next to ``AMAZON``),
-    which would otherwise split a regular payment into two weak groups. Only
-    keys of four or more characters are folded, so short codes stay distinct.
+    which would otherwise split a regular payment into two weak groups, and
+    sometimes misspell a merchant (``TELSTRA`` next to ``TELSTR``). Only keys
+    of four or more characters are folded, so short codes stay distinct.
     """
     keys = sorted(groups, key=lambda key: (len(key), key))
     merged: Dict[str, List[Dict]] = {}
@@ -122,8 +164,7 @@ def merge_similar_groups(groups: Dict[str, List[Dict]]) -> Dict[str, List[Dict]]
         for other in keys:
             if other in used:
                 continue
-            shorter, longer = sorted((key, other), key=len)
-            if len(shorter) >= 4 and longer.startswith(shorter):
+            if _similar_keys(key, other):
                 rows.extend(groups[other])
                 used.add(other)
         merged[key] = rows
@@ -137,7 +178,7 @@ def normalise_merchant(description: str) -> str:
     keeps the first two meaningful words. ``PAYPAL *SPOTIFY`` and
     ``SPOTIFY PTE LTD`` both become ``spotify``.
     """
-    text = (description or "").lower().strip()
+    text = strip_boilerplate(description).lower()
     for prefix in _NOISE_PREFIXES:
         if text.startswith(prefix):
             text = text[len(prefix):].strip()
@@ -177,7 +218,8 @@ def guess_category(description: str) -> str:
     """Best-effort category for an unrecognised merchant."""
     text = (description or "").lower()
     for category, keywords in _CATEGORY_KEYWORDS:
-        if any(keyword in text for keyword in keywords):
+        if any(re.search(rf"\b{re.escape(keyword)}\b", text)
+               for keyword in keywords):
             return category
     return "other"
 
@@ -199,11 +241,7 @@ def _display_name(descriptions: List[str]) -> str:
     counts = Counter(d.strip() for d in descriptions if d and d.strip())
     if not counts:
         return "Unknown merchant"
-    raw = counts.most_common(1)[0][0]
-    raw = re.sub(r"(?i)^(paypal\s*\*?|sq\s*\*?|square\s*\*?|google\s*\*?)\s*",
-                 "", raw)
-    raw = re.sub(r"(?i)\bcard\s+(?:xx)?\d+\b", "", raw)
-    raw = re.sub(r"(?i)\bvalue\s+date\b.*$", "", raw)
+    raw = strip_boilerplate(counts.most_common(1)[0][0])
     raw = re.sub(r"\.(com\.au|com|net|org)(\.au)?\b", "", raw, flags=re.IGNORECASE)
     raw = re.sub(r"[^a-zA-Z0-9&' ]+", " ", raw)
     noise = {"au", "aus", "aud", "usd", "card", "value", "date", "pos",
@@ -272,7 +310,13 @@ def _suggestion_for_rows(base_key: str, stream_key: str, rows: List[Dict],
 
     target = next(t for f, t, _ in CADENCES if f == frequency)
     tolerance = next(tol for f, _, tol in CADENCES if f == frequency)
-    consistent = sum(1 for i in intervals if abs(i - target) <= tolerance)
+    # A skipped payment shows up as a double interval. It earns half credit:
+    # enough to keep a real bill with one gap, not enough to turn two random
+    # purchases two months apart into one.
+    consistent = sum(1 if abs(i - target) <= tolerance
+                     else 0.5 if abs(i - 2 * target) <= tolerance * 2
+                     else 0
+                     for i in intervals)
     consistency = consistent / len(intervals)
     if consistency < 0.5:
         return None
@@ -374,7 +418,9 @@ def detect_recurring(transactions: List[Dict],
         seen = _as_date(row.get("txn_date") or row.get("order_date"))
         if amount <= 0 or seen is None:
             continue
-        key = row.get("merchant_key") or normalise_merchant(description)
+        # Recompute from the description: keys stored at import time may come
+        # from an older, coarser normaliser (every PayPal payment as "paypal").
+        key = normalise_merchant(description) or row.get("merchant_key")
         if not key:
             continue
         groups[key].append({
