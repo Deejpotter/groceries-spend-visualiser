@@ -88,7 +88,7 @@ class TestDetectRecurring:
         assert suggestion["merchant_key"] == "netflix"
         assert suggestion["frequency"] == "monthly"
         assert suggestion["kind"] == "subscription"
-        assert suggestion["category"] == "entertainment"
+        assert suggestion["category"] == "streaming"
         assert suggestion["amount"] == 18.99
         assert suggestion["monthly_cost"] == 18.99
         assert suggestion["occurrences"] == 4
@@ -299,7 +299,7 @@ class TestBankBoilerplate:
                                       "Value Date: 08/06/2026", 7.80)
         suggestion = detect_recurring(rows)[0]
         assert suggestion["name"] == "Vultr By Constant Matawan"
-        assert suggestion["category"] == "other"
+        assert suggestion["category"] == "software"
 
     def test_a_missed_month_does_not_hide_a_bill(self):
         rows = monthly("ACME INTERNET", 79.0,

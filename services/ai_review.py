@@ -30,6 +30,7 @@ from services.recurring import (
 )
 from services.subscriptions import (
     FREQUENCIES,
+    SUBSCRIPTION_CATEGORIES,
     SUBSCRIPTION_CATEGORY_LOOKUP,
     suggested_next_due,
 )
@@ -82,17 +83,22 @@ cadence the rules found. A low score is not a reason to reject a genuine bill;
 the household may not have noticed it. A high score is not a reason to keep noise.
 
 Reply with strict JSON only, no markdown. Shape:
-{"reviews":[{"merchant_key":"...","bill":true,"name":"Clean name","category":"bills","frequency":"monthly","priority":"high","reason":"one short sentence"}]}
+{"reviews":[{"merchant_key":"...","bill":true,"name":"Clean name","category":"phone_internet","frequency":"monthly","priority":"high","reason":"one short sentence"}]}
 
 Rules:
 - Include every candidate exactly once, in the same order.
-- category must be one of: bills, entertainment, insurance, utilities, rent, health, transport, education, other.
+- category must be one of: __CATEGORIES__.
 - frequency must be one of: weekly, fortnightly, monthly, quarterly, yearly, or null when unclear.
 - name must be a human-readable merchant name, at most 40 characters.
 - priority must be high (essential or costly: rent, utilities, insurance, loans),
   normal (ordinary subscriptions), or low (small or optional). Use low for noise.
 - reason must be one short sentence, at most 20 words.
 """
+
+
+# The model picks from the same codes the app stores, described by label.
+_SYSTEM_PROMPT = _SYSTEM_PROMPT.replace("__CATEGORIES__", ", ".join(
+    f"{code} ({label})" for code, label in SUBSCRIPTION_CATEGORIES))
 
 
 class AIReviewError(Exception):
@@ -133,7 +139,7 @@ def _as_date(value):
 
 # Part of every evidence hash, so changing the prompt re-reviews everything
 # instead of keeping verdicts made under the old instructions.
-PROMPT_VERSION = 2
+PROMPT_VERSION = 3
 
 
 def _evidence_hash(candidate: Dict) -> str:
