@@ -15,6 +15,7 @@ import os
 import re
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from statistics import median
 from typing import Dict, List, Optional
 
@@ -36,6 +37,7 @@ DEFAULT_MODEL = "openrouter/free"
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_CANDIDATES = 40
 MAX_RETRIES = 2
+BATCH_SIZE = 10
 PRIORITIES = ["high", "normal", "low"]
 
 _SYSTEM_PROMPT = """You review bank merchants for an Australian household budgeting app.
@@ -324,11 +326,35 @@ def _clean_name(candidate: Dict) -> str:
 def review_candidates(candidates: List[Dict], api_key: str,
                       model: str = DEFAULT_MODEL,
                       timeout: int = 60) -> List[Dict]:
-    """Ask OpenRouter to classify the candidates. Raises AIReviewError on failure."""
+    """Ask OpenRouter to classify the candidates, in parallel batches.
+
+    Free models truncate long replies mid-JSON, so candidates are sent
+    BATCH_SIZE at a time. Verdicts from batches that succeed are kept even if
+    another batch fails; AIReviewError is raised only when every batch fails.
+    """
     if not candidates:
         return []
     if not api_key:
         raise AIReviewError("No OpenRouter API key is configured.")
+    batches = [candidates[i:i + BATCH_SIZE]
+               for i in range(0, len(candidates), BATCH_SIZE)]
+    reviews, errors = [], []
+    with ThreadPoolExecutor(max_workers=len(batches)) as pool:
+        futures = [pool.submit(_review_batch, batch, api_key, model, timeout)
+                   for batch in batches]
+        for future in futures:
+            try:
+                reviews.extend(future.result())
+            except AIReviewError as exc:
+                errors.append(str(exc))
+    if errors and not reviews:
+        raise AIReviewError(errors[0])
+    return reviews
+
+
+def _review_batch(candidates: List[Dict], api_key: str, model: str,
+                  timeout: int) -> List[Dict]:
+    """One OpenRouter request for a batch of candidates."""
 
     payload_candidates = [
         {

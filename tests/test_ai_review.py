@@ -276,3 +276,45 @@ class TestPossibleStreams:
              "category": "bills", "frequency": None, "priority": "urgent",
              "reason": "x"}]}, candidates)
         assert reviews[0]["priority"] == "normal"
+
+
+class TestBatchedReview:
+    def candidates(self, count):
+        return [{"merchant_key": f"m{i}", "evidence_hash": f"h{i}"}
+                for i in range(count)]
+
+    def test_splits_into_batches_and_keeps_order_of_results(self, monkeypatch):
+        import services.ai_review as ai
+        sizes = []
+
+        def fake_batch(batch, api_key, model, timeout):
+            sizes.append(len(batch))
+            return [{"merchant_key": c["merchant_key"]} for c in batch]
+
+        monkeypatch.setattr(ai, "_review_batch", fake_batch)
+        reviews = ai.review_candidates(self.candidates(25), "key")
+        assert sorted(sizes) == [5, 10, 10]
+        assert [r["merchant_key"] for r in reviews] == [f"m{i}" for i in range(25)]
+
+    def test_keeps_good_batches_when_one_fails(self, monkeypatch):
+        import services.ai_review as ai
+
+        def fake_batch(batch, api_key, model, timeout):
+            if batch[0]["merchant_key"] == "m10":
+                raise ai.AIReviewError("bad JSON")
+            return [{"merchant_key": c["merchant_key"]} for c in batch]
+
+        monkeypatch.setattr(ai, "_review_batch", fake_batch)
+        reviews = ai.review_candidates(self.candidates(20), "key")
+        assert len(reviews) == 10
+
+    def test_raises_when_every_batch_fails(self, monkeypatch):
+        import pytest
+        import services.ai_review as ai
+
+        def fake_batch(batch, api_key, model, timeout):
+            raise ai.AIReviewError("bad JSON")
+
+        monkeypatch.setattr(ai, "_review_batch", fake_batch)
+        with pytest.raises(ai.AIReviewError):
+            ai.review_candidates(self.candidates(12), "key")
