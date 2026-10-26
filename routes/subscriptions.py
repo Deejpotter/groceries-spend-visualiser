@@ -620,6 +620,10 @@ def _suggest_response(db, error=None, notice=None, auto_review=False):
     context = _suggest_context(db, auto_review=auto_review)
     context["suggest_error"] = error or context["suggest_error"]
     context["suggest_notice"] = notice
+    # Only a full page load starts the background review. Re-triggering it on
+    # every Add/Dismiss would start a new AI call per click and discard the
+    # one already running.
+    context["ai_auto_attempted"] = True
     return render_template("subscriptions/suggest.html", **context)
 
 

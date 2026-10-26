@@ -2081,6 +2081,22 @@ class TestSubscriptions:
         assert calls == [1]
         assert b"suggest/review-new" not in page.data
 
+    def test_in_page_actions_do_not_restart_the_ai_review(self, client, db):
+        _login(client, "subuser", "test123")
+        db.execute("INSERT OR REPLACE INTO settings (key, value)"
+                   " VALUES ('openrouter_api_key', 'test-key')")
+        db.commit()
+        self._bank_rows(db, "BINGE.COM", 16.00,
+                        ["2026-01-10", "2026-02-10", "2026-03-10"])
+        self._bank_rows(db, "NETFLIX.COM", 18.99,
+                        ["2026-01-04", "2026-02-04", "2026-03-04"])
+        panel = client.post("/subscriptions/suggest/ignore", data={
+            "merchant_key": "netflix", "stream_key": "netflix",
+            "name": "Netflix", "amount": "18.99", "frequency": "monthly",
+        }, headers={"HX-Request": "true"})
+        assert panel.status_code == 200
+        assert b"suggest/review-new" not in panel.data
+
     def test_ai_review_filters_and_promotes(self, client, db, monkeypatch):
         _login(client, "subuser", "test123")
         db.execute("INSERT OR REPLACE INTO settings (key, value)"
