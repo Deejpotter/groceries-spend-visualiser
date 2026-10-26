@@ -37,7 +37,7 @@ from models import parse_ymd
 DEFAULT_MODEL = "openrouter/free"
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_CANDIDATES = 40
-MAX_RETRIES = 2
+MAX_RETRIES = 3
 BATCH_SIZE = 10
 PRIORITIES = ["high", "normal", "low"]
 
