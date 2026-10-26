@@ -56,7 +56,7 @@ _NOISE_PREFIXES = (
 # Payment processors that front the real merchant, with or without a "*".
 _PROCESSOR_PREFIX = re.compile(
     r"^(?:paypal|sq|square|zip|afterpay|google|apple\.com/bill)\s*\*\s*"
-    r"|^(?:paypal|sq)\s+", re.IGNORECASE)
+    r"|^(?:paypal|sq|sp)\s+", re.IGNORECASE)  # SP = Shopify
 
 # Bank boilerplate appended to card descriptions, e.g.
 # "VULTR NJ USA Card xx2287 USD 5.00 Value Date: 08/06/2026".
