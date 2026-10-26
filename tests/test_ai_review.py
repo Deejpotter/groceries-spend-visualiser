@@ -387,3 +387,21 @@ class TestHardDeadline:
         finally:
             release.set()
         assert len(reviews) == 10
+
+
+class TestSiblingContext:
+    def test_streams_carry_other_amounts_at_the_merchant(self):
+        rows = []
+        for month in range(5, 11):
+            rows.append(txn(f"2026-{month:02d}-01", "PAYPAL *BELONG", 95.00))
+            rows.append(txn(f"2026-{month:02d}-21", "PAYPAL *BELONG", 25.00))
+        by_key = {c["merchant_key"]: c for c in build_candidates(rows)}
+        assert by_key["belong#1"]["other_amounts"] == [95.00]
+        assert by_key["belong#2"]["other_amounts"] == [25.00]
+
+    def test_prompt_version_is_part_of_the_evidence_hash(self, monkeypatch):
+        import services.ai_review as ai
+        rows = [txn(f"2026-{m:02d}-03", "NETFLIX.COM", 18.99) for m in range(6, 11)]
+        before = build_candidates(rows)[0]["evidence_hash"]
+        monkeypatch.setattr(ai, "PROMPT_VERSION", ai.PROMPT_VERSION + 1)
+        assert build_candidates(rows)[0]["evidence_hash"] != before

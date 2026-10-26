@@ -59,6 +59,17 @@ Noise examples that must be rejected:
 - one-off purchases, supermarket or marketplace shopping, Amazon, Kmart, Bunnings
 - API, cloud or software usage billed by consumption (for example DeepInfra, OpenAI)
 - gambling, donations and government one-off payments
+- fuel and petrol stations, even when visited regularly (for example U-Go, Ampol,
+  BP, Shell, Caltex, 7-Eleven, United, Liberty, Metro, OTR, Reddy Express)
+- takeaway, cafes and restaurants, even when visited regularly
+
+Some candidates include "other_amounts_at_merchant": other regular payments to the
+same merchant. Use them to tell plans apart. A telco charging both $25 and $95 a
+month is most likely a mobile plan (the smaller one) and an internet plan (the
+larger one), so name them that way, e.g. "Belong Mobile" and "Belong Internet".
+
+If you don't recognise what a merchant sells, don't guess a product: keep its own
+name, use category "other", and say it's unclear in the reason.
 
 A merchant can still be a bill if its amount varies, such as electricity. Judge
 the merchant, not the amount.
@@ -120,8 +131,14 @@ def _as_date(value):
         return None
 
 
+# Part of every evidence hash, so changing the prompt re-reviews everything
+# instead of keeping verdicts made under the old instructions.
+PROMPT_VERSION = 2
+
+
 def _evidence_hash(candidate: Dict) -> str:
-    parts = [candidate["merchant_key"], str(candidate["occurrences"]),
+    parts = [f"v{PROMPT_VERSION}", candidate["merchant_key"],
+             str(candidate["occurrences"]),
              str(candidate.get("mean_amount")), str(candidate.get("median_interval_days"))]
     for date, amount in zip(candidate.get("dates", []), candidate.get("amounts", [])):
         parts.append(f"{date}:{amount}")
@@ -251,6 +268,16 @@ def build_candidates(transactions: List[Dict], excluded_keys=None,
     streams = [_candidate_from_stream(s) for s in streams]
     covered = {s["base_key"] for s in streams}
     loose = _loose_candidates(spend_rows(transactions), covered, excluded, revive)
+
+    # Sibling streams at one merchant help the model tell plans apart
+    # (a $25 mobile plan next to a $95 internet plan).
+    by_base: Dict[str, List[Dict]] = {}
+    for stream in streams:
+        by_base.setdefault(stream["base_key"], []).append(stream)
+    for stream in streams:
+        stream["other_amounts"] = sorted(
+            s["mean_amount"] for s in by_base[stream["base_key"]]
+            if s is not stream)
 
     candidates = (streams + loose)[:MAX_CANDIDATES]
     for candidate in candidates:
@@ -397,6 +424,7 @@ def _review_batch(candidates: List[Dict], api_key: str, model: str,
             "signal": c.get("signal"),
             "score": c.get("score"),
             "rule_frequency": c.get("rule_frequency"),
+            "other_amounts_at_merchant": c.get("other_amounts") or None,
         }
         for c in candidates
     ]
