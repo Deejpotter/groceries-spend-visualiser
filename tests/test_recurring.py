@@ -359,3 +359,10 @@ class TestEndedStreams:
     def test_medicare_benefit_is_income(self):
         rows = monthly("DIRECT MCARE BENEFITS CYWP", 98.95)
         assert detect_recurring(rows) == []
+
+
+class TestShopifyPrefix:
+    def test_sp_prefix_keys_on_the_store(self):
+        assert normalise_merchant("SP DOLLARSHAVECLUB NORTH ROCKS NS AUS") == "dollarshaveclub"
+        assert normalise_merchant("SP BERMUDA COFFEE STUD NARRE WARREN VI") == "bermuda"
+        assert normalise_merchant("SP CASHMERE SYRUPS") == "cashmere"
