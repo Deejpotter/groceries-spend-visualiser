@@ -2059,7 +2059,7 @@ class TestSubscriptions:
                         ["2026-01-10", "2026-02-10", "2026-03-10"])
         calls = []
 
-        def fake_review(candidates, api_key, model):
+        def fake_review(candidates, api_key, model, **kwargs):
             calls.append(len(candidates))
             return [{"merchant_key": c["merchant_key"],
                      "evidence_hash": c["evidence_hash"], "bill": True,
@@ -2071,6 +2071,7 @@ class TestSubscriptions:
         page = client.get("/subscriptions/suggest")
         assert calls == []
         assert b"suggest/review-new" in page.data
+        assert b"Streaming &amp; Music" in page.data
 
         panel = client.post("/subscriptions/suggest/review-new")
         assert calls == [1]
@@ -2113,7 +2114,7 @@ class TestSubscriptions:
         self._bank_rows(db, "AUTO SMART SAVINGS DEBIT", 112.00,
                         ["2026-09-01", "2026-10-01"])
 
-        def fake_review(candidates, api_key, model, timeout=60):
+        def fake_review(candidates, api_key, model, timeout=60, **kwargs):
             assert api_key == "test-key"
             reviews = []
             for candidate in candidates:
