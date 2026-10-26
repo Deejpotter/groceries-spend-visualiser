@@ -77,7 +77,7 @@ _NOISE_TOKENS = {
 _INCOME_KEYWORDS = (
     "payroll", "salary", "wages", "interest paid", "interest credit",
     "dividend", "centrelink", "refund", "reversal", "cashback",
-    "transfer from", "deposit",
+    "transfer from", "deposit", "mcare benefit", "medicare benefit",
 )
 
 # Moving money between your own accounts is not a bill. A generic "transfer"
@@ -592,6 +592,20 @@ def _amount_streams(rows: List[Dict], merchant_found: List[Dict],
     return found
 
 
+def has_ended(stream: Dict, as_of: date) -> bool:
+    """True when a stream has missed two or more payments by ``as_of``.
+
+    ``as_of`` is the newest transaction in the data, not today, so a stale
+    import doesn't make every bill look ended. Tracked bills that stop are
+    flagged separately by ``subscription_health``; a suggestion that already
+    stopped is just noise.
+    """
+    target, tolerance = next((t, tol) for f, t, tol in CADENCES
+                             if f == stream["frequency"])
+    gap = (as_of - _as_date(stream["last_seen"])).days
+    return gap > 2 * target + tolerance
+
+
 def build_streams(transactions: List[Dict], excluded_keys=None,
                   revive_after=None) -> List[Dict]:
     """Every recurring stream worth showing or reviewing, best first.
@@ -619,6 +633,9 @@ def build_streams(transactions: List[Dict], excluded_keys=None,
 
     found = _merchant_streams(groups, excluded, revive)
     found.extend(_amount_streams(rows, found, excluded, revive))
+    if rows:
+        found = [s for s in found
+                 if not has_ended(s, max(row["date"] for row in rows))]
     return sorted(found, key=lambda s: (-s["score"], -s["monthly_cost"]))
 
 

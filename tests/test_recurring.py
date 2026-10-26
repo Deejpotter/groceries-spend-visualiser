@@ -339,3 +339,23 @@ class TestFixedMonthlyAmount:
             make_transaction("2026-08-11", "CAFE THREE", 12.00),
         ]
         assert detect_recurring(rows) == []
+
+
+class TestEndedStreams:
+    def test_a_stream_that_stopped_is_not_suggested(self):
+        rows = monthly("OLD GYM", 30.0,
+                       ["2025-10-01", "2025-11-01", "2025-12-01", "2026-01-01"])
+        rows += monthly("NETFLIX.COM", 18.99,
+                        ["2026-07-03", "2026-08-03", "2026-09-03", "2026-10-03"])
+        names = [s["name"] for s in detect_recurring(rows)]
+        assert names == ["Netflix"]
+
+    def test_one_missed_payment_is_not_ended(self):
+        rows = monthly("ACME INTERNET", 79.0,
+                       ["2026-05-05", "2026-06-05", "2026-07-05", "2026-08-05"])
+        rows.append(make_transaction("2026-09-25", "COFFEE", 5.0))
+        assert len(detect_recurring(rows)) == 1
+
+    def test_medicare_benefit_is_income(self):
+        rows = monthly("DIRECT MCARE BENEFITS CYWP", 98.95)
+        assert detect_recurring(rows) == []
