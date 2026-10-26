@@ -528,6 +528,20 @@ def _suggest_context(db):
         transactions, excluded_keys=set(excluded_keys) | linked_keys,
         revive_after=ignored_after)
     reviews = cached_reviews(db, candidates)
+    ai = resolve_config(get_setting)
+    unreviewed = [c for c in candidates
+                  if c["merchant_key"] not in reviews]
+    # Always review any unreviewed candidates when AI is configured, so the
+    # suggestions page never shows unreviewed merchants on its own.
+    if ai["configured"] and unreviewed:
+        try:
+            new_reviews = review_candidates(unreviewed, ai["key"], ai["model"])
+            save_reviews(db, new_reviews)
+            reviews = cached_reviews(db, candidates)
+            unreviewed = [c for c in candidates
+                          if c["merchant_key"] not in reviews]
+        except Exception:
+            pass  # Don't break the page if the AI call fails.
     suggestions = merge_suggestions(detected, candidates, reviews)
 
     # Filter names already tracked, then deduplicate.
@@ -557,21 +571,6 @@ def _suggest_context(db):
         seen.add(key)
         repeat_purchases.append(suggestion)
 
-    ai = resolve_config(get_setting)
-    unreviewed = [c for c in candidates
-                  if c["merchant_key"] not in reviews]
-    # Always review any unreviewed candidates when AI is configured, so the
-    # suggestions page never shows unreviewed merchants on its own.
-    if ai["configured"] and unreviewed:
-        try:
-            new_reviews = review_candidates(unreviewed, ai["key"], ai["model"])
-            save_reviews(db, new_reviews)
-            for rev in new_reviews:
-                reviews[rev["merchant_key"]] = rev
-            unreviewed = [c for c in candidates
-                          if c["merchant_key"] not in reviews]
-        except Exception:
-            pass  # Don't break the page if the AI call fails.
     reviewed_at = max((r.get("reviewed_at") for r in reviews.values()
                        if r.get("reviewed_at")), default=None)
     ai_dismissed = [

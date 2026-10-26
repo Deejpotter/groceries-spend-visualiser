@@ -274,10 +274,138 @@ def split_amount_clusters(rows: List[Dict]) -> List[List[Dict]]:
     return clusters
 
 
+# Score bands. "possible" streams are only shown when the AI review keeps them.
+HIGH_SCORE = 0.75
+MEDIUM_SCORE = 0.5
+POSSIBLE_SCORE = 0.35
+
+# How much each piece of evidence contributes to the score.
+_WEIGHTS = {"timing": 0.4, "stability": 0.25, "cycles": 0.2, "day": 0.1,
+            "known": 0.05}
+
+
+def _clamp(value: float) -> float:
+    return max(0.0, min(1.0, value))
+
+
+def _day_spread(dates: List[date]) -> int:
+    """Days between the earliest and latest day-of-month, wrapping month ends.
+
+    The 30th and the 1st are two days apart, not 29, so the spread is the
+    circle minus the widest gap between neighbouring days.
+    """
+    days = sorted(d.day for d in dates)
+    if len(days) < 2:
+        return 0
+    gaps = [days[i + 1] - days[i] for i in range(len(days) - 1)]
+    gaps.append(days[0] + 31 - days[-1])
+    return 31 - max(gaps)
+
+
+def score_stream(rows: List[Dict], utility: bool = False) -> Optional[Dict]:
+    """Score how much a run of payments looks like one recurring bill.
+
+    Returns the cadence, the 0-1 score and the evidence behind it, or None when
+    there is no cadence at all. Each interval is compared with the nearest whole
+    number of cycles, so a skipped month counts as on time with a small
+    penalty, while a 46-day gap in a monthly pattern is simply late.
+    """
+    if len(rows) < 2:
+        return None
+    dates = [row["date"] for row in rows]
+    amounts = [row["amount"] for row in rows]
+    intervals = [(dates[i + 1] - dates[i]).days for i in range(len(dates) - 1)]
+    frequency = classify_frequency(intervals)
+    if frequency is None:
+        return None
+    target = next(t for f, t, _ in CADENCES if f == frequency)
+
+    errors = []
+    skipped = 0
+    for interval in intervals:
+        cycles = max(1, round(interval / target))
+        skipped += cycles - 1
+        errors.append(abs(interval - cycles * target) / target)
+    timing_error = sum(errors) / len(errors) + 0.1 * skipped / len(intervals)
+
+    mean_amount = sum(amounts) / len(amounts)
+    spread = (sum((a - mean_amount) ** 2 for a in amounts) / len(amounts)) ** 0.5
+    amount_cv = spread / mean_amount if mean_amount else 1.0
+
+    day_spread = (_day_spread(dates)
+                  if frequency in ("monthly", "quarterly", "yearly") else None)
+    known = known_merchant([row["description"] for row in rows])
+
+    timing = _clamp(1 - timing_error / 0.25)
+    parts = {
+        "timing": timing,
+        "stability": _clamp(1 - amount_cv / (0.6 if utility else 0.3)),
+        "cycles": _clamp((len(rows) - 1) / 5),
+        "day": (_clamp(1 - (day_spread - 2) / 8) if day_spread is not None
+                else timing),
+        "known": 1.0 if known else 0.0,
+    }
+    score = round(sum(_WEIGHTS[name] * value for name, value in parts.items()), 3)
+    return {
+        "frequency": frequency,
+        "score": score,
+        "timing_error": round(timing_error, 3),
+        "amount_cv": round(amount_cv, 3),
+        "day_spread": day_spread,
+        "skipped": skipped,
+        "parts": {name: round(value, 2) for name, value in parts.items()},
+    }
+
+
+def confidence_for(score: float) -> Optional[str]:
+    """The confidence band for a stream score, or None below "possible"."""
+    if score >= HIGH_SCORE:
+        return "high"
+    if score >= MEDIUM_SCORE:
+        return "medium"
+    if score >= POSSIBLE_SCORE:
+        return "possible"
+    return None
+
+
+def spend_rows(transactions: List[Dict]) -> List[Dict]:
+    """Debits that could be bills, as ``{date, amount, description, key}``.
+
+    Drops credits, income, fees, internal transfers and grocery rows. The key
+    is recomputed from the description, because keys stored at import time may
+    come from an older, coarser normaliser (every PayPal payment as "paypal").
+    """
+    rows = []
+    for row in transactions:
+        # Credits are income; an unknown direction (some bank APIs omit the
+        # sign) is still a candidate unless the description says it's income.
+        if (row.get("direction") or "debit") == "credit":
+            continue
+        if (row.get("status") or "") == "grocery":
+            continue
+        description = row.get("description") or ""
+        if is_ignored_description(description):
+            continue
+        try:
+            amount = float(row.get("amount") or 0)
+        except (TypeError, ValueError):
+            continue
+        seen = _as_date(row.get("txn_date") or row.get("order_date"))
+        if amount <= 0 or seen is None:
+            continue
+        key = normalise_merchant(description) or row.get("merchant_key")
+        if not key:
+            continue
+        rows.append({"date": seen, "amount": amount,
+                     "description": description, "key": key})
+    return rows
+
+
 def _suggestion_for_rows(base_key: str, stream_key: str, rows: List[Dict],
-                         excluded, revive, today, multi: bool = False,
-                         stream_count: int = 0) -> Optional[Dict]:
-    """Build one suggestion from a merchant, or one amount stream of it."""
+                         excluded, revive, multi: bool = False,
+                         stream_count: int = 0,
+                         signal: str = "merchant") -> Optional[Dict]:
+    """Score one stream and shape it as a suggestion, or None if it isn't one."""
     excluded_key = stream_key if stream_key in excluded else (
         base_key if base_key in excluded else None)
     revived = False
@@ -287,48 +415,35 @@ def _suggestion_for_rows(base_key: str, stream_key: str, rows: List[Dict],
         if cutoff is None:
             return None
         rows = [row for row in rows if row["date"] > cutoff]
-        if len(rows) < 2:
-            return None
         revived = True
         revived_since = cutoff.isoformat()
 
-    if len(rows) < 2:
+    rows = sorted(rows, key=lambda row: row["date"])
+    known = known_merchant([row["description"] for row in rows])
+    is_utility = bool(known and known["category"] == "utilities")
+    scored = score_stream(rows, utility=is_utility)
+    if scored is None:
         return None
-    rows.sort(key=lambda row: row["date"])
-    dates = [row["date"] for row in rows]
-    amounts = [row["amount"] for row in rows]
-
-    intervals = [(dates[i + 1] - dates[i]).days for i in range(len(dates) - 1)]
-    frequency = classify_frequency(intervals)
-    if frequency is None:
-        return None
+    frequency = scored["frequency"]
     # A yearly bill only comes around once a year, so waiting for three
     # sightings would mean three years of history. Two is enough when the gap
     # lands cleanly on a year.
     if len(rows) < MIN_OCCURRENCES and frequency != "yearly":
         return None
 
-    target = next(t for f, t, _ in CADENCES if f == frequency)
-    tolerance = next(tol for f, _, tol in CADENCES if f == frequency)
-    # A skipped payment shows up as a double interval. It earns half credit:
-    # enough to keep a real bill with one gap, not enough to turn two random
-    # purchases two months apart into one.
-    consistent = sum(1 if abs(i - target) <= tolerance
-                     else 0.5 if abs(i - 2 * target) <= tolerance * 2
-                     else 0
-                     for i in intervals)
-    consistency = consistent / len(intervals)
-    if consistency < 0.5:
-        return None
-
+    dates = [row["date"] for row in rows]
+    amounts = [row["amount"] for row in rows]
+    intervals = [(dates[i + 1] - dates[i]).days for i in range(len(dates) - 1)]
     mean_amount = sum(amounts) / len(amounts)
     variance = max(abs(a - mean_amount) for a in amounts) / mean_amount
-
-    known = known_merchant([row["description"] for row in rows])
-    is_utility = bool(known and known["category"] == "utilities")
-    limit = _UTILITY_VARIANCE if is_utility else _BILL_VARIANCE
-    if variance > limit:
+    if variance > (_UTILITY_VARIANCE if is_utility else _BILL_VARIANCE):
         return None
+    confidence = confidence_for(scored["score"])
+    if confidence is None:
+        return None
+    # Two or three clean sightings can be coincidence; high needs a track record.
+    if confidence == "high" and len(rows) < 4:
+        confidence = "medium"
 
     last_seen = dates[-1]
     first_amount = round(amounts[0], 2)
@@ -337,19 +452,21 @@ def _suggestion_for_rows(base_key: str, stream_key: str, rows: List[Dict],
     price_pct = round(abs(price_change) / first_amount * 100, 1) if first_amount else 0
     price_direction = ("flat" if abs(price_change) < 0.005
                        else ("up" if price_change > 0 else "down"))
-    kind = "subscription" if variance <= _SUBSCRIPTION_VARIANCE else "bill"
-    high = (len(rows) >= 4 and consistency >= 0.8
-            and variance <= 0.25 and intervals[-1] <= target + tolerance)
-    base_name = known["name"] if known else _display_name(
-        [row["description"] for row in rows])
-    category = known["category"] if known else guess_category(
-        " ".join(row["description"] for row in rows))
+    descriptions = [row["description"] for row in rows]
+    base_name = known["name"] if known else _display_name(descriptions)
+    category = known["category"] if known else guess_category(" ".join(descriptions))
     name = f"{base_name} ({mean_amount:.2f})" if multi else base_name
 
     reason = (f"{len(rows)} payments, about {int(median(intervals))} days apart, "
               f"last seen {last_seen.isoformat()}")
+    if scored["skipped"]:
+        reason += f", {scored['skipped']} missed"
     if multi:
         reason += f" — one of {stream_count} amounts at this merchant"
+    if signal == "amount":
+        keys = len({row["key"] for row in rows})
+        reason += (f" — same ${mean_amount:.2f} around day {last_seen.day} "
+                   f"under {keys} different descriptions")
 
     return {
         "merchant_key": base_key,
@@ -359,12 +476,18 @@ def _suggestion_for_rows(base_key: str, stream_key: str, rows: List[Dict],
         "amount": round(mean_amount, 2),
         "frequency": frequency,
         "category": category,
-        "kind": kind,
-        "confidence": "high" if high else "medium",
+        "kind": "subscription" if variance <= _SUBSCRIPTION_VARIANCE else "bill",
+        "confidence": confidence,
+        "score": scored["score"],
+        "evidence": scored,
+        "signal": signal,
         "source": "transactions",
         "revived": revived,
         "revived_since": revived_since,
         "occurrences": len(rows),
+        "descriptions": list(dict.fromkeys(descriptions))[-3:],
+        "amounts": [round(a, 2) for a in amounts[-8:]],
+        "dates": [d.isoformat() for d in dates[-8:]],
         "first_seen": dates[0].isoformat(),
         "last_seen": last_seen.isoformat(),
         "first_amount": first_amount,
@@ -378,77 +501,27 @@ def _suggestion_for_rows(base_key: str, stream_key: str, rows: List[Dict],
     }
 
 
-def detect_recurring(transactions: List[Dict],
-                     excluded_keys=None,
-                     revive_after=None,
-                     today: Optional[date] = None) -> List[Dict]:
-    """Detect recurring bills and subscriptions from bank transactions.
-
-    ``transactions`` are dicts with txn_date (or order_date), description,
-    amount, optional merchant_key, direction and status. Only debits that were
-    not already classified as groceries are considered. ``excluded_keys`` are
-    stream keys the user has accepted or dismissed.
-
-    ``revive_after`` maps a dismissed stream to the date it was dismissed. Only
-    payments after that date are considered, so a new regular pattern can
-    surface even though the old one was dismissed.
-
-    A merchant with clearly separate amounts is split into separate streams, so
-    two bills from one provider are not averaged into one fortnightly payment.
-    """
-    excluded = {str(k) for k in (excluded_keys or ()) if k}
-    revive = {}
-    for key, value in (revive_after or {}).items():
-        cutoff = _as_date(value)
-        if cutoff is not None:
-            revive[str(key)] = cutoff
-    groups: Dict[str, List[Dict]] = defaultdict(list)
-
-    for row in transactions:
-        # Credits are income; an unknown direction (some bank APIs omit the
-        # sign) is still a candidate unless the description says it's income.
-        if (row.get("direction") or "debit") == "credit":
-            continue
-        description = row.get("description") or ""
-        if is_ignored_description(description):
-            continue
-        if (row.get("status") or "") == "grocery":
-            continue
-        amount = float(row.get("amount") or 0)
-        seen = _as_date(row.get("txn_date") or row.get("order_date"))
-        if amount <= 0 or seen is None:
-            continue
-        # Recompute from the description: keys stored at import time may come
-        # from an older, coarser normaliser (every PayPal payment as "paypal").
-        key = normalise_merchant(description) or row.get("merchant_key")
-        if not key:
-            continue
-        groups[key].append({
-            "date": seen,
-            "amount": amount,
-            "description": description,
-        })
-
-    groups = merge_similar_groups(groups)
-    suggestions = []
+def _merchant_streams(groups, excluded, revive) -> List[Dict]:
+    """Signal 1: payments to the same (fuzzy-matched) merchant."""
+    found = []
     for base_key, rows in groups.items():
         clusters = split_amount_clusters(rows)
         if len(clusters) <= 1:
-            suggestion = _suggestion_for_rows(
-                base_key, base_key, rows, excluded, revive, today)
+            suggestion = _suggestion_for_rows(base_key, base_key, rows,
+                                              excluded, revive)
             if suggestion:
-                suggestions.append(suggestion)
+                found.append(suggestion)
             continue
 
-        found = []
+        streams = []
         for index, cluster in enumerate(clusters, start=1):
             suggestion = _suggestion_for_rows(
                 base_key, f"{base_key}#{index}", cluster, excluded, revive,
-                today, multi=True, stream_count=len(clusters))
+                multi=True, stream_count=len(clusters))
             if suggestion:
-                found.append(suggestion)
-        if found:
-            suggestions.extend(found)
+                streams.append(suggestion)
+        if streams:
+            found.extend(streams)
             continue
 
         # The split may have been too aggressive for a variable utility. Only
@@ -457,10 +530,100 @@ def detect_recurring(transactions: List[Dict],
         means = [sum(r["amount"] for r in cluster) / len(cluster)
                  for cluster in clusters if cluster]
         if means and max(means) / min(means) < 1.6:
-            suggestion = _suggestion_for_rows(
-                base_key, base_key, rows, excluded, revive, today)
+            suggestion = _suggestion_for_rows(base_key, base_key, rows,
+                                              excluded, revive)
             if suggestion:
-                suggestions.append(suggestion)
+                found.append(suggestion)
+    return found
 
-    return sorted(suggestions,
+
+def _amount_streams(rows: List[Dict], merchant_found: List[Dict],
+                    excluded, revive) -> List[Dict]:
+    """Signal 2: the same exact amount on about the same day each month.
+
+    Banks often describe one direct debit differently from month to month
+    (new reference numbers, a processor prefix that comes and goes), which
+    splits it across merchant groups. The amount and the day still line up.
+    Only amounts seen under two or more merchant keys count; a single merchant
+    is already judged by signal 1.
+    """
+    strong = {s["merchant_key"] for s in merchant_found
+              if s["confidence"] in ("high", "medium")}
+    by_amount: Dict[float, List[Dict]] = defaultdict(list)
+    for row in rows:
+        by_amount[round(row["amount"], 2)].append(row)
+
+    found = []
+    for amount, group in by_amount.items():
+        if amount < 5 or len(group) < MIN_OCCURRENCES:
+            continue
+        if len({row["key"] for row in group}) < 2:
+            continue
+        # Mostly an already-detected merchant: nothing new to report.
+        if sum(1 for row in group if row["key"] in strong) * 2 > len(group):
+            continue
+        group = sorted(group, key=lambda row: row["date"])
+        months = {(row["date"].year, row["date"].month) for row in group}
+        if len(months) != len(group):
+            continue
+        if _day_spread([row["date"] for row in group]) > 3:
+            continue
+        key = f"amount:{amount:.2f}"
+        suggestion = _suggestion_for_rows(key, key, group, excluded, revive,
+                                          signal="amount")
+        if suggestion and suggestion["frequency"] == "monthly":
+            found.append(suggestion)
+    return found
+
+
+def build_streams(transactions: List[Dict], excluded_keys=None,
+                  revive_after=None) -> List[Dict]:
+    """Every recurring stream worth showing or reviewing, best first.
+
+    Includes "possible" streams, which the page shows only when the AI review
+    keeps them.
+    """
+    excluded = {str(k) for k in (excluded_keys or ()) if k}
+    revive = {}
+    for key, value in (revive_after or {}).items():
+        cutoff = _as_date(value)
+        if cutoff is not None:
+            revive[str(key)] = cutoff
+
+    rows = spend_rows(transactions)
+    groups: Dict[str, List[Dict]] = defaultdict(list)
+    for row in rows:
+        groups[row["key"]].append(row)
+    groups = merge_similar_groups(groups)
+    # Fuzzy merging folds spellings together; point rows at the merged key so
+    # the amount signal counts merchants, not spellings.
+    for base_key, group in groups.items():
+        for row in group:
+            row["key"] = base_key
+
+    found = _merchant_streams(groups, excluded, revive)
+    found.extend(_amount_streams(rows, found, excluded, revive))
+    return sorted(found, key=lambda s: (-s["score"], -s["monthly_cost"]))
+
+
+def detect_recurring(transactions: List[Dict],
+                     excluded_keys=None,
+                     revive_after=None,
+                     today: Optional[date] = None,
+                     include_possible: bool = False) -> List[Dict]:
+    """Detect recurring bills and subscriptions from bank transactions.
+
+    ``transactions`` are dicts with txn_date (or order_date), description,
+    amount, optional merchant_key, direction and status. ``excluded_keys`` are
+    stream keys the user has accepted or dismissed. ``revive_after`` maps a
+    dismissed stream to the date it was dismissed; only later payments count,
+    so a new regular pattern can surface again.
+
+    Returns high and medium confidence streams, plus "possible" ones when
+    ``include_possible`` is set.
+    """
+    streams = build_streams(transactions, excluded_keys, revive_after)
+    if not include_possible:
+        streams = [s for s in streams if s["confidence"] != "possible"]
+    return sorted(streams,
                   key=lambda s: (s["confidence"] != "high", -s["monthly_cost"]))

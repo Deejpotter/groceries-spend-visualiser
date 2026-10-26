@@ -226,6 +226,7 @@ CREATE TABLE IF NOT EXISTS ai_reviews (
     display_name TEXT,
     category TEXT,
     frequency TEXT,
+    priority TEXT DEFAULT 'normal',
     reason TEXT,
     reviewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -287,6 +288,7 @@ MIGRATIONS = [
     ("subscriptions", "stream_key", "TEXT"),
     ("subscriptions", "stream_amount", "REAL"),
     ("subscriptions", "ended_dismissed_at", "TEXT"),
+    ("ai_reviews", "priority", "TEXT DEFAULT 'normal'"),
 ]
 
 

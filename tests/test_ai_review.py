@@ -71,12 +71,23 @@ class TestBuildCandidates:
         assert candidates[0]["dates"] == ["2026-05-01", "2026-06-01"]
         assert candidates[0]["revived"] is True
 
-    def test_skips_a_merchant_with_two_amount_streams(self):
+    def test_reviews_each_amount_stream_separately(self):
         rows = []
         for month in range(1, 4):
             rows.append(txn(f"2026-{month:02d}-01", "PAYPAL *BELONG", 90.00))
             rows.append(txn(f"2026-{month:02d}-15", "PAYPAL *BELONG", 25.00))
-        assert build_candidates(rows) == []
+        candidates = build_candidates(rows)
+        assert sorted(c["merchant_key"] for c in candidates) == [
+            "belong#1", "belong#2"]
+        assert {c["mean_amount"] for c in candidates} == {25.00, 90.00}
+
+    def test_streams_come_before_loose_merchants(self):
+        rows = [txn(f"2026-{m:02d}-03", "NETFLIX.COM", 18.99) for m in range(5, 10)]
+        rows += [txn("2026-08-01", "CITY COUNCIL RATES", 300.00),
+                 txn("2026-11-01", "CITY COUNCIL RATES", 300.00)]
+        candidates = build_candidates(rows)
+        assert [c["signal"] for c in candidates] == ["merchant", "loose"]
+        assert candidates[0]["score"] > 0.75
 
     def test_merges_similar_merchant_variants(self):
         rows = [
@@ -216,3 +227,52 @@ class TestReviewCache:
             txn("2026-11-01", "BINGE.COM", 16.00),
         ])
         assert cached_reviews(db, newer) == {}
+
+
+class TestPossibleStreams:
+    def rows(self):
+        # Gaps of 30, 45 and 30 days: a weak monthly pattern the rules hide.
+        return [
+            txn("2026-03-01", "ACME STORAGE", 40.00),
+            txn("2026-03-31", "ACME STORAGE", 40.00),
+            txn("2026-05-15", "ACME STORAGE", 40.00),
+            txn("2026-06-14", "ACME STORAGE", 40.00),
+        ]
+
+    def test_possible_stream_is_hidden_without_ai(self):
+        from services.recurring import detect_recurring
+        assert detect_recurring(self.rows()) == []
+        candidates = build_candidates(self.rows())
+        assert candidates[0]["confidence"] == "possible"
+
+    def test_ai_keeps_a_possible_stream_with_rule_amounts(self):
+        candidates = build_candidates(self.rows())
+        reviews = {"acme": {"verdict": "bill", "display_name": "Acme Storage",
+                            "category": "bills", "frequency": None,
+                            "priority": "high", "reason": "Storage unit"}}
+        merged = merge_suggestions([], candidates, reviews)
+        assert len(merged) == 1
+        assert merged[0]["name"] == "Acme Storage"
+        assert merged[0]["frequency"] == "monthly"
+        assert merged[0]["source"] == "ai"
+        assert merged[0]["merchant_key"] == "acme"
+
+    def test_ai_priority_orders_the_list(self):
+        detected = [
+            {"merchant_key": "a", "stream_key": "a", "name": "Streaming",
+             "confidence": "high", "score": 0.9, "monthly_cost": 30.0},
+            {"merchant_key": "b", "stream_key": "b", "name": "Insurance",
+             "confidence": "medium", "score": 0.6, "monthly_cost": 10.0},
+        ]
+        reviews = {"a": {"verdict": "bill", "priority": "low"},
+                   "b": {"verdict": "bill", "priority": "high"}}
+        merged = merge_suggestions(detected, [], reviews)
+        assert [m["name"] for m in merged] == ["Insurance", "Streaming"]
+
+    def test_invalid_priority_falls_back_to_normal(self):
+        candidates = build_candidates(self.rows())
+        reviews = _validate_reviews({"reviews": [
+            {"merchant_key": "acme", "bill": True, "name": "Acme",
+             "category": "bills", "frequency": None, "priority": "urgent",
+             "reason": "x"}]}, candidates)
+        assert reviews[0]["priority"] == "normal"

@@ -310,3 +310,32 @@ class TestBankBoilerplate:
         from services.recurring import merge_similar_groups
         merged = merge_similar_groups({"telstra": [1], "telsrta": [2]})
         assert len(merged) == 1
+
+
+class TestFixedMonthlyAmount:
+    def test_same_amount_same_day_with_changing_descriptions(self):
+        rows = [
+            make_transaction("2026-06-03", "DIRECT DEBIT 88123 ACME", 49.95),
+            make_transaction("2026-07-03", "DD 99001 ACMEPAY", 49.95),
+            make_transaction("2026-08-04", "ACME HOLDINGS 77712", 49.95),
+            make_transaction("2026-09-02", "DD 99001 ACMEPAY", 49.95),
+        ]
+        result = detect_recurring(rows)
+        assert len(result) == 1
+        assert result[0]["frequency"] == "monthly"
+        assert result[0]["stream_key"] == "amount:49.95"
+        assert "different descriptions" in result[0]["reason"]
+
+    def test_wraps_around_month_end(self):
+        from datetime import date
+        from services.recurring import _day_spread
+        assert _day_spread([date(2026, 1, 30), date(2026, 2, 1),
+                            date(2026, 3, 31)]) == 2
+
+    def test_same_amount_on_scattered_days_is_ignored(self):
+        rows = [
+            make_transaction("2026-06-03", "CAFE ONE", 12.00),
+            make_transaction("2026-07-19", "CAFE TWO", 12.00),
+            make_transaction("2026-08-11", "CAFE THREE", 12.00),
+        ]
+        assert detect_recurring(rows) == []
