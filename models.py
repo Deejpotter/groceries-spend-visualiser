@@ -224,6 +224,20 @@ def convert_unit(value: float, from_unit: str, to_unit: str) -> float:
 # Validation helpers
 # ---------------------------------------------------------------------------
 
+def parse_ymd(text: str) -> date:
+    """Parse the date part of a YYYY-MM-DD string. Raises ValueError if invalid.
+
+    ``date.fromisoformat`` is about 20x faster than ``strptime``, which matters
+    when a page parses every transaction. ``strptime`` stays as the fallback
+    because it also accepts unpadded legacy values like ``2026-1-5``.
+    """
+    text = str(text)[:10]
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        return datetime.strptime(text, "%Y-%m-%d").date()
+
+
 def validate_date_format(date_str: str) -> bool:
     """Check if a string is a valid YYYY-MM-DD date."""
     try:

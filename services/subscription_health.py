@@ -9,6 +9,7 @@ from datetime import date, datetime
 from typing import Dict, List, Optional
 
 from services.subscriptions import FREQUENCIES, advance_occurrence
+from models import parse_ymd
 
 MISSED_CYCLES_THRESHOLD = 3
 _MAX_CYCLES = 200
@@ -18,7 +19,7 @@ def _as_date(value) -> Optional[date]:
     if isinstance(value, date):
         return value
     try:
-        return datetime.strptime(str(value)[:10], "%Y-%m-%d").date()
+        return parse_ymd(value)
     except (ValueError, TypeError):
         return None
 

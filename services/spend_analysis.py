@@ -7,6 +7,7 @@ the bottom run SQL for dashboard widgets.
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from typing import Dict, Iterable, List, Optional
+from models import parse_ymd
 
 DAYS_PER_MONTH = 30.44
 
@@ -21,7 +22,7 @@ def _as_date(value):
     if isinstance(value, date):
         return value
     try:
-        return datetime.strptime(str(value)[:10], "%Y-%m-%d").date()
+        return parse_ymd(value)
     except (ValueError, TypeError):
         return None
 
@@ -51,7 +52,7 @@ def analyze_purchases(purchases: Iterable[Dict], top_n: int = 20) -> Optional[Di
 
         basket = baskets.setdefault(basket_key, {"date": d, "total": 0.0})
         basket["total"] += total
-        monthly[d.strftime("%Y-%m")] += total
+        monthly[d.isoformat()[:7]] += total
         by_category[r.get("category") or "unlinked"] += total
         by_store[r.get("store") or "Unknown"] += total
 

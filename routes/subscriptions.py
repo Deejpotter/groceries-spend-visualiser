@@ -20,7 +20,7 @@ from services.subscriptions import (
     upcoming_weeks,
 )
 from services.spend_analysis import load_purchases
-from services.recurring import detect_recurring
+from services.recurring import build_streams
 from services.price_history import group_price_history, payment_rows, summarise
 from services.subscription_health import ended_subscriptions
 from services.dashboard import sparkline
@@ -493,8 +493,13 @@ def subscription_fortnight():
     )
 
 
-def _suggest_context(db):
-    """Everything the suggestions page and its HTMX panel need."""
+def _suggest_context(db, auto_review=False):
+    """Everything the suggestions page and its HTMX panel need.
+
+    The AI review of new candidates only runs when ``auto_review`` is set. The
+    page itself renders from cached verdicts and asks for the review in a
+    follow-up HTMX request, so a slow model never blocks the page.
+    """
 
     # Merchants already accepted or dismissed are excluded so they don't nag.
     decisions = [dict(r) for r in db.execute(
@@ -520,28 +525,29 @@ def _suggest_context(db):
         ).fetchall()
         if row["stream_key"] or row["merchant_key"]
     }
-    detected = detect_recurring(
+    streams = build_streams(
         transactions, excluded_keys=set(excluded_keys) | linked_keys,
         revive_after=ignored_after)
-
+    detected = [s for s in streams if s["confidence"] != "possible"]
     candidates = build_candidates(
         transactions, excluded_keys=set(excluded_keys) | linked_keys,
-        revive_after=ignored_after)
+        revive_after=ignored_after, streams=streams)
     reviews = cached_reviews(db, candidates)
     ai = resolve_config(get_setting)
     unreviewed = [c for c in candidates
                   if c["merchant_key"] not in reviews]
-    # Always review any unreviewed candidates when AI is configured, so the
-    # suggestions page never shows unreviewed merchants on its own.
-    if ai["configured"] and unreviewed:
+    ai_error = None
+    if auto_review and ai["configured"] and unreviewed:
         try:
             new_reviews = review_candidates(unreviewed, ai["key"], ai["model"])
             save_reviews(db, new_reviews)
             reviews = cached_reviews(db, candidates)
             unreviewed = [c for c in candidates
                           if c["merchant_key"] not in reviews]
+        except AIReviewError as exc:
+            ai_error = f"AI review failed: {exc}"
         except Exception:
-            pass  # Don't break the page if the AI call fails.
+            ai_error = "AI review failed."
     suggestions = merge_suggestions(detected, candidates, reviews)
 
     # Filter names already tracked, then deduplicate.
@@ -603,15 +609,16 @@ def _suggest_context(db):
         "bank_history_first": history[0] if history else None,
         "bank_history_last": history[1] if history else None,
         "banksync_configured": bool(get_setting("banksync_api_key")),
-        "suggest_error": None,
+        "suggest_error": ai_error,
         "suggest_notice": None,
+        "ai_auto_attempted": auto_review,
     }
 
 
-def _suggest_response(db, error=None, notice=None):
+def _suggest_response(db, error=None, notice=None, auto_review=False):
     """Render the suggestions panel after an in-page action."""
-    context = _suggest_context(db)
-    context["suggest_error"] = error
+    context = _suggest_context(db, auto_review=auto_review)
+    context["suggest_error"] = error or context["suggest_error"]
     context["suggest_notice"] = notice
     return render_template("subscriptions/suggest.html", **context)
 
@@ -622,6 +629,13 @@ def subscription_suggest():
     """Show bill suggestions from bank transactions, with optional AI review."""
     return render_template(
         "subscriptions/suggest.html", **_suggest_context(get_db()))
+
+
+@subscriptions_bp.route("/subscriptions/suggest/review-new", methods=["POST"])
+@login_required
+def subscription_ai_review_new():
+    """Review only the new candidates; requested by the page after it loads."""
+    return _suggest_response(get_db(), auto_review=True)
 
 
 @subscriptions_bp.route("/subscriptions/suggest/review", methods=["POST"])

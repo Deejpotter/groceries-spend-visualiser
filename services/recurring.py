@@ -11,12 +11,14 @@ amounts are subscriptions; variable amounts (utilities) are bills.
 """
 
 import re
+from functools import lru_cache
 from collections import Counter, defaultdict
 from difflib import SequenceMatcher
 from datetime import date, datetime
 from statistics import median
 from typing import Dict, List, Optional
 
+from models import parse_ymd
 from services.subscriptions import KNOWN_MERCHANTS, suggested_next_due
 
 MIN_OCCURRENCES = 3
@@ -116,7 +118,7 @@ def _as_date(value) -> Optional[date]:
     if isinstance(value, date):
         return value
     try:
-        return datetime.strptime(str(value)[:10], "%Y-%m-%d").date()
+        return parse_ymd(value)
     except (ValueError, TypeError):
         return None
 
@@ -135,14 +137,24 @@ def strip_boilerplate(description: str) -> str:
     return re.sub(r"\s+", " ", text)
 
 
+@lru_cache(maxsize=65536)
 def _similar_keys(a: str, b: str) -> bool:
-    """True when two merchant keys are spelling variants of one merchant."""
+    """True when two merchant keys are spelling variants of one merchant.
+
+    Every pair of merchants is compared, so the cheap checks run first: a
+    0.85 ratio is impossible when one key is over 35% longer, and
+    SequenceMatcher's quick ratios are upper bounds of the real one.
+    """
     shorter, longer = sorted((a, b), key=len)
     if len(shorter) < 4:
         return False
     if longer.startswith(shorter):
         return True
-    return len(shorter) >= 5 and SequenceMatcher(None, a, b).ratio() >= 0.85
+    if len(shorter) < 5 or len(longer) > len(shorter) * 1.35:
+        return False
+    matcher = SequenceMatcher(None, a, b)
+    return (matcher.real_quick_ratio() >= 0.85 and matcher.quick_ratio() >= 0.85
+            and matcher.ratio() >= 0.85)
 
 
 def merge_similar_groups(groups: Dict[str, List[Dict]]) -> Dict[str, List[Dict]]:
@@ -171,6 +183,9 @@ def merge_similar_groups(groups: Dict[str, List[Dict]]) -> Dict[str, List[Dict]]
     return merged
 
 
+# Called for every transaction on every suggestions page load, with the same
+# few hundred descriptions each time.
+@lru_cache(maxsize=8192)
 def normalise_merchant(description: str) -> str:
     """A stable key for a bank description, so variants group together.
 
@@ -224,6 +239,7 @@ def guess_category(description: str) -> str:
     return "other"
 
 
+@lru_cache(maxsize=8192)
 def is_ignored_description(description: str) -> bool:
     """True for income, bank fees and internal transfers, which are never bills."""
     lowered = (description or "").lower()

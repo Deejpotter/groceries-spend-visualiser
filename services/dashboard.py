@@ -10,6 +10,7 @@ from datetime import date, datetime
 from typing import Dict, List, Optional
 
 from models import today as local_today
+from models import parse_ymd
 
 
 def _as_date(value):
@@ -23,7 +24,7 @@ def _as_date(value):
     if isinstance(value, date):
         return value
     try:
-        return datetime.strptime(str(value)[:10], "%Y-%m-%d").date()
+        return parse_ymd(value)
     except (ValueError, TypeError):
         return None
 

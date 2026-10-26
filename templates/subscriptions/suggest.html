@@ -56,6 +56,16 @@
 {% endif %}
 
 {% if ai_configured %}
+{% if ai_unreviewed and not ai_auto_attempted %}
+{# Runs the AI review after the page has rendered, then swaps in the result. #}
+<div class="alert alert-light border small d-flex align-items-center"
+     hx-post="{{ url_for('subscriptions.subscription_ai_review_new') }}"
+     hx-trigger="load" hx-target="#suggest-content" hx-select="#suggest-content"
+     hx-swap="outerHTML">
+    <span class="spinner-border spinner-border-sm mr-2" role="status" aria-hidden="true"></span>
+    Reviewing {{ ai_unreviewed }} new merchant{{ 's' if ai_unreviewed != 1 }} with AI…
+</div>
+{% endif %}
 <div class="d-flex flex-wrap justify-content-between align-items-center mb-2">
     <div class="small text-muted">
         {% if ai_review_count %}

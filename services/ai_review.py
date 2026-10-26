@@ -30,6 +30,7 @@ from services.subscriptions import (
     SUBSCRIPTION_CATEGORY_LOOKUP,
     suggested_next_due,
 )
+from models import parse_ymd
 
 DEFAULT_MODEL = "openrouter/free"
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -107,7 +108,7 @@ def redact(text: str) -> str:
 def _as_date(value):
     try:
         from datetime import datetime
-        return datetime.strptime(str(value)[:10], "%Y-%m-%d").date()
+        return parse_ymd(value)
     except (ValueError, TypeError):
         return None
 
@@ -220,13 +221,16 @@ def _loose_candidates(rows: List[Dict], covered: set, excluded: set,
 
 
 def build_candidates(transactions: List[Dict], excluded_keys=None,
-                     revive_after=None) -> List[Dict]:
+                     revive_after=None, streams=None) -> List[Dict]:
     """Everything worth asking the model about, strongest evidence first.
 
     The detected streams from ``recurring.build_streams`` come first, including
     "possible" ones the rules alone would hide. Then come loose merchants seen
     twice or more that formed no stream. Each candidate's ``merchant_key`` is
     its stream key, which is what verdicts are cached and merged by.
+
+    Pass ``streams`` when the caller already built them, to avoid doing the
+    detection twice.
     """
     excluded = {str(key) for key in (excluded_keys or ()) if key}
     revive = {}
@@ -235,8 +239,9 @@ def build_candidates(transactions: List[Dict], excluded_keys=None,
         if cutoff is not None:
             revive[str(key)] = cutoff
 
-    streams = [_candidate_from_stream(s)
-               for s in build_streams(transactions, excluded, revive_after)]
+    if streams is None:
+        streams = build_streams(transactions, excluded, revive_after)
+    streams = [_candidate_from_stream(s) for s in streams]
     covered = {s["base_key"] for s in streams}
     loose = _loose_candidates(spend_rows(transactions), covered, excluded, revive)
 

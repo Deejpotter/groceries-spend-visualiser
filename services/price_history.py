@@ -7,13 +7,14 @@ over time, and whether the latest payment is higher or lower than the first.
 
 from datetime import datetime
 from typing import Dict, List, Optional
+from models import parse_ymd
 
 
 def _as_date(value):
     if isinstance(value, datetime):
         return value.date()
     try:
-        return datetime.strptime(str(value)[:10], "%Y-%m-%d").date()
+        return parse_ymd(value)
     except (ValueError, TypeError):
         return None
 

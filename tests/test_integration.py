@@ -2050,6 +2050,37 @@ class TestSubscriptions:
         resp = client.post("/subscriptions/suggest/review", follow_redirects=True)
         assert b"Add an OpenRouter API key" in resp.data
 
+    def test_page_load_defers_the_ai_review(self, client, db, monkeypatch):
+        _login(client, "subuser", "test123")
+        db.execute("INSERT OR REPLACE INTO settings (key, value)"
+                   " VALUES ('openrouter_api_key', 'test-key')")
+        db.commit()
+        self._bank_rows(db, "BINGE.COM", 16.00,
+                        ["2026-01-10", "2026-02-10", "2026-03-10"])
+        calls = []
+
+        def fake_review(candidates, api_key, model):
+            calls.append(len(candidates))
+            return [{"merchant_key": c["merchant_key"],
+                     "evidence_hash": c["evidence_hash"], "bill": True,
+                     "name": "Binge Streaming", "category": "entertainment",
+                     "frequency": "monthly", "priority": "normal",
+                     "reason": "Streaming."} for c in candidates]
+
+        monkeypatch.setattr("routes.subscriptions.review_candidates", fake_review)
+        page = client.get("/subscriptions/suggest")
+        assert calls == []
+        assert b"suggest/review-new" in page.data
+
+        panel = client.post("/subscriptions/suggest/review-new")
+        assert calls == [1]
+        assert b"Binge Streaming" in panel.data
+        assert b"suggest/review-new" not in panel.data
+
+        page = client.get("/subscriptions/suggest")
+        assert calls == [1]
+        assert b"suggest/review-new" not in page.data
+
     def test_ai_review_filters_and_promotes(self, client, db, monkeypatch):
         _login(client, "subuser", "test123")
         db.execute("INSERT OR REPLACE INTO settings (key, value)"

@@ -10,6 +10,7 @@ from calendar import monthrange
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional
+from models import parse_ymd
 
 FREQUENCIES = ["weekly", "fortnightly", "monthly", "quarterly", "yearly"]
 
@@ -86,7 +87,7 @@ def _as_date(value) -> Optional[date]:
     if isinstance(value, date):
         return value
     try:
-        return datetime.strptime(str(value)[:10], "%Y-%m-%d").date()
+        return parse_ymd(value)
     except (ValueError, TypeError):
         return None
 

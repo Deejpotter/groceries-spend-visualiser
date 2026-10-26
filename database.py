@@ -177,6 +177,7 @@ CREATE TABLE IF NOT EXISTS purchases (
 );
 
 CREATE INDEX IF NOT EXISTS idx_purchases_date ON purchases(order_date);
+CREATE INDEX IF NOT EXISTS idx_purchases_product ON purchases(product_name, order_date);
 CREATE INDEX IF NOT EXISTS idx_plan_date ON meal_plan_entries(date, meal_type);
 
 CREATE TABLE IF NOT EXISTS subscriptions (
