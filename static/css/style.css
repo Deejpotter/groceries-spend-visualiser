@@ -642,6 +642,14 @@ details[open].pack-others > summary::after {
 .cat-dot[data-cat="rent"] { background: #a64b2c; }
 .cat-dot[data-cat="transport"] { background: #7a9e9f; }
 .cat-dot[data-cat="education"] { background: #b58b4f; }
+.cat-dot[data-cat="phone_internet"] { background: #4f7fa8; }
+.cat-dot[data-cat="loans"] { background: #a8576f; }
+.cat-dot[data-cat="fitness"] { background: #5f9a6a; }
+.cat-dot[data-cat="kids"] { background: #d0a14a; }
+.cat-dot[data-cat="streaming"] { background: #b0623a; }
+.cat-dot[data-cat="software"] { background: #5c6fa0; }
+.cat-dot[data-cat="memberships"] { background: #9a7b5a; }
+.cat-dot[data-cat="bills"] { background: #7d6a55; }
 .cat-dot[data-cat="other"] { background: var(--ink-soft); }
 .section-title .cat-dot { margin-top: 0; }
 .suggestion-body { flex: 1 1 auto; min-width: 0; }

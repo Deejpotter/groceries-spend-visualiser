@@ -297,8 +297,8 @@ class TestFormatFrequency:
 
 class TestSubscriptionCategoryLabel:
     def test_known_categories(self):
-        assert subscription_category_label("bills") == "Bills"
-        assert subscription_category_label("entertainment") == "Entertainment"
+        assert subscription_category_label("bills") == "Council & Other Bills"
+        assert subscription_category_label("entertainment") == "Games & Entertainment"
         assert subscription_category_label("rent") == "Rent & Housing"
 
     def test_unknown_category(self):

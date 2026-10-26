@@ -30,6 +30,7 @@ from services.recurring import (
 )
 from services.subscriptions import (
     FREQUENCIES,
+    SUBSCRIPTION_CATEGORIES,
     SUBSCRIPTION_CATEGORY_LOOKUP,
     suggested_next_due,
 )
@@ -59,6 +60,17 @@ Noise examples that must be rejected:
 - one-off purchases, supermarket or marketplace shopping, Amazon, Kmart, Bunnings
 - API, cloud or software usage billed by consumption (for example DeepInfra, OpenAI)
 - gambling, donations and government one-off payments
+- fuel and petrol stations, even when visited regularly (for example U-Go, Ampol,
+  BP, Shell, Caltex, 7-Eleven, United, Liberty, Metro, OTR, Reddy Express)
+- takeaway, cafes and restaurants, even when visited regularly
+
+Some candidates include "other_amounts_at_merchant": other regular payments to the
+same merchant. Use them to tell plans apart. A telco charging both $25 and $95 a
+month is most likely a mobile plan (the smaller one) and an internet plan (the
+larger one), so name them that way, e.g. "Belong Mobile" and "Belong Internet".
+
+If you don't recognise what a merchant sells, don't guess a product: keep its own
+name, use category "other", and say it's unclear in the reason.
 
 A merchant can still be a bill if its amount varies, such as electricity. Judge
 the merchant, not the amount.
@@ -71,17 +83,22 @@ cadence the rules found. A low score is not a reason to reject a genuine bill;
 the household may not have noticed it. A high score is not a reason to keep noise.
 
 Reply with strict JSON only, no markdown. Shape:
-{"reviews":[{"merchant_key":"...","bill":true,"name":"Clean name","category":"bills","frequency":"monthly","priority":"high","reason":"one short sentence"}]}
+{"reviews":[{"merchant_key":"...","bill":true,"name":"Clean name","category":"phone_internet","frequency":"monthly","priority":"high","reason":"one short sentence"}]}
 
 Rules:
 - Include every candidate exactly once, in the same order.
-- category must be one of: bills, entertainment, insurance, utilities, rent, health, transport, education, other.
+- category must be one of: __CATEGORIES__.
 - frequency must be one of: weekly, fortnightly, monthly, quarterly, yearly, or null when unclear.
 - name must be a human-readable merchant name, at most 40 characters.
 - priority must be high (essential or costly: rent, utilities, insurance, loans),
   normal (ordinary subscriptions), or low (small or optional). Use low for noise.
 - reason must be one short sentence, at most 20 words.
 """
+
+
+# The model picks from the same codes the app stores, described by label.
+_SYSTEM_PROMPT = _SYSTEM_PROMPT.replace("__CATEGORIES__", ", ".join(
+    f"{code} ({label})" for code, label in SUBSCRIPTION_CATEGORIES))
 
 
 class AIReviewError(Exception):
@@ -120,8 +137,14 @@ def _as_date(value):
         return None
 
 
+# Part of every evidence hash, so changing the prompt re-reviews everything
+# instead of keeping verdicts made under the old instructions.
+PROMPT_VERSION = 3
+
+
 def _evidence_hash(candidate: Dict) -> str:
-    parts = [candidate["merchant_key"], str(candidate["occurrences"]),
+    parts = [f"v{PROMPT_VERSION}", candidate["merchant_key"],
+             str(candidate["occurrences"]),
              str(candidate.get("mean_amount")), str(candidate.get("median_interval_days"))]
     for date, amount in zip(candidate.get("dates", []), candidate.get("amounts", [])):
         parts.append(f"{date}:{amount}")
@@ -251,6 +274,16 @@ def build_candidates(transactions: List[Dict], excluded_keys=None,
     streams = [_candidate_from_stream(s) for s in streams]
     covered = {s["base_key"] for s in streams}
     loose = _loose_candidates(spend_rows(transactions), covered, excluded, revive)
+
+    # Sibling streams at one merchant help the model tell plans apart
+    # (a $25 mobile plan next to a $95 internet plan).
+    by_base: Dict[str, List[Dict]] = {}
+    for stream in streams:
+        by_base.setdefault(stream["base_key"], []).append(stream)
+    for stream in streams:
+        stream["other_amounts"] = sorted(
+            s["mean_amount"] for s in by_base[stream["base_key"]]
+            if s is not stream)
 
     candidates = (streams + loose)[:MAX_CANDIDATES]
     for candidate in candidates:
@@ -397,6 +430,7 @@ def _review_batch(candidates: List[Dict], api_key: str, model: str,
             "signal": c.get("signal"),
             "score": c.get("score"),
             "rule_frequency": c.get("rule_frequency"),
+            "other_amounts_at_merchant": c.get("other_amounts") or None,
         }
         for c in candidates
     ]
