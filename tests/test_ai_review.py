@@ -318,3 +318,19 @@ class TestBatchedReview:
         monkeypatch.setattr(ai, "_review_batch", fake_batch)
         with pytest.raises(ai.AIReviewError):
             ai.review_candidates(self.candidates(12), "key")
+
+
+class TestLoosePromotionRecency:
+    def test_ai_cannot_promote_a_merchant_that_stopped(self):
+        candidates = build_candidates([
+            txn("2026-01-16", "WESFARMERSP", 4.00),
+            txn("2026-02-16", "WESFARMERSP", 4.00),
+            txn("2026-10-01", "BINGE.COM", 16.00),
+            txn("2026-10-20", "BINGE.COM", 16.00),
+        ])
+        reviews = {key: {"verdict": "bill", "display_name": key,
+                         "category": "other", "frequency": "monthly",
+                         "reason": "x"}
+                   for key in ("wesfarmersp", "binge")}
+        merged = merge_suggestions([], candidates, reviews)
+        assert [m["stream_key"] for m in merged] == ["binge"]

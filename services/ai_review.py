@@ -22,6 +22,7 @@ from typing import Dict, List, Optional
 from services.recurring import (
     build_streams,
     classify_frequency,
+    has_ended,
     merge_similar_groups,
     spend_rows,
     split_amount_clusters,
@@ -491,6 +492,8 @@ def merge_suggestions(detected: List[Dict], candidates: List[Dict],
     by_key = {c["merchant_key"]: c for c in candidates}
     merged = []
     seen = set()
+    newest = max((d for c in candidates for d in c.get("dates") or []),
+                 default=None)
 
     for suggestion in detected:
         key = suggestion.get("stream_key") or suggestion["merchant_key"]
@@ -520,6 +523,10 @@ def merge_suggestions(detected: List[Dict], candidates: List[Dict],
             continue
         last_seen = (candidate.get("dates") or [None])[-1]
         if not last_seen:
+            continue
+        # The model judges the merchant, not whether it's still being paid.
+        if newest and has_ended({"frequency": frequency, "last_seen": last_seen},
+                                parse_ymd(newest)):
             continue
         amount = candidate["mean_amount"]
         variance = candidate.get("amount_variance") or 0

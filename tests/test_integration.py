@@ -2105,7 +2105,7 @@ class TestSubscriptions:
                    " VALUES ('openrouter_model', 'openrouter/free')")
         db.commit()
         self._bank_rows(db, "BINGE.COM", 16.00,
-                        ["2026-01-10", "2026-02-10", "2026-03-10"])
+                        ["2026-08-10", "2026-09-10", "2026-10-10"])
         self._bank_rows(db, "AMAZON AU MARKETPLACE", 45.00,
                         ["2026-01-05", "2026-02-05"])
         self._bank_rows(db, "CITY COUNCIL RATES", 300.00,
