@@ -378,12 +378,17 @@ def _clean_name(candidate: Dict) -> str:
 
 def review_candidates(candidates: List[Dict], api_key: str,
                       model: str = DEFAULT_MODEL,
-                      timeout: int = 60) -> List[Dict]:
+                      timeout: int = 60, on_late=None) -> List[Dict]:
     """Ask OpenRouter to classify the candidates, in parallel batches.
 
     Free models truncate long replies mid-JSON, so candidates are sent
     BATCH_SIZE at a time. Verdicts from batches that succeed are kept even if
     another batch fails; AIReviewError is raised only when every batch fails.
+
+    Batches still running at the deadline are not waited for. When
+    ``on_late`` is given, it is called with a late batch's verdicts if that
+    batch finishes afterwards (from a worker thread), so slow models still
+    make progress instead of being thrown away.
     """
     if not candidates:
         return []
@@ -405,6 +410,9 @@ def review_candidates(candidates: List[Dict], api_key: str,
     for future in futures:
         if future in late:
             errors.append("The AI review ran out of time.")
+            if on_late:
+                future.add_done_callback(
+                    lambda f: _deliver_late(f, on_late))
             continue
         try:
             reviews.extend(future.result())
@@ -413,6 +421,16 @@ def review_candidates(candidates: List[Dict], api_key: str,
     if errors and not reviews:
         raise AIReviewError(errors[0])
     return reviews
+
+
+def _deliver_late(future, on_late) -> None:
+    """Hand a late batch's verdicts to ``on_late``; failures are dropped."""
+    if future.cancelled() or future.exception() is not None:
+        return
+    try:
+        on_late(future.result())
+    except Exception:
+        pass  # A background save must never raise into the worker thread.
 
 
 def _review_batch(candidates: List[Dict], api_key: str, model: str,

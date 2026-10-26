@@ -139,7 +139,7 @@
                 <div class="mt-1">
                     {% if s.occurrences %}<span class="chip">{{ s.occurrences }} payments</span>{% endif %}
                     <span class="chip">{{ format_frequency(s.frequency) }}</span>
-                    {% if s.category %}<span class="chip">{{ s.category|title }}</span>{% endif %}
+                    {% if s.category %}<span class="chip">{{ category_label(s.category) }}</span>{% endif %}
                     {% if s.next_due %}<span class="chip">next {{ s.next_due|nice_date }}</span>{% endif %}
                     {% if s.kind == 'bill' %}<span class="chip">variable amount</span>{% endif %}
                     {% if s.revived %}

@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 
 from auth import login_required
-from database import get_db, get_setting, set_setting
+from database import _connect, get_db, get_setting, set_setting
 from services.subscriptions import (
     fortnight_for_date,
     format_frequency,
@@ -493,6 +493,19 @@ def subscription_fortnight():
     )
 
 
+def _save_late_reviews(reviews):
+    """Save verdicts from a batch that finished after the page responded.
+
+    Runs in a worker thread with no request context, so it opens its own
+    connection.
+    """
+    db = _connect()
+    try:
+        save_reviews(db, reviews)
+    finally:
+        db.close()
+
+
 def _suggest_context(db, auto_review=False):
     """Everything the suggestions page and its HTMX panel need.
 
@@ -539,7 +552,8 @@ def _suggest_context(db, auto_review=False):
     ai_error = None
     if auto_review and ai["configured"] and unreviewed:
         try:
-            new_reviews = review_candidates(unreviewed, ai["key"], ai["model"])
+            new_reviews = review_candidates(unreviewed, ai["key"], ai["model"],
+                                            on_late=_save_late_reviews)
             save_reviews(db, new_reviews)
             reviews = cached_reviews(db, candidates)
             unreviewed = [c for c in candidates
@@ -597,6 +611,7 @@ def _suggest_context(db, auto_review=False):
         "repeat_purchases": repeat_purchases,
         "dismissed": dismissed,
         "format_frequency": format_frequency,
+        "category_label": subscription_category_label,
         "ai_configured": ai["configured"],
         "ai_model": ai["model"],
         "ai_from_env": ai["from_env"],

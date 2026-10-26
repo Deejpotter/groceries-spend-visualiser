@@ -405,3 +405,30 @@ class TestSiblingContext:
         before = build_candidates(rows)[0]["evidence_hash"]
         monkeypatch.setattr(ai, "PROMPT_VERSION", ai.PROMPT_VERSION + 1)
         assert build_candidates(rows)[0]["evidence_hash"] != before
+
+
+class TestLateBatches:
+    def test_late_batch_is_delivered_when_it_finishes(self, monkeypatch):
+        import threading
+        import services.ai_review as ai
+        release = threading.Event()
+        delivered = []
+        got_late = threading.Event()
+
+        def fake_batch(batch, api_key, model, timeout, deadline=None):
+            if batch[0]["merchant_key"] == "m10":
+                release.wait(5)
+            return [{"merchant_key": c["merchant_key"]} for c in batch]
+
+        def on_late(reviews):
+            delivered.extend(reviews)
+            got_late.set()
+
+        monkeypatch.setattr(ai, "_review_batch", fake_batch)
+        monkeypatch.setattr(ai, "REVIEW_BUDGET_SECONDS", 0.5)
+        candidates = [{"merchant_key": f"m{i}"} for i in range(20)]
+        reviews = ai.review_candidates(candidates, "key", on_late=on_late)
+        assert len(reviews) == 10 and delivered == []
+        release.set()
+        assert got_late.wait(5)
+        assert [r["merchant_key"] for r in delivered] == [f"m{i}" for i in range(10, 20)]
