@@ -32,9 +32,10 @@ The database is created automatically at `./data/groceries.db` (gitignored).
 ## Run tests
 
 ```bash
-python -m pytest            # 181 tests
+python -m pytest            # ~670 tests, in parallel (pytest-xdist via pytest.ini)
 python -m pytest -q         # quiet
 python -m pytest tests/test_plan_generator.py   # one file
+python -m pytest -p no:xdist                    # single process (for profiling)
 ```
 
 Tests use a throwaway SQLite database per test (see `tests/conftest.py`). **Run the full suite before finishing any change.** There is no lint or typecheck step configured — pytest is the verification gate.

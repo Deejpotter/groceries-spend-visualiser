@@ -22,8 +22,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
       - name: Build image
-        run: docker build -t grocery-visualiser:ci .
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: grocery-visualiser:ci
+          # Reuse unchanged layers (apt, pip install) from earlier runs.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
       - name: Smoke test public pages
         run: |
           docker run -d --name app -p 5000:5000 -e SECRET_KEY=ci grocery-visualiser:ci

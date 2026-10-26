@@ -90,6 +90,42 @@
 </div>
 {% endif %}
 
+{% if ended %}
+<div class="card mb-4 section-card ended-card">
+    <div class="card-header">
+        <span class="section-title">{{ icon('circle-alert') }} Possibly ended</span>
+        <span class="badge badge-pill badge-warning ml-2">{{ ended|length }}</span>
+    </div>
+    <div class="card-body py-2">
+        <p class="small text-muted mb-2">
+            No payment for 3 or more expected cycles. It may have been cancelled.
+        </p>
+        {% for s in ended %}
+        <div class="ended-row">
+            <div>
+                <strong><a class="bill-link" href="{{ url_for('subscriptions.subscription_detail', sub_id=s.id) }}">{{ s.name }}</a></strong><br>
+                <small class="text-muted">
+                    Last paid {{ s.last_seen|nice_date }} &middot;
+                    {{ s.missed_cycles }} missed {{ format_frequency(s.frequency)|lower }}
+                    payment{{ 's' if s.missed_cycles != 1 }}
+                </small>
+            </div>
+            <div class="ended-actions">
+                <form method="post" action="{{ url_for('subscriptions.subscription_delete', sub_id=s.id) }}" class="d-inline">
+                    {{ csrf() }}
+                    <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+                </form>
+                <form method="post" action="{{ url_for('subscriptions.subscription_keep_tracking', sub_id=s.id) }}" class="d-inline">
+                    {{ csrf() }}
+                    <button type="submit" class="btn btn-sm btn-outline-secondary">Keep tracking</button>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
 {% for cat_code, cat_label in categories %}
 {% if by_category.get(cat_code) %}
 <div class="card mb-4 section-card">

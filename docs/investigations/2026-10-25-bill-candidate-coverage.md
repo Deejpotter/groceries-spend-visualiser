@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-25
 - **Investigator:** OpenCode (DeepSeek V4.1 Flash)
-- **Status:** Implemented on `dev`, deployed to staging (`c7a9e57`); PR pending
+- **Status:** Merged to `main` (`8e15ca9`), deployed to production and staging; production healthy
 
 ## 1. What was asked
 
@@ -93,6 +93,7 @@ similar descriptions and filter by likelihood.
 - Staging `c7a9e57` is healthy and shows the coverage warning. Staging has no
   BankSync key, so it displays the import path; production has the key and will show
   **Backfill 12 months of bank history**.
+- Production `8e15ca9` deployed healthy, `/health` 200 and no startup errors.
 
 ## 7. Open items
 

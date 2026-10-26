@@ -12,7 +12,9 @@ RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuse
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# BuildKit keeps the pip download cache between builds, so a requirements
+# change only downloads what changed. The cache never ends up in the image.
+RUN --mount=type=cache,target=/root/.cache/pip     pip install -r requirements.txt
 
 COPY . .
 

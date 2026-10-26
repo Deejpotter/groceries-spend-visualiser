@@ -177,6 +177,7 @@ CREATE TABLE IF NOT EXISTS purchases (
 );
 
 CREATE INDEX IF NOT EXISTS idx_purchases_date ON purchases(order_date);
+CREATE INDEX IF NOT EXISTS idx_purchases_product ON purchases(product_name, order_date);
 CREATE INDEX IF NOT EXISTS idx_plan_date ON meal_plan_entries(date, meal_type);
 
 CREATE TABLE IF NOT EXISTS subscriptions (
@@ -226,6 +227,7 @@ CREATE TABLE IF NOT EXISTS ai_reviews (
     display_name TEXT,
     category TEXT,
     frequency TEXT,
+    priority TEXT DEFAULT 'normal',
     reason TEXT,
     reviewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -284,6 +286,10 @@ MIGRATIONS = [
     ("pantry_items", "origin", "TEXT"),
     ("purchases", "origin", "TEXT"),
     ("subscriptions", "merchant_key", "TEXT"),
+    ("subscriptions", "stream_key", "TEXT"),
+    ("subscriptions", "stream_amount", "REAL"),
+    ("subscriptions", "ended_dismissed_at", "TEXT"),
+    ("ai_reviews", "priority", "TEXT DEFAULT 'normal'"),
 ]
 
 
@@ -324,6 +330,10 @@ def _apply_migrations(db):
                            ) WHERE continuation.is_continuation = 1"""
                     )
     _migrate_purchase_identity(db)
+    db.execute(
+        "UPDATE subscriptions SET stream_key = merchant_key"
+        " WHERE stream_key IS NULL AND merchant_key IS NOT NULL"
+    )
 
 
 def init_db() -> bool:

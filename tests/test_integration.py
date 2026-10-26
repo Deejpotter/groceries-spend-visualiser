@@ -2050,6 +2050,53 @@ class TestSubscriptions:
         resp = client.post("/subscriptions/suggest/review", follow_redirects=True)
         assert b"Add an OpenRouter API key" in resp.data
 
+    def test_page_load_defers_the_ai_review(self, client, db, monkeypatch):
+        _login(client, "subuser", "test123")
+        db.execute("INSERT OR REPLACE INTO settings (key, value)"
+                   " VALUES ('openrouter_api_key', 'test-key')")
+        db.commit()
+        self._bank_rows(db, "BINGE.COM", 16.00,
+                        ["2026-01-10", "2026-02-10", "2026-03-10"])
+        calls = []
+
+        def fake_review(candidates, api_key, model):
+            calls.append(len(candidates))
+            return [{"merchant_key": c["merchant_key"],
+                     "evidence_hash": c["evidence_hash"], "bill": True,
+                     "name": "Binge Streaming", "category": "entertainment",
+                     "frequency": "monthly", "priority": "normal",
+                     "reason": "Streaming."} for c in candidates]
+
+        monkeypatch.setattr("routes.subscriptions.review_candidates", fake_review)
+        page = client.get("/subscriptions/suggest")
+        assert calls == []
+        assert b"suggest/review-new" in page.data
+
+        panel = client.post("/subscriptions/suggest/review-new")
+        assert calls == [1]
+        assert b"Binge Streaming" in panel.data
+        assert b"suggest/review-new" not in panel.data
+
+        page = client.get("/subscriptions/suggest")
+        assert calls == [1]
+        assert b"suggest/review-new" not in page.data
+
+    def test_in_page_actions_do_not_restart_the_ai_review(self, client, db):
+        _login(client, "subuser", "test123")
+        db.execute("INSERT OR REPLACE INTO settings (key, value)"
+                   " VALUES ('openrouter_api_key', 'test-key')")
+        db.commit()
+        self._bank_rows(db, "BINGE.COM", 16.00,
+                        ["2026-01-10", "2026-02-10", "2026-03-10"])
+        self._bank_rows(db, "NETFLIX.COM", 18.99,
+                        ["2026-01-04", "2026-02-04", "2026-03-04"])
+        panel = client.post("/subscriptions/suggest/ignore", data={
+            "merchant_key": "netflix", "stream_key": "netflix",
+            "name": "Netflix", "amount": "18.99", "frequency": "monthly",
+        }, headers={"HX-Request": "true"})
+        assert panel.status_code == 200
+        assert b"suggest/review-new" not in panel.data
+
     def test_ai_review_filters_and_promotes(self, client, db, monkeypatch):
         _login(client, "subuser", "test123")
         db.execute("INSERT OR REPLACE INTO settings (key, value)"
@@ -2058,7 +2105,7 @@ class TestSubscriptions:
                    " VALUES ('openrouter_model', 'openrouter/free')")
         db.commit()
         self._bank_rows(db, "BINGE.COM", 16.00,
-                        ["2026-01-10", "2026-02-10", "2026-03-10"])
+                        ["2026-08-10", "2026-09-10", "2026-10-10"])
         self._bank_rows(db, "AMAZON AU MARKETPLACE", 45.00,
                         ["2026-01-05", "2026-02-05"])
         self._bank_rows(db, "CITY COUNCIL RATES", 300.00,
@@ -2111,6 +2158,133 @@ class TestSubscriptions:
         resp = client.get("/subscriptions/suggest")
         assert b"Binge Streaming" in resp.data
         assert b"Review again" in resp.data
+
+    def test_ended_bill_is_flagged_and_can_be_kept(self, client, db):
+        _login(client, "subuser", "test123")
+        self._bank_rows(db, "NETFLIX.COM", 18.99,
+                        ["2026-01-04", "2026-02-04", "2026-03-04"])
+        client.post("/subscriptions/suggest/accept", data={
+            "merchant_key": "netflix", "stream_key": "netflix",
+            "name": "Netflix", "amount": "18.99",
+            "frequency": "monthly", "category": "entertainment",
+        })
+        sub_id = db.execute("SELECT id FROM subscriptions").fetchone()["id"]
+
+        page = client.get("/subscriptions")
+        assert b"Possibly ended" in page.data
+        assert b"missed monthly" in page.data
+
+        client.post(f"/subscriptions/{sub_id}/keep-tracking", follow_redirects=True)
+        page = client.get("/subscriptions")
+        assert b"Possibly ended" not in page.data
+        dismissed = db.execute(
+            "SELECT ended_dismissed_at FROM subscriptions WHERE id = ?",
+            (sub_id,)).fetchone()["ended_dismissed_at"]
+        assert dismissed
+
+    def test_one_merchant_can_produce_two_bills(self, client, db):
+        _login(client, "subuser", "test123")
+        firsts = [f"2026-{month:02d}-01" for month in range(1, 13)]
+        mids = [f"2026-{month:02d}-15" for month in range(1, 13)]
+        self._bank_rows(db, "PAYPAL *BELONG AU", 90.00, firsts)
+        self._bank_rows(db, "PAYPAL *BELONG AU", 25.00, mids)
+
+        page = client.get("/subscriptions/suggest")
+        assert b"Belong (90.00)" in page.data
+        assert b"Belong (25.00)" in page.data
+        assert b">2</strong>" in page.data
+        assert b"bills detected" in page.data
+
+        add = client.post("/subscriptions/suggest/accept", data={
+            "merchant_key": "belong", "stream_key": "belong#2",
+            "stream_amount": "90.00", "name": "Belong (90.00)",
+            "amount": "90.00", "frequency": "monthly",
+            "category": "bills",
+        }, headers={"HX-Request": "true"})
+        assert add.status_code == 200
+        assert add.data.count(b'btn-outline-success">Add</button>') == 1
+        assert b"Belong (25.00)" in add.data
+        assert b">1</strong>" in add.data
+        sub = db.execute("SELECT * FROM subscriptions").fetchone()
+        assert sub["merchant_key"] == "belong"
+        assert sub["stream_key"] == "belong#2"
+        assert sub["stream_amount"] == 90.00
+
+        detail = client.get(f"/subscriptions/{sub['id']}").data
+        assert b"$90.00" in detail
+        assert b"$25.00" not in detail
+
+    def test_dismissing_one_stream_leaves_the_other(self, client, db):
+        _login(client, "subuser", "test123")
+        firsts = [f"2026-{month:02d}-01" for month in range(1, 13)]
+        mids = [f"2026-{month:02d}-15" for month in range(1, 13)]
+        self._bank_rows(db, "PAYPAL *BELONG AU", 90.00, firsts)
+        self._bank_rows(db, "PAYPAL *BELONG AU", 25.00, mids)
+
+        resp = client.post("/subscriptions/suggest/ignore", data={
+            "merchant_key": "belong", "stream_key": "belong#1",
+            "name": "Belong (25.00)", "amount": "25.00",
+            "frequency": "monthly",
+        }, headers={"HX-Request": "true"})
+        assert resp.status_code == 200
+        assert resp.data.count(b'btn-outline-success">Add</button>') == 1
+        assert b"Belong (90.00)" in resp.data
+        decision = db.execute(
+            "SELECT merchant_key FROM merchant_decisions").fetchone()
+        assert decision["merchant_key"] == "belong#1"
+
+    def test_add_and_dismiss_stay_on_the_page(self, client, db):
+        _login(client, "subuser", "test123")
+        self._bank_rows(db, "BINGE.COM", 16.00,
+                        ["2026-01-10", "2026-02-10", "2026-03-10"])
+        add = client.post("/subscriptions/suggest/accept", data={
+            "merchant_key": "binge", "name": "Binge", "amount": "16.00",
+            "frequency": "monthly", "category": "entertainment",
+        }, headers={"HX-Request": "true"})
+        assert add.status_code == 200
+        assert b'id="suggest-content"' in add.data
+        assert b"to Bills." in add.data
+        assert b"No suggestions right now" in add.data
+        assert db.execute("SELECT COUNT(*) FROM subscriptions").fetchone()[0] == 1
+
+        db.execute("DELETE FROM subscriptions")
+        db.execute("DELETE FROM merchant_decisions")
+        db.commit()
+        self._bank_rows(db, "SPOTIFY", 11.99,
+                        ["2026-01-12", "2026-02-12", "2026-03-12"])
+        dismiss = client.post("/subscriptions/suggest/ignore", data={
+            "merchant_key": "spotify", "name": "Spotify", "amount": "11.99",
+            "frequency": "monthly",
+        }, headers={"HX-Request": "true"})
+        assert dismiss.status_code == 200
+        assert b"to Bills." not in dismiss.data
+        assert b"Dismissed" in dismiss.data
+        decision = db.execute("SELECT decision FROM merchant_decisions WHERE merchant_key = 'spotify'").fetchone()
+        assert decision["decision"] == "ignored"
+
+        decision_id = db.execute("SELECT id FROM merchant_decisions WHERE merchant_key = 'spotify'").fetchone()["id"]
+        restore = client.post(f"/subscriptions/suggest/restore/{decision_id}",
+                              headers={"HX-Request": "true"})
+        assert restore.status_code == 200
+        assert b"Suggestion restored." in restore.data
+        assert b"3 payments" in restore.data
+
+    def test_a_dismissed_merchant_returns_with_a_new_pattern(self, client, db):
+        _login(client, "subuser", "test123")
+        self._bank_rows(db, "BINGE.COM", 16.00,
+                        ["2026-01-10", "2026-02-10", "2026-03-10"])
+        client.post("/subscriptions/suggest/ignore", data={
+            "merchant_key": "binge", "name": "Binge", "amount": "16.00",
+            "frequency": "monthly",
+        })
+        db.execute("UPDATE merchant_decisions SET created_at = '2026-04-01 00:00:00'"
+                   " WHERE merchant_key = 'binge'")
+        db.commit()
+        self._bank_rows(db, "BINGE.COM", 16.00,
+                        ["2026-05-10", "2026-06-10", "2026-07-10"])
+        resp = client.get("/subscriptions/suggest")
+        assert b"Binge" in resp.data
+        assert b"new pattern since" in resp.data
 
     def test_bill_detail_shows_price_history_and_can_use_latest(self, client, db):
         _login(client, "subuser", "test123")

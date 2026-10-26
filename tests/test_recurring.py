@@ -108,6 +108,46 @@ class TestDetectRecurring:
         assert suggestion["price_direction"] == "up"
         assert suggestion["price_pct"] == 12.5
 
+    def test_dismissed_merchant_revives_after_a_new_pattern(self):
+        rows = monthly("NETFLIX.COM", 18.99,
+                       dates=["2026-01-15", "2026-02-15", "2026-03-15",
+                              "2026-05-15", "2026-06-15", "2026-07-15"])
+        result = detect_recurring(
+            rows, excluded_keys=["netflix"],
+            revive_after={"netflix": "2026-04-30"})
+        assert len(result) == 1
+        assert result[0]["revived"] is True
+        assert result[0]["revived_since"] == "2026-04-30"
+        assert result[0]["occurrences"] == 3
+        assert result[0]["first_seen"] == "2026-05-15"
+
+    def test_two_payments_after_dismissal_are_not_enough(self):
+        rows = monthly("NETFLIX.COM", 18.99,
+                       dates=["2026-01-15", "2026-02-15", "2026-03-15",
+                              "2026-05-15", "2026-06-15"])
+        assert detect_recurring(
+            rows, excluded_keys=["netflix"],
+            revive_after={"netflix": "2026-04-30"}) == []
+
+    def test_two_amount_streams_become_two_bills(self):
+        rows = []
+        for month in range(1, 13):
+            rows.append(make_transaction(
+                f"2026-{month:02d}-01", "PAYPAL *BELONG AU", 90.00))
+            rows.append(make_transaction(
+                f"2026-{month:02d}-15", "PAYPAL *BELONG AU", 25.00))
+        result = detect_recurring(rows)
+        assert len(result) == 2
+        by_amount = {s["amount"]: s for s in result}
+        assert set(by_amount) == {25.00, 90.00}
+        assert by_amount[90.00]["frequency"] == "monthly"
+        assert by_amount[25.00]["frequency"] == "monthly"
+        assert by_amount[90.00]["name"] == "Belong (90.00)"
+        assert by_amount[25.00]["name"] == "Belong (25.00)"
+        assert by_amount[90.00]["stream_key"].startswith("belong#")
+        assert by_amount[25.00]["stream_key"].startswith("belong#")
+        assert by_amount[90.00]["stream_key"] != by_amount[25.00]["stream_key"]
+
     def test_variable_amount_is_a_bill(self):
         dates = ["2026-01-20", "2026-02-20", "2026-03-20", "2026-04-20"]
         rows = [
@@ -235,3 +275,87 @@ class TestDetectRecurring:
             for d in ["2026-01-15", "2026-02-15", "2026-03-15"]
         ]
         assert detect_recurring(rows)[0]["name"] == "Spotify"
+
+
+class TestBankBoilerplate:
+    BELONG = "PAYPAL BELONG AU AUS Card xx2287 Value Date: {}"
+    CLOUDFLARE = "PAYPAL CLOUDFLARE CA USA Card xx2287 AUD 16.92 Value Date: {}"
+
+    def test_paypal_without_star_keys_on_the_real_merchant(self):
+        assert normalise_merchant(self.BELONG.format("20/10/2025")) == "belong"
+        assert normalise_merchant(self.CLOUDFLARE.format("18/10/2025")) == "cloudflare"
+
+    def test_paypal_merchants_are_not_grouped_together(self):
+        rows = [make_transaction(d, self.BELONG.format(d), 60.0, merchant_key="paypal")
+                        for d in ("2026-07-01", "2026-08-01", "2026-09-01", "2026-10-01")]
+        rows += [make_transaction("2026-08-15", self.CLOUDFLARE.format("x"), 16.92,
+                                                            merchant_key="paypal")]
+        result = detect_recurring(rows)
+        assert [s["name"] for s in result] == ["Belong"]
+        assert result[0]["price_direction"] == "flat"
+
+    def test_display_name_drops_card_currency_and_date(self):
+        rows = monthly("VULTR BY CONSTANT MATAWAN NJ USA Card xx2287 USD 5.00 "
+                                      "Value Date: 08/06/2026", 7.80)
+        suggestion = detect_recurring(rows)[0]
+        assert suggestion["name"] == "Vultr By Constant Matawan"
+        assert suggestion["category"] == "other"
+
+    def test_a_missed_month_does_not_hide_a_bill(self):
+        rows = monthly("ACME INTERNET", 79.0,
+                                      ["2026-01-05", "2026-02-05", "2026-04-05", "2026-05-05"])
+        assert detect_recurring(rows)[0]["frequency"] == "monthly"
+
+    def test_misspelt_merchant_variants_merge(self):
+        from services.recurring import merge_similar_groups
+        merged = merge_similar_groups({"telstra": [1], "telsrta": [2]})
+        assert len(merged) == 1
+
+
+class TestFixedMonthlyAmount:
+    def test_same_amount_same_day_with_changing_descriptions(self):
+        rows = [
+            make_transaction("2026-06-03", "DIRECT DEBIT 88123 ACME", 49.95),
+            make_transaction("2026-07-03", "DD 99001 ACMEPAY", 49.95),
+            make_transaction("2026-08-04", "ACME HOLDINGS 77712", 49.95),
+            make_transaction("2026-09-02", "DD 99001 ACMEPAY", 49.95),
+        ]
+        result = detect_recurring(rows)
+        assert len(result) == 1
+        assert result[0]["frequency"] == "monthly"
+        assert result[0]["stream_key"] == "amount:49.95"
+        assert "different descriptions" in result[0]["reason"]
+
+    def test_wraps_around_month_end(self):
+        from datetime import date
+        from services.recurring import _day_spread
+        assert _day_spread([date(2026, 1, 30), date(2026, 2, 1),
+                            date(2026, 3, 31)]) == 2
+
+    def test_same_amount_on_scattered_days_is_ignored(self):
+        rows = [
+            make_transaction("2026-06-03", "CAFE ONE", 12.00),
+            make_transaction("2026-07-19", "CAFE TWO", 12.00),
+            make_transaction("2026-08-11", "CAFE THREE", 12.00),
+        ]
+        assert detect_recurring(rows) == []
+
+
+class TestEndedStreams:
+    def test_a_stream_that_stopped_is_not_suggested(self):
+        rows = monthly("OLD GYM", 30.0,
+                       ["2025-10-01", "2025-11-01", "2025-12-01", "2026-01-01"])
+        rows += monthly("NETFLIX.COM", 18.99,
+                        ["2026-07-03", "2026-08-03", "2026-09-03", "2026-10-03"])
+        names = [s["name"] for s in detect_recurring(rows)]
+        assert names == ["Netflix"]
+
+    def test_one_missed_payment_is_not_ended(self):
+        rows = monthly("ACME INTERNET", 79.0,
+                       ["2026-05-05", "2026-06-05", "2026-07-05", "2026-08-05"])
+        rows.append(make_transaction("2026-09-25", "COFFEE", 5.0))
+        assert len(detect_recurring(rows)) == 1
+
+    def test_medicare_benefit_is_income(self):
+        rows = monthly("DIRECT MCARE BENEFITS CYWP", 98.95)
+        assert detect_recurring(rows) == []

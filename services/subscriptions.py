@@ -10,6 +10,7 @@ from calendar import monthrange
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional
+from models import parse_ymd
 
 FREQUENCIES = ["weekly", "fortnightly", "monthly", "quarterly", "yearly"]
 
@@ -56,6 +57,7 @@ KNOWN_MERCHANTS = [
     ("bupa", "Bupa Health", "monthly", "health"),
     ("medibank", "Medibank Health", "monthly", "health"),
     ("telstra", "Telstra", "monthly", "bills"),
+    ("belong", "Belong", "monthly", "bills"),
     ("optus", "Optus", "monthly", "bills"),
     ("vodafone", "Vodafone", "monthly", "bills"),
     ("foxtel", "Foxtel", "monthly", "entertainment"),
@@ -85,7 +87,7 @@ def _as_date(value) -> Optional[date]:
     if isinstance(value, date):
         return value
     try:
-        return datetime.strptime(str(value)[:10], "%Y-%m-%d").date()
+        return parse_ymd(value)
     except (ValueError, TypeError):
         return None
 
@@ -116,6 +118,11 @@ def _advance_by_frequency(d: date, freq: str) -> date:
     if freq == "yearly":
         return _add_years(d, 1)
     return d + timedelta(days=_FREQUENCY_DAYS[freq])
+
+
+def advance_occurrence(day: date, frequency: str) -> date:
+    """Advance one billing cycle using calendar arithmetic."""
+    return _advance_by_frequency(day, frequency)
 
 
 def fortnight_for_date(d: date) -> tuple:
