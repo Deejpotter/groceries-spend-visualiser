@@ -75,6 +75,13 @@ The shopping list shows your average shop spend next to the list's estimated cos
 
 See [`MEAL_AND_GROCERY_PLAN.md`](MEAL_AND_GROCERY_PLAN.md) for the design.
 
+**Bill suggestions from bank data** (Bills → Suggestions): the AI review sorts each regular
+merchant into a **subscription** (fixed plan, same date), a **bill** (scheduled, amount varies),
+**recurring** spending (same merchant again and again but no fixed date or amount, such as fuel,
+coffee, parking or usage-billed services; shown as a weekly, fortnightly or monthly amount), or
+noise (transfers, salary, refunds, one-off and supermarket shopping). Anything it dismissed can be
+overruled with "It's a bill or subscription" or "It's recurring", and that choice sticks.
+
 ---
 
 ## Quick start

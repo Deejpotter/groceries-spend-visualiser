@@ -2,6 +2,7 @@
 <tr id="sub-{{ s.id }}">
     <td>
         <strong><a href="{{ url_for('subscriptions.subscription_detail', sub_id=s.id) }}" class="bill-link">{{ s.name }}</a></strong>
+        {% if s.kind == 'recurring' %}<span class="badge badge-light border" title="Regular spending without a fixed date or amount">recurring</span>{% endif %}
         {% if s.notes %}<br><small class="text-muted">{{ s.notes }}</small>{% endif %}
     </td>
     <td>

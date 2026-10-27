@@ -189,6 +189,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     next_due TEXT,
     active INTEGER NOT NULL DEFAULT 1,
     notes TEXT,
+    kind TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -229,6 +230,7 @@ CREATE TABLE IF NOT EXISTS ai_reviews (
     frequency TEXT,
     priority TEXT DEFAULT 'normal',
     reason TEXT,
+    user_override TEXT,
     reviewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -317,6 +319,8 @@ MIGRATIONS = [
     ("subscriptions", "ended_dismissed_at", "TEXT"),
     ("ai_reviews", "priority", "TEXT DEFAULT 'normal'"),
     ("shopping_list_items", "source", "TEXT"),
+    ("ai_reviews", "user_override", "TEXT"),
+    ("subscriptions", "kind", "TEXT"),
     ("shopping_list_items", "reason", "TEXT"),
 ]
 

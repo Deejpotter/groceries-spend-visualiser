@@ -100,10 +100,21 @@
 
 {% if ai_dismissed %}
 <details class="mt-2 mb-3 small">
-    <summary><strong>What the AI dismissed ({{ ai_dismissed|length }})</strong> &mdash; open if a real bill is missing</summary>
+    <summary><strong>What the AI dismissed ({{ ai_dismissed|length }})</strong>: open if a real bill is missing</summary>
     <ul class="mb-0 mt-2">
         {% for item in ai_dismissed %}
-        <li><strong>{{ item.name }}</strong>{% if item.reason %} &mdash; {{ item.reason }}{% endif %}</li>
+        <li class="mb-1"><strong>{{ item.name }}</strong>{% if item.reason %}: {{ item.reason }}{% endif %}
+            <form method="post" action="{{ url_for('subscriptions.subscription_override_review') }}"
+                  hx-post="{{ url_for('subscriptions.subscription_override_review') }}"
+                  hx-target="#suggest-content" hx-select="#suggest-content" hx-swap="outerHTML"
+                  hx-disabled-elt="find button" class="d-inline ml-1">
+                {{ csrf() }}
+                <input type="hidden" name="merchant_key" value="{{ item.key }}">
+                <button type="submit" name="verdict" value="bill" class="btn btn-link btn-sm p-0">It's a bill or subscription</button>
+                &middot;
+                <button type="submit" name="verdict" value="recurring" class="btn btn-link btn-sm p-0">It's recurring</button>
+            </form>
+        </li>
         {% endfor %}
     </ul>
 </details>
@@ -142,6 +153,7 @@
                     {% if s.category %}<span class="chip">{{ category_label(s.category) }}</span>{% endif %}
                     {% if s.next_due %}<span class="chip">next {{ s.next_due|nice_date }}</span>{% endif %}
                     {% if s.kind == 'bill' %}<span class="chip">variable amount</span>{% endif %}
+                    {% if s.kind == 'recurring' %}<span class="chip">recurring, no fixed date</span>{% if s.per_visit %}<span class="chip">about {{ s.per_visit|money }} a time</span>{% endif %}{% endif %}
                     {% if s.revived %}
                     <span class="chip revived">new pattern since {{ s.revived_since|nice_date }}</span>
                     {% endif %}
@@ -161,7 +173,7 @@
                 {% endif %}
             </div>
             <div class="suggestion-amount">
-                <div class="amount">{% if s.kind == 'bill' %}avg {% endif %}{{ s.amount|money }}</div>
+                <div class="amount">{% if s.kind == 'bill' %}avg {% elif s.kind == 'recurring' %}about {% endif %}{{ s.amount|money }}</div>
                 {% if s.monthly_cost and s.frequency != 'monthly' %}
                 <small>{{ s.monthly_cost|money }}/month</small>
                 {% endif %}
@@ -178,6 +190,7 @@
                         <input type="hidden" name="amount" value="{{ s.amount }}">
                         <input type="hidden" name="frequency" value="{{ s.frequency }}">
                         <input type="hidden" name="category" value="{{ s.category }}">
+                        {% if s.kind %}<input type="hidden" name="kind" value="{{ s.kind }}">{% endif %}
                         {% if s.next_due %}<input type="hidden" name="next_due" value="{{ s.next_due }}">{% endif %}
                         <button type="submit" class="btn btn-sm btn-outline-success">Add</button>
                     </form>
