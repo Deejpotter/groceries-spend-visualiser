@@ -45,24 +45,41 @@ BATCH_SIZE = 10
 # worker is killed and the page's review panel never updates.
 REVIEW_BUDGET_SECONDS = 70
 PRIORITIES = ["high", "normal", "low"]
+REVIEW_TYPES = ["subscription", "bill", "recurring", "noise"]
+# What a review type is stored as: subscriptions and bills are told apart by
+# how much the amount varies, so both are stored as "bill".
+VERDICTS = {"subscription": "bill", "bill": "bill", "recurring": "recurring", "noise": "noise"}
 
 _SYSTEM_PROMPT = """You review bank merchants for an Australian household budgeting app.
 
-Decide whether each merchant is a genuine recurring household bill or subscription,
-or whether it is noise. Genuine examples: rent, mortgage, electricity, gas, water,
-council rates, home or car insurance, health insurance, phone/internet, streaming,
-gym, school fees, loan repayments, childcare.
+Sort each merchant into one type. The household wants to see every regular cost,
+so only use "noise" when the money is clearly not a cost they keep paying.
 
-Noise examples that must be rejected:
-- transfers between the person's own accounts, including savings, offset and credit card payments
-- bank fees, transaction fees, interest charges and card fees
-- salary, wages, interest paid, dividends, refunds and cashback
-- one-off purchases, supermarket or marketplace shopping, Amazon, Kmart, Bunnings
-- API, cloud or software usage billed by consumption (for example DeepInfra, OpenAI)
-- gambling, donations and government one-off payments
-- fuel and petrol stations, even when visited regularly (for example U-Go, Ampol,
-  BP, Shell, Caltex, 7-Eleven, United, Liberty, Metro, OTR, Reddy Express)
-- takeaway, cafes and restaurants, even when visited regularly
+- "subscription": a fixed plan charged on a schedule, usually the same amount on
+  about the same date. Streaming, music, gym, phone/internet plans, insurance,
+  memberships, and software or AI tools paid as a plan (for example Reclaim.ai,
+  OpenCode, ChatGPT Plus, Microsoft 365, Adobe), even for work or hobbies.
+  Shops that sell everyday things also sell subscriptions: about the same amount
+  about once a month from a cafe, coffee roaster, meal kit or pet food brand is a
+  subscription (for example a monthly coffee bean subscription), not recurring
+  spending. Decide from the dates and amounts, not the kind of business.
+- "bill": a scheduled household bill whose amount varies, such as electricity,
+  gas, water, council rates, rent, mortgage, loan repayments, childcare.
+- "recurring": money spent at the same merchant again and again, but not on a
+  fixed date or for a fixed amount. Fuel and petrol stations (U-Go, Ampol, BP,
+  Shell, Caltex, 7-Eleven), cafe visits on different days for different amounts,
+  takeaway, regular parking,
+  tolls, and services billed by usage (OpenAI, OpenRouter, DeepInfra, Vast.ai,
+  Cloudflare, AWS). Repeated fees for a service the person chose to use, such as
+  a pay-advance or buy-now-pay-later fee, are also recurring.
+- "noise": not a cost they keep paying. Transfers between the person's own
+  accounts (savings, offset, credit card payments), salary, wages, interest
+  earned, dividends, refunds and cashback, one-off purchases, gambling, and
+  supermarket grocery shopping (the app tracks groceries separately).
+
+If you don't recognise what a merchant sells, don't guess a product and don't
+call it noise because it's unclear: keep its own name, use type "recurring" and
+category "other", and say it's unclear in the reason.
 
 Some candidates include "other_amounts_at_merchant": other regular payments to the
 same merchant. Use them to tell plans apart. A telco charging both $25 and $95 a
@@ -72,8 +89,7 @@ larger one), so name them that way, e.g. "Belong Mobile" and "Belong Internet".
 If you don't recognise what a merchant sells, don't guess a product: keep its own
 name, use category "other", and say it's unclear in the reason.
 
-A merchant can still be a bill if its amount varies, such as electricity. Judge
-the merchant, not the amount.
+Judge the merchant, not the amount: an electricity bill varies and is still a bill.
 
 Each candidate comes with evidence from a rule-based detector: "signal" is
 "merchant" (same merchant each time) or "amount" (the same exact amount on about
@@ -83,15 +99,18 @@ cadence the rules found. A low score is not a reason to reject a genuine bill;
 the household may not have noticed it. A high score is not a reason to keep noise.
 
 Reply with strict JSON only, no markdown. Shape:
-{"reviews":[{"merchant_key":"...","bill":true,"name":"Clean name","category":"phone_internet","frequency":"monthly","priority":"high","reason":"one short sentence"}]}
+{"reviews":[{"merchant_key":"...","type":"subscription","name":"Clean name","category":"phone_internet","frequency":"monthly","priority":"high","reason":"one short sentence"}]}
 
 Rules:
 - Include every candidate exactly once, in the same order.
 - category must be one of: __CATEGORIES__.
+- type must be one of: subscription, bill, recurring, noise.
 - frequency must be one of: weekly, fortnightly, monthly, quarterly, yearly, or null when unclear.
+  For recurring spending, give how often it usually happens.
 - name must be a human-readable merchant name, at most 40 characters.
 - priority must be high (essential or costly: rent, utilities, insurance, loans),
-  normal (ordinary subscriptions), or low (small or optional). Use low for noise.
+  normal (ordinary subscriptions), or low (small, optional or day-to-day spending
+  such as coffee). Use low for noise.
 - reason must be one short sentence, at most 20 words.
 """
 
@@ -139,7 +158,7 @@ def _as_date(value):
 
 # Part of every evidence hash, so changing the prompt re-reviews everything
 # instead of keeping verdicts made under the old instructions.
-PROMPT_VERSION = 3
+PROMPT_VERSION = 5
 
 
 def _evidence_hash(candidate: Dict) -> str:
@@ -342,9 +361,13 @@ def _validate_reviews(payload: Dict, candidates: List[Dict]) -> List[Dict]:
         key = str(review.get("merchant_key") or "").strip()
         if key not in allowed_keys or key in seen:
             continue
-        bill = review.get("bill")
-        if not isinstance(bill, bool):
-            continue
+        kind = str(review.get("type") or "").strip().lower()
+        if kind not in REVIEW_TYPES:
+            # Older replies only said whether it was a bill.
+            if not isinstance(review.get("bill"), bool):
+                continue
+            kind = "bill" if review["bill"] else "noise"
+        bill = kind != "noise"
         seen.add(key)
         category = str(review.get("category") or "other").strip().lower()
         if category not in SUBSCRIPTION_CATEGORY_LOOKUP:
@@ -360,7 +383,7 @@ def _validate_reviews(payload: Dict, candidates: List[Dict]) -> List[Dict]:
             name = _clean_name(by_key[key])
         reason = re.sub(r"\s+", " ", str(review.get("reason") or "")).strip()[:160]
         cleaned.append({
-            "merchant_key": key, "bill": bill, "name": name,
+            "merchant_key": key, "bill": bill, "type": kind, "name": name,
             "category": category, "frequency": frequency,
             "priority": priority, "reason": reason,
             "evidence_hash": by_key[key]["evidence_hash"],
@@ -515,6 +538,48 @@ def _review_batch(candidates: List[Dict], api_key: str, model: str,
     raise AIReviewError(last_error or "The AI review failed.")
 
 
+def request_chat_json(system_prompt: str, user_prompt: str, api_key: str, model: str,
+                      timeout: int = 60, deadline: Optional[float] = None) -> Dict:
+    """One OpenRouter chat request that must answer with a JSON object, retried on bad replies.
+
+    Shared by reviews other than the merchant one (e.g. product links).
+    """
+    body = json.dumps({
+        "model": model,
+        "temperature": 0.1,
+        "max_tokens": 6000,
+        "messages": [{"role": "system", "content": system_prompt},
+                     {"role": "user", "content": user_prompt}],
+    }).encode("utf-8")
+    deadline = deadline or (time.monotonic() + REVIEW_BUDGET_SECONDS)
+    last_error = None
+    for _ in range(MAX_RETRIES):
+        remaining = deadline - time.monotonic()
+        if remaining < 5:
+            break
+        request = urllib.request.Request(API_URL, data=body, headers={
+            "Authorization": "Bearer " + api_key,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://groceries.deejpotter.com",
+            "X-Title": "Groceries Visualiser",
+        })
+        try:
+            with urllib.request.urlopen(request, timeout=min(timeout, remaining)) as response:
+                result = json.load(response)
+            return _parse_json(result["choices"][0]["message"]["content"])
+        except urllib.error.HTTPError as exc:
+            last_error = f"OpenRouter returned HTTP {exc.code}."
+            if exc.code not in (429, 500, 502, 503, 504):
+                break
+        except (urllib.error.URLError, TimeoutError) as exc:
+            last_error = f"Could not reach OpenRouter: {getattr(exc, 'reason', exc)}."
+        except AIReviewError as exc:
+            last_error = str(exc)
+        except (KeyError, IndexError, TypeError, ValueError):
+            last_error = "OpenRouter returned an unexpected response."
+    raise AIReviewError(last_error or "The AI review ran out of time.")
+
+
 def cached_reviews(db, candidates: List[Dict]) -> Dict[str, Dict]:
     """Verdicts that still match the current evidence, keyed by merchant."""
     if not candidates:
@@ -526,7 +591,20 @@ def cached_reviews(db, candidates: List[Dict]) -> Dict[str, Dict]:
         row = stored.get(candidate["merchant_key"])
         if row and row["evidence_hash"] == candidate["evidence_hash"]:
             valid[candidate["merchant_key"]] = row
+        elif row and row.get("user_override"):
+            # The user's call outlives new evidence; only the AI's verdict expires.
+            valid[candidate["merchant_key"]] = row
+        if candidate["merchant_key"] in valid and row.get("user_override"):
+            valid[candidate["merchant_key"]] = {**row, "verdict": row["user_override"]}
     return valid
+
+
+def override_review(db, merchant_key: str, verdict: Optional[str]) -> None:
+    """Record the user's own verdict for a merchant (None hands it back to the AI)."""
+    if verdict is not None and verdict not in ("bill", "recurring", "noise"):
+        raise ValueError("Unknown verdict.")
+    db.execute("UPDATE ai_reviews SET user_override = ? WHERE merchant_key = ?", (verdict, merchant_key))
+    db.commit()
 
 
 def save_reviews(db, reviews: List[Dict]) -> int:
@@ -548,7 +626,7 @@ def save_reviews(db, reviews: List[Dict]) -> int:
                  reason = excluded.reason,
                  reviewed_at = CURRENT_TIMESTAMP""",
             (review["merchant_key"], review["evidence_hash"],
-             "bill" if review["bill"] else "noise", review["name"],
+             VERDICTS.get(review.get("type"), "bill" if review["bill"] else "noise"), review["name"],
              review["category"], review["frequency"],
              review.get("priority") or "normal", review["reason"]),
         )
@@ -576,6 +654,66 @@ def _rank(suggestion: Dict):
             -suggestion.get("monthly_cost", 0))
 
 
+def _fixed_schedule_wins(review: Dict, candidate: Optional[Dict]) -> Dict:
+    """A "recurring" verdict on a fixed amount paid on a steady schedule is a subscription.
+
+    The model sometimes judges by the kind of business (a cafe) rather than the
+    evidence (the same amount every month). The rules' evidence wins here.
+    """
+    if not candidate or review.get("verdict") != "recurring" or review.get("user_override"):
+        return review
+    fixed = (candidate.get("amount_variance") or 0) <= 0.15
+    if fixed and candidate.get("rule_frequency") in FREQUENCIES:
+        return {**review, "verdict": "bill", "frequency": review.get("frequency") or candidate["rule_frequency"]}
+    return review
+
+
+_PERIOD_DAYS = {"weekly": 7, "fortnightly": 14, "monthly": 365.25 / 12}
+
+
+def recurring_spend(candidate: Dict, as_of=None) -> Optional[Dict]:
+    """Recurring spending (no fixed date or amount) shaped as a suggestion.
+
+    The amount is what is usually spent per week, fortnight or month at this
+    merchant, from the total spent over the time it has been seen, so ten
+    coffees a fortnight show as one fortnightly amount, not a $5 payment.
+    """
+    dates = [_as_date(d) for d in candidate.get("dates") or []]
+    first = _as_date(candidate.get("first_seen")) or (dates[0] if dates else None)
+    if not dates or not first:
+        return None
+    gap = candidate.get("median_interval_days") or 7
+    span = max((dates[-1] - first).days + gap, 1)
+    total = (candidate.get("mean_amount") or 0) * (candidate.get("occurrences") or len(dates))
+    frequency = "weekly" if gap <= 7 else ("fortnightly" if gap <= 14 else "monthly")
+    amount = round(total / span * _PERIOD_DAYS[frequency], 2)
+    if not amount:
+        return None
+    # Stopped spending is not a regular cost any more (as_of is the newest transaction).
+    if as_of and has_ended({"frequency": frequency, "last_seen": dates[-1].isoformat()}, as_of):
+        return None
+    key = candidate["merchant_key"]
+    return {
+        "merchant_key": candidate.get("base_key") or key,
+        "stream_key": key,
+        "stream_amount": None,
+        "amount": amount,
+        "frequency": frequency,
+        "kind": "recurring",
+        "confidence": "medium",
+        "score": 0.0,
+        "source": "ai",
+        "occurrences": candidate.get("occurrences"),
+        "last_seen": dates[-1].isoformat(),
+        "first_seen": first.isoformat(),
+        "per_visit": candidate.get("mean_amount"),
+        "next_due": None,
+        "monthly_cost": round(total / span * _PERIOD_DAYS["monthly"], 2),
+        "revived": candidate.get("revived", False),
+        "revived_since": candidate.get("revived_since"),
+    }
+
+
 def merge_suggestions(detected: List[Dict], candidates: List[Dict],
                       reviews: Dict[str, Dict]) -> List[Dict]:
     """Apply AI verdicts to the detected streams and promote what the rules missed.
@@ -585,6 +723,7 @@ def merge_suggestions(detected: List[Dict], candidates: List[Dict],
     and loose merchants appear only when the model calls them a bill.
     """
     by_key = {c["merchant_key"]: c for c in candidates}
+    reviews = {key: _fixed_schedule_wins(review, by_key.get(key)) for key, review in reviews.items()}
     merged = []
     seen = set()
     newest = max((d for c in candidates for d in c.get("dates") or []),
@@ -596,10 +735,13 @@ def merge_suggestions(detected: List[Dict], candidates: List[Dict],
         seen.add(key)
         if review and review["verdict"] == "noise":
             continue
-        merged.append(_apply_review(suggestion, review))
+        kept = _apply_review(suggestion, review)
+        if review and review["verdict"] == "recurring":
+            kept["kind"] = "recurring"
+        merged.append(kept)
 
     for key, review in reviews.items():
-        if key in seen or review["verdict"] != "bill" or key not in by_key:
+        if key in seen or review["verdict"] not in ("bill", "recurring") or key not in by_key:
             continue
         candidate = by_key[key]
         seen.add(key)
@@ -610,7 +752,19 @@ def merge_suggestions(detected: List[Dict], candidates: List[Dict],
             promoted["source"] = "ai"
             promoted["merchant_key"] = candidate["base_key"]
             promoted["reason"] = candidate["reason"]
+            if review["verdict"] == "recurring":
+                promoted["kind"] = "recurring"
             merged.append(promoted)
+            continue
+
+        if review["verdict"] == "recurring":
+            spending = recurring_spend(candidate, parse_ymd(newest) if newest else None)
+            if spending:
+                merged.append({**spending, "name": review.get("display_name") or _clean_name(candidate),
+                               "category": review.get("category") or "other",
+                               "priority": review.get("priority") or "low",
+                               "reason": review.get("reason") or "AI review",
+                               "ai_reason": review.get("reason") or ""})
             continue
 
         frequency = review.get("frequency")

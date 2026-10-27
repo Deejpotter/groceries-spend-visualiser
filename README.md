@@ -51,6 +51,37 @@ pace this month's spend and project where you'll land by month end. Link purchas
 
 The shopping list shows your average shop spend next to the list's estimated cost.
 
+**Suggestions from your own history:**
+- **Product types and better matching.** Purchased products are sorted into food, treats,
+  household, personal care, pet, baby and fees (editable, or ignore a product entirely).
+  Non-food products stay out of meal matching. Link suggestions handle plurals, sizes and
+  filler words, show a confidence, and "Link all high-confidence matches" saves the sure ones.
+  With an OpenRouter key, "Ask AI about the rest" suggests links for products the rules can't place.
+- **Purchase patterns** (Spend → Purchase patterns): how often you buy each item, when it is
+  next due, items you've stopped buying, and how well last cycle was predicted. Mark any item
+  "always" or "never".
+- **Suggested meal plans.** "Suggest from my meals" ranks recipes by how often and when you eat
+  them, favourites, variety, cost per serve, shared ingredients and swap history, and fills the
+  meals you usually have even without a rule. Each planned meal shows why it was picked, three
+  alternatives, and "Keep this meal" to lock it through regeneration. A rule with the tag filter
+  `skip` or `eat out` leaves that slot empty on purpose.
+- **Lists until payday.** Set a recent payday, how often you're paid and a budget per pay cycle
+  (Settings → Budget; it can be detected from bank credits). The shopping list then builds
+  **Everything** (meals plus regular buys), **Meals only**, **Everything except meals**,
+  **Staples restock**, **Household only**, a **Top-up shop** (only what runs out in the next few
+  days) or a **Tight budget** list, for today until payday or for the plan dates. Every line says
+  where it came from and why, totals are split by source against the budget, and "never suggest"
+  or deleting a regular buy twice stops it coming back.
+
+See [`MEAL_AND_GROCERY_PLAN.md`](MEAL_AND_GROCERY_PLAN.md) for the design.
+
+**Bill suggestions from bank data** (Bills → Suggestions): the AI review sorts each regular
+merchant into a **subscription** (fixed plan, same date), a **bill** (scheduled, amount varies),
+**recurring** spending (same merchant again and again but no fixed date or amount, such as fuel,
+coffee, parking or usage-billed services; shown as a weekly, fortnightly or monthly amount), or
+noise (transfers, salary, refunds, one-off and supermarket shopping). Anything it dismissed can be
+overruled with "It's a bill or subscription" or "It's recurring", and that choice sticks.
+
 ---
 
 ## Quick start

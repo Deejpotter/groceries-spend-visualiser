@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf %}
+
+{% block title %}Purchase Patterns: Grocery Visualiser{% endblock %}
+
+{% macro feedback_buttons(p) -%}
+<form method="post" action="{{ url_for('spend.spend_patterns_feedback') }}" class="d-inline">
+    {{ csrf() }}<input type="hidden" name="key" value="{{ p.key }}">
+    {% if p.suppressed or p.forced %}
+    <button type="submit" name="action" value="kept" class="btn btn-link btn-sm p-0 link-secondary">automatic</button>
+    {% endif %}
+    {% if not p.forced %}<button type="submit" name="action" value="always" class="btn btn-link btn-sm p-0 ms-1 link-secondary">always</button>{% endif %}
+    {% if not p.suppressed %}<button type="submit" name="action" value="never" class="btn btn-link btn-sm p-0 ms-1 link-secondary">never</button>{% endif %}
+</form>
+{%- endmacro %}
+
+{% macro pattern_table(items, show_due=True) %}
+<div class="table-responsive">
+<table class="table table-sm bg-white">
+    <thead class="thead-light"><tr><th>Item</th><th>Type</th><th class="num">Buys</th><th class="num">Every</th>
+        <th>Last bought</th>{% if show_due %}<th>Next due</th>{% endif %}<th class="num">Usual spend</th><th>Suggest</th></tr></thead>
+    <tbody>
+    {% for p in items %}
+    <tr class="{{ 'text-muted' if p.suppressed }}">
+        <td>{{ p.label }}{% if p.products|length > 1 or p.products[0] != p.label %}<div class="small text-muted">{{ p.products[:3]|join(', ') }}</div>{% endif %}</td>
+        <td><span class="badge badge-light border">{{ p.role_label }}</span></td>
+        <td class="num">{{ p.buys }}</td>
+        <td class="num">{% if p.interval_days %}{{ p.interval_days|round|int }} days{% endif %}</td>
+        <td>{{ p.last_bought|nice_date }}</td>
+        {% if show_due %}<td>{% if p.next_due %}<span class="{{ 'text-danger fw-semibold' if p.next_due < today else ('fw-semibold' if p.next_due == today) }}">{{ p.next_due|nice_date }}</span>{% if p.next_due < today %} <span class="small text-danger">overdue</span>{% elif p.next_due == today %} <span class="small">today</span>{% endif %}{% endif %}</td>{% endif %}
+        <td class="num">{{ p.typical_spend|money }}</td>
+        <td class="small">{% if p.suppressed %}never · {% elif p.forced %}always · {% endif %}{{ feedback_buttons(p) }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+    <h1 class="mb-2">Purchase patterns</h1>
+    <div class="mb-2">
+        <a href="{{ url_for('spend.spend_products') }}" class="btn btn-outline-secondary">Link products</a>
+        <a href="{{ url_for('shopping_list.shopping_list_view') }}" class="btn btn-outline-primary">Shopping list</a>
+    </div>
+</div>
+<p class="text-muted">Built from the last six months of imported shops. Products linked to the same ingredient count as one
+    item, so link products for better patterns. Regular buys are added to pay-cycle shopping lists when they fall due.</p>
+
+{% if accuracy %}
+<div class="card mb-3"><div class="card-body py-2">
+    <strong>Last cycle check ({{ accuracy.start|nice_date }} to {{ accuracy.end|nice_date }})</strong>:
+    predicted {{ accuracy.predicted }} regular buy{{ '' if accuracy.predicted == 1 else 's' }}, you bought {{ accuracy.hits }} of them
+    {% if accuracy.precision is not none %}({{ (accuracy.precision * 100)|round|int }}% right){% endif %}
+    {% if accuracy.recall is not none %} and caught {{ (accuracy.recall * 100)|round|int }}% of the regular buys you made{% endif %}.
+    {% if accuracy.missed %}<div class="small text-muted">Bought but not predicted: {{ accuracy.missed[:8]|join(', ') }}</div>{% endif %}
+    {% if accuracy.extra %}<div class="small text-muted">Predicted but not bought: {{ accuracy.extra[:8]|join(', ') }}</div>{% endif %}
+</div></div>
+{% endif %}
+
+{% if not groups.regular and not groups.occasional and not groups.stopped and not groups.one_off %}
+<div class="alert alert-secondary">No purchases in the last six months. <a href="{{ url_for('spend.spend_import') }}">Import purchases</a> first.</div>
+{% endif %}
+
+{% if groups.regular %}
+<h2 class="h5">Regular buys <span class="text-muted small">({{ groups.regular|length }})</span></h2>
+{{ pattern_table(groups.regular) }}
+{% endif %}
+{% if groups.occasional %}
+<details class="mb-3"><summary class="h5 d-inline">Occasional buys <span class="text-muted small">({{ groups.occasional|length }})</span></summary>
+<p class="small text-muted mb-1">Bought more than once but not on a steady rhythm. Added to "Everything" lists when due, left off tight-budget lists.</p>
+{{ pattern_table(groups.occasional) }}</details>
+{% endif %}
+{% if groups.stopped %}
+<details class="mb-3"><summary class="h5 d-inline">Stopped buying <span class="text-muted small">({{ groups.stopped|length }})</span></summary>
+<p class="small text-muted mb-1">Not bought for three or more usual gaps, so no longer suggested. Use "always" to bring one back.</p>
+{{ pattern_table(groups.stopped, show_due=False) }}</details>
+{% endif %}
+{% if groups.one_off %}
+<details class="mb-3"><summary class="h5 d-inline">Bought once <span class="text-muted small">({{ groups.one_off|length }})</span></summary>
+{{ pattern_table(groups.one_off, show_due=False) }}</details>
+{% endif %}
+{% endblock %}

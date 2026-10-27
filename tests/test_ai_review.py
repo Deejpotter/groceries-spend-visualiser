@@ -432,3 +432,131 @@ class TestLateBatches:
         release.set()
         assert got_late.wait(5)
         assert [r["merchant_key"] for r in delivered] == [f"m{i}" for i in range(10, 20)]
+
+
+# ---------------------------------------------------------------------------
+# Recurring spending (no fixed date or amount) and user overrides
+# ---------------------------------------------------------------------------
+
+from services.ai_review import _SYSTEM_PROMPT, override_review, recurring_spend  # noqa: E402
+
+COFFEE = [txn(f"2026-10-{d:02d}", "BERMUDA COFFEE STUD", a)
+          for d, a in ((1, 5.5), (3, 6.0), (6, 5.5), (8, 11.0), (10, 5.5), (13, 6.0), (15, 5.5))]
+
+
+class TestRecurringType:
+    def test_prompt_treats_fuel_cafes_and_usage_as_recurring(self):
+        recurring = _SYSTEM_PROMPT.split('- "recurring"')[1].split('- "noise"')[0]
+        for word in ("Fuel", "cafe visits", "OpenAI", "parking"):
+            assert word in recurring
+        assert "Reclaim.ai" in _SYSTEM_PROMPT.split('- "subscription"')[1].split('- "bill"')[0]
+
+    def test_validate_reads_type_and_falls_back_to_bill_flag(self):
+        candidates = build_candidates(COFFEE)
+        key = candidates[0]["merchant_key"]
+        cleaned = _validate_reviews({"reviews": [{"merchant_key": key, "type": "recurring", "name": "Coffee"}]},
+                                    candidates)
+        assert cleaned[0]["type"] == "recurring" and cleaned[0]["bill"] is True
+        legacy = _validate_reviews({"reviews": [{"merchant_key": key, "bill": False}]}, candidates)
+        assert legacy[0]["type"] == "noise"
+        assert _validate_reviews({"reviews": [{"merchant_key": key, "type": "maybe"}]}, candidates) == []
+
+    def test_recurring_saved_and_promoted_with_spend_per_period(self, db):
+        candidates = build_candidates(COFFEE)
+        key = candidates[0]["merchant_key"]
+        save_reviews(db, [{"merchant_key": key, "evidence_hash": candidates[0]["evidence_hash"], "bill": True,
+                           "type": "recurring", "name": "Bermuda Coffee", "category": "other",
+                           "frequency": None, "reason": "Regular cafe spending"}])
+        reviews = cached_reviews(db, candidates)
+        assert reviews[key]["verdict"] == "recurring"
+        merged = merge_suggestions([], candidates, reviews)
+        assert len(merged) == 1
+        coffee = merged[0]
+        assert coffee["kind"] == "recurring" and coffee["frequency"] == "weekly"
+        # $45 over 16 days (14 days + one usual 2-day gap) is about $19.69 a week.
+        assert coffee["amount"] == 19.69
+        assert coffee["per_visit"] == candidates[0]["mean_amount"]
+
+    def test_recurring_spend_that_stopped_is_dropped(self):
+        candidate = build_candidates(COFFEE)[0]
+        from datetime import date
+        assert recurring_spend(candidate, date(2026, 12, 1)) is None
+        assert recurring_spend(candidate, date(2026, 10, 16)) is not None
+
+
+class TestOverride:
+    def test_user_override_wins_and_survives_new_evidence(self, db):
+        candidates = build_candidates(COFFEE)
+        key = candidates[0]["merchant_key"]
+        save_reviews(db, [{"merchant_key": key, "evidence_hash": candidates[0]["evidence_hash"], "bill": False,
+                           "type": "noise", "name": "Coffee", "category": "other", "frequency": None,
+                           "reason": "Cafe"}])
+        override_review(db, key, "recurring")
+        assert cached_reviews(db, candidates)[key]["verdict"] == "recurring"
+        newer = build_candidates(COFFEE + [txn("2026-10-17", "BERMUDA COFFEE STUD", 5.5)])
+        assert cached_reviews(db, newer)[key]["verdict"] == "recurring"
+        # A fresh AI verdict doesn't wipe the user's call.
+        save_reviews(db, [{"merchant_key": key, "evidence_hash": newer[0]["evidence_hash"], "bill": False,
+                           "type": "noise", "name": "Coffee", "category": "other", "frequency": None,
+                           "reason": "Cafe"}])
+        assert cached_reviews(db, newer)[key]["verdict"] == "recurring"
+
+    def test_unknown_verdict_rejected(self, db):
+        import pytest
+        with pytest.raises(ValueError):
+            override_review(db, "x", "maybe")
+
+
+def test_override_route_and_accepting_stores_kind(app, client, db):
+    from conftest import login
+    login(client)
+    for row in COFFEE:
+        db.execute("INSERT INTO bank_transactions (external_id, txn_date, description, merchant_key, amount)"
+                   " VALUES (?, ?, ?, ?, ?)", (row["txn_date"], row["txn_date"], row["description"],
+                                               row["merchant_key"], row["amount"]))
+    db.commit()
+    with app.app_context():
+        candidates = build_candidates([dict(r) for r in COFFEE])
+    key = candidates[0]["merchant_key"]
+    save_reviews(db, [{"merchant_key": key, "evidence_hash": candidates[0]["evidence_hash"], "bill": False,
+                       "type": "noise", "name": "Bermuda Coffee", "category": "other", "frequency": None,
+                       "reason": "Cafe"}])
+    page = client.get("/subscriptions/suggest").get_data(as_text=True)
+    assert "It&#39;s recurring" in page or "It's recurring" in page
+    page = client.post("/subscriptions/suggest/override", data={"merchant_key": key, "verdict": "recurring"},
+                       headers={"HX-Request": "true"}).get_data(as_text=True)
+    assert "recurring, no fixed date" in page
+    client.post("/subscriptions/suggest/accept", data={"name": "Bermuda Coffee", "amount": "19.69",
+                                                       "frequency": "weekly", "category": "other",
+                                                       "merchant_key": key, "kind": "recurring"})
+    assert db.execute("SELECT kind FROM subscriptions").fetchone()["kind"] == "recurring"
+    assert "recurring</span>" in client.get("/subscriptions").get_data(as_text=True)
+
+
+class TestCoffeeSubscription:
+    MONTHLY = [txn(d, "BERMUDA COFFEE STUD", 48.0) for d in ("2026-07-03", "2026-08-03", "2026-09-03", "2026-10-03")]
+
+    def test_prompt_says_monthly_coffee_is_a_subscription(self):
+        subscription = _SYSTEM_PROMPT.split('- "subscription"')[1].split('- "bill"')[0]
+        assert "coffee bean subscription" in subscription
+
+    def test_recurring_verdict_on_a_fixed_monthly_amount_becomes_a_subscription(self, db):
+        candidates = build_candidates(self.MONTHLY)
+        key = candidates[0]["merchant_key"]
+        save_reviews(db, [{"merchant_key": key, "evidence_hash": candidates[0]["evidence_hash"], "bill": True,
+                           "type": "recurring", "name": "Bermuda Coffee", "category": "other",
+                           "frequency": None, "reason": "Cafe"}])
+        merged = merge_suggestions([], candidates, cached_reviews(db, candidates))
+        assert len(merged) == 1
+        assert merged[0]["kind"] == "subscription"
+        assert merged[0]["frequency"] == "monthly" and merged[0]["amount"] == 48.0
+
+    def test_user_choice_of_recurring_is_respected(self, db):
+        candidates = build_candidates(self.MONTHLY)
+        key = candidates[0]["merchant_key"]
+        save_reviews(db, [{"merchant_key": key, "evidence_hash": candidates[0]["evidence_hash"], "bill": True,
+                           "type": "subscription", "name": "Bermuda Coffee", "category": "other",
+                           "frequency": "monthly", "reason": "Plan"}])
+        override_review(db, key, "recurring")
+        merged = merge_suggestions([], candidates, cached_reviews(db, candidates))
+        assert merged[0]["kind"] == "recurring"

@@ -594,7 +594,7 @@ def _suggest_context(db, auto_review=False):
     reviewed_at = max((r.get("reviewed_at") for r in reviews.values()
                        if r.get("reviewed_at")), default=None)
     ai_dismissed = [
-        {"name": review.get("display_name") or key,
+        {"key": key, "name": review.get("display_name") or key,
          "reason": review.get("reason") or ""}
         for key, review in reviews.items() if review["verdict"] == "noise"
     ]
@@ -718,6 +718,9 @@ def subscription_accept_suggestion():
     frequency = request.form.get("frequency", "monthly").strip().lower()
     category = request.form.get("category", "other").strip()
     merchant_key = request.form.get("merchant_key", "").strip()
+    kind = request.form.get("kind", "").strip()
+    if kind not in ("subscription", "bill", "recurring"):
+        kind = None
     is_htmx = bool(request.headers.get("HX-Request"))
 
     if not name:
@@ -751,10 +754,11 @@ def subscription_accept_suggestion():
     cursor = db.execute(
         """INSERT INTO subscriptions
            (name, amount, frequency, category, next_due, notes, merchant_key,
-            stream_key, stream_amount)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (name, amount, frequency, category, next_due, "Added from suggestion",
-         merchant_key or None, stream_key, stream_amount),
+            stream_key, stream_amount, kind)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (name, amount, frequency, category, next_due,
+         "Recurring spending, no fixed date" if kind == "recurring" else "Added from suggestion",
+         merchant_key or None, stream_key, stream_amount, kind),
     )
     if merchant_key:
         db.execute(
@@ -774,6 +778,24 @@ def subscription_accept_suggestion():
         return _suggest_response(db, notice=f"Added '{name}' to Bills.")
     flash(f"Added subscription '{name}'.", "success")
     return redirect(url_for("subscriptions.subscription_list"))
+
+
+@subscriptions_bp.route("/subscriptions/suggest/override", methods=["POST"])
+@login_required
+def subscription_override_review():
+    """Overrule the AI: a dismissed merchant is really a bill or recurring spending."""
+    from services.ai_review import override_review
+    key = request.form.get("merchant_key", "").strip()
+    verdict = request.form.get("verdict", "").strip()
+    db = get_db()
+    if not key or verdict not in ("bill", "recurring", "noise"):
+        return _suggest_response(db, error="Choose bill or recurring.")
+    override_review(db, key, verdict)
+    label = {"bill": "a bill or subscription", "recurring": "recurring spending", "noise": "not a bill"}[verdict]
+    if request.headers.get("HX-Request"):
+        return _suggest_response(db, notice=f"Marked as {label}. It's now in the suggestions below.")
+    flash(f"Marked as {label}.", "success")
+    return redirect(url_for("subscriptions.subscription_suggest"))
 
 
 @subscriptions_bp.route("/subscriptions/suggest/ignore", methods=["POST"])

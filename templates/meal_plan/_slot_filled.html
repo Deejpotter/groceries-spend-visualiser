@@ -11,10 +11,39 @@
         Serves {{ entry.servings }}
         {% if entry.covers_days > 1 and not entry.is_continuation %}<span class="badge badge-warning">Covers {{ entry.covers_days }} days</span>{% endif %}
         {% if entry.is_continuation %}<span class="badge badge-light">Leftovers</span>{% endif %}
-        {% if not entry.is_auto_generated %}<span class="badge badge-info" title="Kept when you regenerate">Manual</span>{% endif %}
+        {% if not entry.is_auto_generated %}<span class="badge badge-info" title="Kept when you regenerate">Kept</span>{% endif %}
     </div>
+    {% if entry.reasons %}<div class="slot-reasons small text-muted">{{ entry.reasons|join(' · ') }}</div>{% endif %}
     <details class="slot-edit">
         <summary>Change</summary>
+        {% if not entry.is_continuation %}
+        <div class="mb-1">
+            {% if entry.is_auto_generated %}
+            <form method="post" action="{{ url_for('meal_plan.meal_plan_lock', entry_id=entry.id) }}" class="d-inline">
+                {{ csrf() }}<input type="hidden" name="locked" value="1">
+                <button type="submit" class="btn btn-sm btn-link p-0 link-secondary" title="Keep this meal when you regenerate">Keep this meal</button>
+            </form>
+            {% else %}
+            <form method="post" action="{{ url_for('meal_plan.meal_plan_lock', entry_id=entry.id) }}" class="d-inline">
+                {{ csrf() }}<input type="hidden" name="locked" value="0">
+                <button type="submit" class="btn btn-sm btn-link p-0 link-secondary" title="Let regeneration replace this meal">Let regenerate replace it</button>
+            </form>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% if entry.alternatives %}
+        <div class="slot-alternatives small mb-1">
+            <div class="text-muted">Suggestions</div>
+            {% for alt in entry.alternatives %}
+            <form method="post" action="{{ url_for('meal_plan.meal_plan_swap', entry_id=entry.id) }}" class="mb-1">
+                {{ csrf() }}<input type="hidden" name="recipe_id" value="{{ alt.recipe.id }}">
+                <button type="submit" class="btn btn-sm btn-outline-secondary w-100 text-start">
+                    {{ alt.recipe.name }}{% if alt.reasons %}<br><span class="text-muted">{{ alt.reasons[:2]|join(' · ') }}</span>{% endif %}
+                </button>
+            </form>
+            {% endfor %}
+        </div>
+        {% endif %}
         <form method="post" action="{{ url_for('meal_plan.meal_plan_swap', entry_id=entry.id) }}"
               hx-post="{{ url_for('meal_plan.meal_plan_swap', entry_id=entry.id) }}"
               hx-target="#meal-slot-{{ entry.id }}"

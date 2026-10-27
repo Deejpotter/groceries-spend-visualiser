@@ -12,10 +12,18 @@
         <span class="item-name">{{ item.quantity|amount(item.unit) }} {{ item|label }}</span>
         {% set choice = item.pack_choice %}
         {% if choice %}<span class="badge badge-light border pack-badge" title="Packs to buy">{{ pack_label(choice.best) }}</span>{% endif %}
-        {% if item.is_manual %}<span class="badge badge-secondary">manual</span>{% endif %}
+        {% if item.is_manual %}<span class="badge badge-secondary">manual</span>
+        {% elif item.source and item.source != 'meal' %}<span class="badge badge-light border source-badge">{{ {'staple': 'regular buy', 'treat': 'treat', 'household': 'household'}.get(item.source, item.source) }}</span>{% endif %}
         {% if item.product_url|http_url %}<a href="{{ item.product_url }}" target="_blank" rel="noopener noreferrer"
            class="small ml-1 d-print-none" title="Open product page" aria-label="Open product page for {{ item|label }}">{{ icon('external-link') }}</a>{% endif %}
-        {% if item.recipe_ref %}<div class="small text-muted">{{ item.recipe_ref }}</div>{% endif %}
+        {% if item.source and item.source not in ('meal', 'manual') and item.reason %}<div class="small text-muted">{{ item.reason }}</div>
+        {% elif item.recipe_ref %}<div class="small text-muted">{{ item.recipe_ref }}</div>{% endif %}
+        {% if item.source in ('staple', 'treat', 'household') %}
+        <form method="post" action="{{ url_for('shopping_list.shopping_list_staple', item_id=item.id) }}" class="d-inline d-print-none">
+            {{ csrf() }}<input type="hidden" name="action" value="never">
+            <button type="submit" class="btn btn-link btn-sm p-0 small text-muted" title="Stop suggesting this regular buy">never suggest</button>
+        </form>
+        {% endif %}
         {% if choice %}
         <div class="small text-muted">
             {% if choice.best.spare > 0 %}<span class="text-warning-dark">{{ icon('package-open') }} {{ choice.best.spare_shown|amount(choice.best.spare_shown_unit) }} spare</span>{% else %}<span class="text-success">{{ icon('check') }} right size</span>{% endif %}

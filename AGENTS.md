@@ -32,7 +32,7 @@ The database is created automatically at `./data/groceries.db` (gitignored).
 ## Run tests
 
 ```bash
-python -m pytest            # ~670 tests, in parallel (pytest-xdist via pytest.ini)
+python -m pytest            # ~800 tests, in parallel (pytest-xdist via pytest.ini)
 python -m pytest -q         # quiet
 python -m pytest tests/test_plan_generator.py   # one file
 python -m pytest -p no:xdist                    # single process (for profiling)
@@ -50,8 +50,14 @@ models.py         Constants, unit conversion (metric/imperial), date helpers
 routes/           Blueprints: ingredients, recipes, meal_plan, shopping_list,
                   pantry, settings, spend
 services/         PURE business logic — no Flask, no SQL, fully unit-testable
-  plan_generator.py          Rule-based meal plan generation
+  plan_generator.py          Rule-based meal plan generation + MealScorer suggestions
   shopping_list_generator.py Ingredient aggregation, pantry subtraction, costs
+  product_matching.py        Product to ingredient link scoring, product roles
+  purchase_patterns.py       Purchase rhythm per item, needs for a date range
+  meal_patterns.py           Meal history stats, cost per serve
+  pay_cycle.py               Paydays and payday detection
+  cycle_list.py              Pay-cycle lists: meals + regular buys, list modes
+  suggestions.py             Loads data and calls the above (shared by UI and API)
   spend_import.py            CSV parsing, cup-price parsing, de-duplicated import
   spend_analysis.py          Spend statistics
   repository.py              Loads DB rows into the dicts the pure services use
@@ -102,6 +108,7 @@ tests/            Unit tests for services + integration tests via Flask test cli
 
 - **Meal plan generation** (`services/plan_generator.py`): rules are tried in `sort_order`, first match wins. `day_of_week` is comma-separated (`mon,wed,fri`) and also supports `weekday`, `weekend`, `all`. Manual entries are preserved across regeneration. Recipes can cover N days; continuations use the next free slot of the same meal type and link to the original entry so ingredients aren't bought twice. Removing or replacing an original meal promotes its continuations to standalone meals.
 - **Shopping list** (`services/shopping_list_generator.py`): aggregates ingredients across the plan, scales by servings, merges compatible units (g + kg → one line), optionally subtracts pantry stock (keyed by **ingredient id**), and estimates cost per line.
+- **Suggestions and pay-cycle lists**: see `architecture.md` → "Suggestions and Pay-Cycle Lists". Every generated list line has a `source` and `reason`; list modes are filters over one generation, so don't build a separate generator per list type. Non-food product roles must stay out of meal matching. Meal swaps and list deletions are recorded in `suggestion_feedback`.
 - **Spend import** (`services/spend_import.py`): de-duplicated by `UNIQUE(store, basket_id, product_name)`. Cup prices like `$1.51 / 100G` are parsed and converted to per-unit prices. Unpriced rows are skipped with a summary, not an error.
 
 ## Git and deployment
@@ -137,6 +144,9 @@ mount on `/app/data` configured in the Coolify UI.
 - `README.md` — user-facing features, quick start, configuration.
 - `architecture.md` — detailed architecture, data model, security, deployment.
 - `REFACTOR_PLAN.md` — historical record of the major refactor (all steps complete).
+- `MEAL_AND_GROCERY_PLAN.md`: design record for product classification, purchase/meal
+  pattern analysis, suggested meal plans, and pay-cycle grocery lists (implemented).
+  Read before working on suggestions or lists.
 - `POST_MORTEM_2026-10-18_AGENT_CRUD.md` — what went wrong (and right) while making
   ingredient/recipe CRUD agent-friendly over the API and MCP. Read before extending
   the API or MCP server.

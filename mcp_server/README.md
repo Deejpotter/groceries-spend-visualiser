@@ -65,7 +65,11 @@ client that uses it.
 | `plan_add_meal` | `POST /plan/meals` | Place a recipe in a slot |
 | `plan_swap_meal` | `POST /plan/entries/<id>/swap` | Replace an entry's recipe |
 | `plan_remove_meal` | `DELETE /plan/entries/<id>` | Remove an entry |
-| `plan_generate` | `POST /plan/generate` | Preview counts; `confirm=true` regenerates |
+| `plan_generate` | `POST /plan/generate` | Preview counts; `confirm=true` regenerates. `suggest` ranks by meal history; `until_payday` plans to the day before payday |
+| `plan_suggestions` | `GET /plan/suggestions` | Best recipes for one slot, with reasons |
+| `get_pay_cycle` | `GET /pay-cycle` | Last/next payday, days left, grocery budget |
+| `get_purchase_patterns` | `GET /patterns` | How often each item is bought (filter by rhythm) |
+| `generate_shopping_list` | `POST /shopping-list/generate` | Preview or save a list: full, meals, nonmeal, staples, household, topup, tight |
 | `tick_item` / `tick_items` | `POST /shopping-list/tick` | Tick rows (one or many) |
 | `add_shopping_item` | `POST /shopping-list/items` | Free-text list row |
 | `add_pantry_stock` | `POST /pantry/stock` | Add pantry stock (id or name) |

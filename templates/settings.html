@@ -130,6 +130,39 @@
                             calculate spare money after groceries and bills. Leave blank to hide.
                         </small>
                     </div>
+                    <h3 class="h6 mt-3 mb-2">Pay cycle</h3>
+                    <div class="form-row">
+                        <div class="form-group col-sm-6">
+                            <label for="payday_date">A recent payday</label>
+                            <input type="date" class="form-control" id="payday_date" name="payday_date"
+                                   value="{{ payday_date }}">
+                        </div>
+                        <div class="form-group col-sm-6">
+                            <label for="pay_frequency">Paid</label>
+                            <select class="form-control" id="pay_frequency" name="pay_frequency">
+                                {% for code, label in [('weekly', 'Weekly'), ('fortnightly', 'Fortnightly'), ('monthly', 'Monthly')] %}
+                                <option value="{{ code }}" {% if pay_frequency == code %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    {% if detected_payday %}
+                    <p class="small text-info mb-2">
+                        Your bank data looks like a {{ detected_payday.frequency }} pay of
+                        ${{ '%.2f'|format(detected_payday.amount) }}, last on {{ detected_payday.last_payday }}.
+                        <button type="button" class="btn btn-link btn-sm p-0 align-baseline"
+                                onclick="document.getElementById('payday_date').value='{{ detected_payday.last_payday }}';document.getElementById('pay_frequency').value='{{ detected_payday.frequency }}';">Use this</button>
+                    </p>
+                    {% endif %}
+                    <div class="form-group">
+                        <label for="cycle_grocery_budget">Grocery budget per pay cycle</label>
+                        <input type="text" inputmode="decimal" class="form-control" id="cycle_grocery_budget"
+                               name="cycle_grocery_budget" value="{{ cycle_grocery_budget }}" placeholder="e.g. 400">
+                        <small class="text-muted">
+                            Payday sets the range for the "until payday" shopping list, and this budget is
+                            shown against its estimated total. Leave payday blank to turn it off.
+                        </small>
+                    </div>
                     <button type="submit" class="btn btn-primary">Save Budget</button>
                     <div id="save-status-budget"></div>
                 </form>
@@ -193,8 +226,9 @@
                     <input type="hidden" name="action" value="save_ai">
                     {% if error_form == 'ai' %}{{ form_errors(errors) }}{% endif %}
                     <p class="text-muted small">
-                        When enabled, the suggestions page can ask an AI model to keep or dismiss
-                        each detected merchant and give it a clean name. The rules still decide
+                        When enabled, the suggestions page asks an AI model whether each regular
+                        merchant is a subscription, a bill, recurring spending or noise, and gives it a
+                        clean name. The Products page can also ask it to link products the rules can't match. The rules still decide
                         amounts and dates. Only merchant descriptions, amounts and dates are sent;
                         card and account numbers are removed first.
                     </p>

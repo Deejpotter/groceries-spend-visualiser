@@ -150,6 +150,19 @@ writes the approved lines to the `purchases` table (de-duplicated by `UNIQUE(sto
 where a PDF invoice's order number is the basket id, so re-imports are recognised and flagged per line).
 The spend dashboard computes total/monthly/per-shop spend, days between shops, and top products by frequency and spend over 3/6/12 months or all time. Purchased products can be linked to ingredients; the cup price (e.g. `$1.51 / 100G`) is parsed and converted to a per-unit price so shopping-list estimates match real spend.
 
+## Suggestions and Pay-Cycle Lists
+
+See `MEAL_AND_GROCERY_PLAN.md` for the reasoning. The layering is unchanged: pure services decide, `services/suggestions.py` loads data and calls them (shared by the web routes and `/api/v1`).
+
+- `product_matching.py`: link scoring (containment of the ingredient's words in the product name, plural folding, filler words, a bonus when both end on the same noun) and product roles from keywords. User choices live in `product_decisions` (role, ignored).
+- `product_ai_review.py`: optional OpenRouter pass over products the rules can't link; verdicts are cached in `product_ai_reviews` and only ever shown as suggestions.
+- `purchase_patterns.py`: one rhythm per ingredient (linked products merge) or unlinked product over the last 180 days: median gap, spread, regular / occasional / stopped / one-off, next due date, needs for a date range, and an accuracy check against the last cycle.
+- `meal_patterns.py`: per-recipe history from past plan entries (count, last eaten, usual weekday and meal), baskets that held most of a recipe's ingredients, cost per serve.
+- `plan_generator.MealScorer`: ranks candidates per slot; the generator picks among the top three so plans still vary. With `history_slots` it fills (weekday, meal) slots the household normally has even without a rule.
+- `pay_cycle.py`: paydays from one anchor date plus frequency, and payday detection from bank credits.
+- `cycle_list.py`: combines meal lines with predicted needs. Each line has a `source` (meal, staple, treat, household, manual) and a `reason`, stored on `shopping_list_items`, so every list mode is a filter over one generation. Budget totals and trim suggestions are computed per source.
+- `suggestion_feedback`: swaps of suggested meals (`meal` / `swapped_out`) and list feedback (`staple` / `removed`, `never`, `always`, `kept`) feed back into scoring and filtering.
+
 ## Deployment
 
 ### Branches

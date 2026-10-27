@@ -100,10 +100,21 @@
 
 {% if ai_dismissed %}
 <details class="mt-2 mb-3 small">
-    <summary><strong>What the AI dismissed ({{ ai_dismissed|length }})</strong> &mdash; open if a real bill is missing</summary>
+    <summary><strong>What the AI dismissed ({{ ai_dismissed|length }})</strong>: open if a real bill is missing</summary>
     <ul class="mb-0 mt-2">
         {% for item in ai_dismissed %}
-        <li><strong>{{ item.name }}</strong>{% if item.reason %} &mdash; {{ item.reason }}{% endif %}</li>
+        <li class="mb-1"><strong>{{ item.name }}</strong>{% if item.reason %}: {{ item.reason }}{% endif %}
+            <form method="post" action="{{ url_for('subscriptions.subscription_override_review') }}"
+                  hx-post="{{ url_for('subscriptions.subscription_override_review') }}"
+                  hx-target="#suggest-content" hx-select="#suggest-content" hx-swap="outerHTML"
+                  hx-disabled-elt="find button" class="d-inline ml-1">
+                {{ csrf() }}
+                <input type="hidden" name="merchant_key" value="{{ item.key }}">
+                <button type="submit" name="verdict" value="bill" class="btn btn-link btn-sm p-0">It's a bill or subscription</button>
+                &middot;
+                <button type="submit" name="verdict" value="recurring" class="btn btn-link btn-sm p-0">It's recurring</button>
+            </form>
+        </li>
         {% endfor %}
     </ul>
 </details>
@@ -142,6 +153,7 @@
                     {% if s.category %}<span class="chip">{{ category_label(s.category) }}</span>{% endif %}
                     {% if s.next_due %}<span class="chip">next {{ s.next_due|nice_date }}</span>{% endif %}
                     {% if s.kind == 'bill' %}<span class="chip">variable amount</span>{% endif %}
+                    {% if s.kind == 'recurring' %}<span class="chip">recurring, no fixed date</span>{% if s.per_visit %}<span class="chip">about {{ s.per_visit|money }} a time</span>{% endif %}{% endif %}
                     {% if s.revived %}
                     <span class="chip revived">new pattern since {{ s.revived_since|nice_date }}</span>
                     {% endif %}
@@ -161,7 +173,7 @@
                 {% endif %}
             </div>
             <div class="suggestion-amount">
-                <div class="amount">{% if s.kind == 'bill' %}avg {% endif %}{{ s.amount|money }}</div>
+                <div class="amount">{% if s.kind == 'bill' %}avg {% elif s.kind == 'recurring' %}about {% endif %}{{ s.amount|money }}</div>
                 {% if s.monthly_cost and s.frequency != 'monthly' %}
                 <small>{{ s.monthly_cost|money }}/month</small>
                 {% endif %}
@@ -178,6 +190,7 @@
                         <input type="hidden" name="amount" value="{{ s.amount }}">
                         <input type="hidden" name="frequency" value="{{ s.frequency }}">
                         <input type="hidden" name="category" value="{{ s.category }}">
+                        {% if s.kind %}<input type="hidden" name="kind" value="{{ s.kind }}">{% endif %}
                         {% if s.next_due %}<input type="hidden" name="next_due" value="{{ s.next_due }}">{% endif %}
                         <button type="submit" class="btn btn-sm btn-outline-success">Add</button>
                     </form>
@@ -207,7 +220,7 @@
 <div class="card mb-4 section-card">
     <div class="card-header">
         <span class="section-title">Often bought &mdash; not bills</span>
-        <span class="small text-muted ml-2">from your grocery history</span>
+        <span class="small text-muted ml-2">from your grocery history &middot; <a href="{{ url_for('spend.spend_patterns') }}">see all purchase patterns</a></span>
     </div>
     <div class="card-body py-2">
         <p class="small text-muted mb-2">
@@ -267,7 +280,7 @@
     <div class="card-header">How suggestions work</div>
     <div class="card-body">
         <ul>
-            <li><strong>Bank transactions:</strong> every imported or synced transaction is stored. A merchant with three or more payments on a regular cadence becomes a suggestion (two is enough for a yearly bill). Fixed amounts are marked as subscriptions; variable amounts (utilities) as bills.</li>
+            <li><strong>Bank transactions:</strong> every imported or synced transaction is stored. A merchant with three or more payments on a regular cadence becomes a suggestion (two is enough for a yearly bill). Fixed amounts are marked as subscriptions; variable amounts (utilities) as bills. With AI review, regular spending without a fixed date or amount (fuel, coffee, parking, usage-billed services) is suggested as <strong>recurring</strong>, shown as a weekly, fortnightly or monthly total.</li>
             <li><strong>Merchant names:</strong> known Australian brands (Netflix, Telstra, AGL, insurers) are named and categorised automatically. Everything else uses the description on the transaction.</li>
             <li><strong>Purchase history:</strong> regularly bought groceries appear separately below as "Often bought — not bills". They are never added to your subscriptions.</li>
             <li>Suggestions are opt-in: nothing is added until you click <strong>Add</strong>. <strong>Dismiss</strong> hides a merchant until a new regular pattern starts (three payments after the dismissal); dismissed merchants can also be restored from the list above.</li>

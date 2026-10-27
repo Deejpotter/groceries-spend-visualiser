@@ -32,7 +32,15 @@
             <label class="small text-muted mr-2 mb-1">To
                 <input type="date" name="plan_end" value="{{ plan_end }}" class="form-control form-control-sm" required aria-label="Plan end date">
             </label>
+            <div class="form-check mr-2 mb-1 small">
+                <input class="form-check-input" type="checkbox" name="suggest" value="1" id="plan-suggest" checked>
+                <label class="form-check-label" for="plan-suggest" title="Rank recipes by what you eat, cost and variety, and fill meals you usually have even without a rule">Suggest from my meals</label>
+            </div>
             <button type="submit" class="btn btn-primary btn-sm mb-1">{{ icon('refresh-cw') }} {{ 'Regenerate' if has_entries else 'Generate' }}</button>
+            {% if pay_cycle %}
+            <button type="submit" name="range" value="payday" class="btn btn-outline-primary btn-sm mb-1 ml-1"
+                    title="Plan from today to {{ pay_cycle.cycle_end }}, the day before payday">Until payday</button>
+            {% endif %}
         </form>
         {% endif %}
         <a href="{{ url_for('shopping_list.shopping_list_view') }}" class="btn btn-success btn-sm">
@@ -51,7 +59,11 @@
 </div>
 {% endif %}
 {% if tab == 'week' and not rules %}
-<div class="alert alert-info d-print-none">No meal rules yet — the plan can't fill itself. <a href="{{ url_for('meal_plan.meal_plan_view', tab='rules') }}">Add rules</a>, or place meals by hand below.</div>
+<div class="alert alert-info d-print-none">
+    {% if has_history %}No meal rules yet, but <strong>Suggest from my meals</strong> fills the meals you usually have from your history.
+    <a href="{{ url_for('meal_plan.meal_plan_view', tab='rules') }}">Add rules</a> for more control, or place meals by hand below.
+    {% else %}No meal rules yet, so the plan can't fill itself. <a href="{{ url_for('meal_plan.meal_plan_view', tab='rules') }}">Add rules</a>, or place meals by hand below. Once you've planned a few weeks, suggestions learn from them.{% endif %}
+</div>
 {% endif %}
 
 {% if days %}
@@ -99,7 +111,7 @@
 {% if tab == 'week' %}
 {% if days %}
 {% if not has_entries %}
-<p class="text-muted">Nothing planned yet. Press <strong>Generate</strong> to fill the week from your rules, or add meals to individual days.</p>
+<p class="text-muted">Nothing planned yet. Press <strong>Generate</strong> to fill these dates from your rules{% if has_history %} and usual meals{% endif %}, or add meals to individual days.</p>
 {% endif %}
 <div class="week-grid">
     {% for day in days %}
