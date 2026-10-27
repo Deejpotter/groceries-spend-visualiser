@@ -1,6 +1,24 @@
 # Meal plan and pay-cycle grocery list plan
 
-Status: planned, not started. Created 2026-10-27.
+Status: implemented 2026-10-27 (all steps). Created 2026-10-27.
+
+## What was built
+
+| Step | Where |
+|------|-------|
+| 1. Product classification | `services/product_matching.py`, `services/product_ai_review.py`, `product_decisions`, Products page tabs, roles, ignore, "Link all high-confidence matches", "Ask AI about the rest" |
+| 2. Purchase patterns | `services/purchase_patterns.py`, Spend → Purchase patterns page with always / never and the last-cycle accuracy check |
+| 3. Meal patterns | `services/meal_patterns.py` (history, usual slots, baskets that look cooked, cost per serve) |
+| 4. Suggested meal plans | `MealScorer` in `services/plan_generator.py`, "Suggest from my meals", reasons, 3 alternatives per slot, "Keep this meal", `skip` / `eat out` rules |
+| 5. Pay cycle | `services/pay_cycle.py`, Settings → Budget (payday, frequency, budget per cycle, detected from bank credits) |
+| 6. Pay-cycle lists | `services/cycle_list.py`, `services/suggestions.py`, list modes on the Shopping List page, source and reason per line, totals vs budget, trim hints |
+| 7. UI, API, MCP | `/api/v1/pay-cycle`, `/patterns`, `/plan/suggestions`, `/shopping-list/generate`, `suggest` / `range` on `/plan/generate`; matching MCP tools |
+| 8. Feedback | `suggestion_feedback`: meal swaps lower a recipe's score; deleting a regular buy twice, or "never", stops it; "always" forces it |
+| 9. Docs | README, architecture.md, AGENTS.md, mcp_server/README.md |
+
+Known limits: an unlinked product and a recipe ingredient for the same thing can both
+appear on a list until the product is linked; payday detection needs at least three
+salary credits of $300 or more.
 
 ## Goal
 
