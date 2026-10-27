@@ -4,7 +4,7 @@ import os
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 from database import get_db, get_setting, set_setting, get_plan_dates
-from models import MAX_PLAN_DAYS, parse_date
+from models import MAX_PLAN_DAYS, parse_date, validate_date_format
 from auth import login_required, hash_password, verify_password
 
 settings_bp = Blueprint("settings", __name__)
@@ -21,6 +21,17 @@ def _current_user_id(db):
     row = db.execute("SELECT id FROM users WHERE username = ?",
                      (session.get("username"),)).fetchone()
     return row["id"] if row else None
+
+
+def _detected_payday():
+    """A payday guessed from bank credits, offered when none is set yet."""
+    if get_setting("payday_date"):
+        return None
+    from services.pay_cycle import detect_payday
+    rows = [dict(r) for r in get_db().execute(
+        "SELECT txn_date, description, merchant_key, amount, direction FROM bank_transactions"
+        " WHERE direction = 'credit' ORDER BY txn_date")]
+    return detect_payday(rows)
 
 
 def _settings_values():
@@ -43,6 +54,10 @@ def _settings_values():
         "bank_merchant_patterns": get_setting("bank_merchant_patterns") or default_patterns,
         "monthly_budget": get_setting("monthly_budget", ""),
         "fortnightly_income": get_setting("fortnightly_income", ""),
+        "payday_date": get_setting("payday_date", ""),
+        "pay_frequency": get_setting("pay_frequency", "fortnightly"),
+        "cycle_grocery_budget": get_setting("cycle_grocery_budget", ""),
+        "detected_payday": _detected_payday(),
         "api_keys": list_keys(get_db(), user_id) if user_id else [],
         "new_api_key": None,
         "banksync_key_set": banksync_key_set,
@@ -176,6 +191,33 @@ def save():
                 if request.headers.get("HX-Request"):
                     return render_template("settings.html", **values)
                 return render_template("settings.html", **values)
+
+        from services.pay_cycle import PAY_FREQUENCIES
+        payday = request.form.get("payday_date", "").strip()
+        frequency = request.form.get("pay_frequency", "fortnightly").strip()
+        cycle_raw = request.form.get("cycle_grocery_budget", "").strip()
+        problems = []
+        if payday and not validate_date_format(payday):
+            problems.append("Enter payday as a date.")
+        if frequency not in dict(PAY_FREQUENCIES):
+            problems.append("Choose how often you are paid.")
+        cycle_budget = ""
+        if cycle_raw:
+            try:
+                value = float(cycle_raw.replace("$", "").replace(",", ""))
+                if value <= 0:
+                    raise ValueError
+                cycle_budget = f"{value:.2f}"
+            except ValueError:
+                problems.append("The grocery budget per pay cycle must be a dollar amount above zero.")
+        if problems:
+            values = _settings_values()
+            values.update({"payday_date": payday, "pay_frequency": frequency,
+                           "cycle_grocery_budget": cycle_raw, "errors": problems, "error_form": "budget"})
+            return render_template("settings.html", **values)
+        set_setting("payday_date", payday)
+        set_setting("pay_frequency", frequency)
+        set_setting("cycle_grocery_budget", cycle_budget)
 
         db.commit()
         if request.headers.get("HX-Request"):

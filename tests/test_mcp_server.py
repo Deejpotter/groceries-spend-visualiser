@@ -203,6 +203,7 @@ def test_tool_registry_matches_expectation():
         "plan_add_meal", "plan_swap_meal", "plan_remove_meal", "plan_generate",
         "tick_item", "tick_items", "add_shopping_item", "add_pantry_stock",
         "use_pantry", "link_spend_product", "import_files",
+        "plan_suggestions", "get_pay_cycle", "get_purchase_patterns", "generate_shopping_list",
     ])
 
 

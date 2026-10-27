@@ -515,6 +515,48 @@ def _review_batch(candidates: List[Dict], api_key: str, model: str,
     raise AIReviewError(last_error or "The AI review failed.")
 
 
+def request_chat_json(system_prompt: str, user_prompt: str, api_key: str, model: str,
+                      timeout: int = 60, deadline: Optional[float] = None) -> Dict:
+    """One OpenRouter chat request that must answer with a JSON object, retried on bad replies.
+
+    Shared by reviews other than the merchant one (e.g. product links).
+    """
+    body = json.dumps({
+        "model": model,
+        "temperature": 0.1,
+        "max_tokens": 6000,
+        "messages": [{"role": "system", "content": system_prompt},
+                     {"role": "user", "content": user_prompt}],
+    }).encode("utf-8")
+    deadline = deadline or (time.monotonic() + REVIEW_BUDGET_SECONDS)
+    last_error = None
+    for _ in range(MAX_RETRIES):
+        remaining = deadline - time.monotonic()
+        if remaining < 5:
+            break
+        request = urllib.request.Request(API_URL, data=body, headers={
+            "Authorization": "Bearer " + api_key,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://groceries.deejpotter.com",
+            "X-Title": "Groceries Visualiser",
+        })
+        try:
+            with urllib.request.urlopen(request, timeout=min(timeout, remaining)) as response:
+                result = json.load(response)
+            return _parse_json(result["choices"][0]["message"]["content"])
+        except urllib.error.HTTPError as exc:
+            last_error = f"OpenRouter returned HTTP {exc.code}."
+            if exc.code not in (429, 500, 502, 503, 504):
+                break
+        except (urllib.error.URLError, TimeoutError) as exc:
+            last_error = f"Could not reach OpenRouter: {getattr(exc, 'reason', exc)}."
+        except AIReviewError as exc:
+            last_error = str(exc)
+        except (KeyError, IndexError, TypeError, ValueError):
+            last_error = "OpenRouter returned an unexpected response."
+    raise AIReviewError(last_error or "The AI review ran out of time.")
+
+
 def cached_reviews(db, candidates: List[Dict]) -> Dict[str, Dict]:
     """Verdicts that still match the current evidence, keyed by merchant."""
     if not candidates:

@@ -87,6 +87,10 @@ def swap_meal(db, entry_id: int, new_recipe_id: Optional[int],
             "WHERE continuation_of = ?",
             (entry_id,),
         )
+    if entry["is_auto_generated"] and entry["recipe_id"] != new_recipe_id:
+        # A suggested meal swapped for another is a signal to suggest it less.
+        db.execute("INSERT INTO suggestion_feedback (kind, item_key, action) VALUES ('meal', ?, 'swapped_out')",
+                   (str(entry["recipe_id"]),))
     db.execute(
         "UPDATE meal_plan_entries SET recipe_id = ?, servings = ?, is_auto_generated = 0, "
         "is_continuation = 0, continuation_of = NULL, origin = ? WHERE id = ?",
@@ -94,6 +98,17 @@ def swap_meal(db, entry_id: int, new_recipe_id: Optional[int],
     )
     db.commit()
     return {"entry_id": entry_id, "recipe": recipe["name"], "servings": servings}
+
+
+def lock_meal(db, entry_id: int, locked: bool) -> Dict:
+    """Keep (lock) a suggested meal through regeneration, or hand it back to the generator."""
+    entry = db.execute("SELECT id FROM meal_plan_entries WHERE id = ?", (entry_id,)).fetchone()
+    if not entry:
+        raise AgentError("not_found", "Entry not found.")
+    db.execute("UPDATE meal_plan_entries SET is_auto_generated = ? WHERE id = ?",
+               (0 if locked else 1, entry_id))
+    db.commit()
+    return {"entry_id": entry_id, "locked": locked}
 
 
 def remove_meal(db, entry_id: int) -> Dict:

@@ -260,6 +260,32 @@ CREATE TABLE IF NOT EXISTS import_staged_lines (
 
 CREATE INDEX IF NOT EXISTS idx_staged_lines_batch ON import_staged_lines(batch_id);
 
+CREATE TABLE IF NOT EXISTS product_decisions (
+    product_name TEXT PRIMARY KEY,
+    role TEXT,
+    ignored INTEGER NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS product_ai_reviews (
+    product_name TEXT PRIMARY KEY,
+    evidence_hash TEXT NOT NULL,
+    ingredient_id INTEGER,
+    role TEXT,
+    reason TEXT,
+    reviewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS suggestion_feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL,
+    item_key TEXT NOT NULL,
+    action TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_feedback_item ON suggestion_feedback(kind, item_key);
+
 CREATE TABLE IF NOT EXISTS deleted_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     kind TEXT NOT NULL,
@@ -290,6 +316,8 @@ MIGRATIONS = [
     ("subscriptions", "stream_amount", "REAL"),
     ("subscriptions", "ended_dismissed_at", "TEXT"),
     ("ai_reviews", "priority", "TEXT DEFAULT 'normal'"),
+    ("shopping_list_items", "source", "TEXT"),
+    ("shopping_list_items", "reason", "TEXT"),
 ]
 
 

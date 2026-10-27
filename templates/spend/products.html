@@ -12,7 +12,20 @@
     pull the latest price into the ingredient, so shopping list estimates stay realistic.
     Showing {{ products|length }} of {{ total_count }} products by spend (page {{ page }} of {{ total_pages }}).</p>
 
+<ul class="nav nav-tabs mb-3">
+    {% for code, label in [('food', 'Food'), ('nonfood', 'Non-food'), ('ignored', 'Ignored'), ('all', 'All')] %}
+    <li class="nav-item"><a class="nav-link {{ 'active' if show == code }}"
+        href="{{ url_for('spend.spend_products', show=code, q=search, **({'unlinked': '1'} if only_unlinked else {})) }}">{{ label }}
+        {% if code == 'nonfood' and hidden.nonfood %}<span class="badge badge-light">{{ hidden.nonfood }}</span>{% endif %}
+        {% if code == 'ignored' and hidden.ignored %}<span class="badge badge-light">{{ hidden.ignored }}</span>{% endif %}</a></li>
+    {% endfor %}
+</ul>
+{% if show == 'food' and hidden.nonfood %}
+<p class="small text-muted">{{ hidden.nonfood }} non-food product{{ '' if hidden.nonfood == 1 else 's' }} (cleaning, toiletries, pet, fees) {{ 'is' if hidden.nonfood == 1 else 'are' }} hidden here and kept out of meal matching. They still appear as household items on pay-cycle lists.</p>
+{% endif %}
+
 <form method="get" class="form-row mb-3">
+    <input type="hidden" name="show" value="{{ show }}">
     <div class="col-md-6 mb-2"><input type="search" name="q" value="{{ search }}" class="form-control" placeholder="Search products…" aria-label="Search products"></div>
     <div class="col-auto mb-2 d-flex align-items-center">
         <div class="custom-control custom-checkbox">
@@ -23,11 +36,24 @@
     <div class="col-auto mb-2"><button class="btn btn-secondary" type="submit">Filter</button></div>
     <div class="col-auto mb-2">
         <a class="btn btn-outline-primary"
-           href="{{ url_for('spend.spend_products', q=search, suggest=1, **({'unlinked': '1'} if only_unlinked else {})) }}">
+           href="{{ url_for('spend.spend_products', q=search, show=show, suggest=1, **({'unlinked': '1'} if only_unlinked else {})) }}">
             Suggest links
         </a>
     </div>
 </form>
+<div class="d-flex flex-wrap mb-3">
+    <form method="post" action="{{ url_for('spend.spend_accept_suggestions') }}" class="mr-2 mb-2"
+          onsubmit="return confirm('Link every unlinked food product that has a high-confidence match?')">
+        {{ csrf() }}
+        <button type="submit" class="btn btn-sm btn-outline-success">Link all high-confidence matches</button>
+    </form>
+    {% if ai_configured %}
+    <form method="post" action="{{ url_for('spend.spend_products_ai_review') }}" class="mb-2">
+        {{ csrf() }}
+        <button type="submit" class="btn btn-sm btn-outline-info" title="Ask the AI about up to 40 products the rules couldn't match">Ask AI about the rest</button>
+    </form>
+    {% endif %}
+</div>
 
 {% if suggestions %}
 <div class="alert alert-info d-flex flex-wrap justify-content-between align-items-center">
@@ -59,7 +85,7 @@
 <div class="table-responsive">
 <table class="table table-sm bg-white table-sticky-first">
     <thead class="thead-light">
-        <tr><th>Product</th><th class="num">Orders</th><th class="num">Spend</th><th class="num">Last price</th><th>Ingredient</th></tr>
+        <tr><th>Product</th><th class="num">Orders</th><th class="num">Spend</th><th class="num">Last price</th><th>Type</th><th>Ingredient</th></tr>
     </thead>
     <tbody>
     {% for p in products %}
@@ -69,6 +95,27 @@
             <td class="num">{{ p.orders }}</td>
             <td class="num">{{ p.total_spend|money }}</td>
             <td class="num">{{ p.last_price|money }}{% if p.last_cup_price %}<div class="small text-muted">{{ p.last_cup_price }}</div>{% endif %}</td>
+            <td>
+                <form method="post" action="{{ url_for('spend.spend_product_role') }}"
+                      hx-post="{{ url_for('spend.spend_product_role') }}" hx-trigger="change"
+                      hx-target="#role-status-{{ loop.index0 }}" hx-swap="innerHTML">
+                    {{ csrf() }}
+                    <input type="hidden" name="product_name" value="{{ p.product_name }}">
+                    <input type="hidden" name="show" value="{{ show }}">
+                    <select name="role" class="form-control form-control-sm" aria-label="Type of {{ p.product_name }}">
+                        {% for code, label in roles %}<option value="{{ code }}" {% if code == p.role %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                    </select>
+                    <noscript><button type="submit" class="btn btn-sm btn-link p-0">Save</button></noscript>
+                </form>
+                <span id="role-status-{{ loop.index0 }}">{% if not p.role_chosen %}<span class="small text-muted">guessed</span>{% endif %}</span>
+                <form method="post" action="{{ url_for('spend.spend_product_role') }}" class="d-inline">
+                    {{ csrf() }}
+                    <input type="hidden" name="product_name" value="{{ p.product_name }}">
+                    <input type="hidden" name="show" value="{{ show }}">
+                    <input type="hidden" name="ignored" value="{{ '0' if p.ignored else '1' }}">
+                    <button type="submit" class="btn btn-link btn-sm p-0 small" title="{{ 'Show this product again' if p.ignored else 'Hide this product and never suggest it' }}">{{ 'restore' if p.ignored else 'ignore' }}</button>
+                </form>
+            </td>
             <td>
                 <form method="post" action="{{ url_for('spend.spend_link_product') }}"
                       hx-post="{{ url_for('spend.spend_link_product') }}"
@@ -81,7 +128,7 @@
                         <option value="">— Not linked —</option>
                         <option value="new">+ Create new ingredient</option>
                         {% for i in ingredients %}
-                        <option value="{{ i.id }}" {% if i.id == p.ingredient_id %}selected{% elif suggestion and i.id == suggestion.ingredient_id %}selected{% endif %}>{{ i|label }} ({{ i.unit }}){% if suggestion and i.id == suggestion.ingredient_id and not p.ingredient_id %} — suggested {{ (suggestion.score * 100)|round|int }}%{% endif %}</option>
+                        <option value="{{ i.id }}" {% if i.id == p.ingredient_id %}selected{% elif suggestion and i.id == suggestion.ingredient_id %}selected{% endif %}>{{ i|label }} ({{ i.unit }}){% if suggestion and i.id == suggestion.ingredient_id and not p.ingredient_id %}, suggested ({{ suggestion.confidence }}){% endif %}</option>
                         {% endfor %}
                     </select>
                     <div class="custom-control custom-checkbox small mt-1">
@@ -90,7 +137,7 @@
                     </div>
                 </form>
                 <div id="link-status-{{ loop.index0 }}" class="small mt-1">
-                    {% if p.ingredient_id %}<span class="text-success">linked</span>{% elif suggestion %}<span class="text-info">suggested — check and save</span>{% else %}<span class="text-muted">not linked</span>{% endif %}
+                    {% if p.ingredient_id %}<span class="text-success">linked</span>{% elif suggestion %}<span class="text-info">{{ 'AI' if suggestion.confidence == 'ai' else suggestion.confidence ~ ' confidence' }} suggestion{% if suggestion.matched_on %}, matched on “{{ suggestion.matched_on|join(' ') }}”{% endif %}{% if suggestion.reason %}: {{ suggestion.reason }}{% endif %}. Check and save</span>{% else %}<span class="text-muted">not linked</span>{% endif %}
                 </div>
             </td>
         </tr>
@@ -102,11 +149,11 @@
 <nav aria-label="Product pages">
     <ul class="pagination pagination-sm">
         <li class="page-item {{ 'disabled' if page <= 1 }}">
-            <a class="page-link" href="{{ url_for('spend.spend_products', q=search, page=page - 1, **({'unlinked': '1'} if only_unlinked else {})) }}">Previous</a>
+            <a class="page-link" href="{{ url_for('spend.spend_products', q=search, show=show, page=page - 1, **({'unlinked': '1'} if only_unlinked else {})) }}">Previous</a>
         </li>
         <li class="page-item disabled"><span class="page-link">Page {{ page }} of {{ total_pages }}</span></li>
         <li class="page-item {{ 'disabled' if page >= total_pages }}">
-            <a class="page-link" href="{{ url_for('spend.spend_products', q=search, page=page + 1, **({'unlinked': '1'} if only_unlinked else {})) }}">Next</a>
+            <a class="page-link" href="{{ url_for('spend.spend_products', q=search, show=show, page=page + 1, **({'unlinked': '1'} if only_unlinked else {})) }}">Next</a>
         </li>
     </ul>
 </nav>
@@ -119,7 +166,7 @@
 async function saveAllLinks(button) {
     const status = document.getElementById('save-all-status');
     const forms = Array.from(document.querySelectorAll('tr[id^="product-row-"] form'))
-        .filter(form => form.querySelector('select[name="ingredient_id"]').value);
+        .filter(form => form.querySelector('select[name="ingredient_id"]')?.value);
     if (!forms.length) {
         status.textContent = 'Pick an ingredient for at least one row first.';
         return;

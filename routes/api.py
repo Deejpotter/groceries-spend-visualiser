@@ -145,6 +145,8 @@ def _shopping_payload():
             "buy": pick.get("name"),
             "line_cost": row.get("line_cost"),
             "origin": row.get("origin") or "ui",
+            "source": row.get("source") or ("manual" if row["is_manual"] else "meal"),
+            "reason": row.get("reason"),
         })
     unit_pref, subtract = shopping_preferences()
     return {"groups": groups, "totals": list_totals(rows),
@@ -610,23 +612,114 @@ def plan_generate():
     from routes.meal_plan import generate_plan as _generate
     from services.plan_generator import generate_plan_entries
     from services.repository import load_manual_entries, load_recipes, load_rules
+    from models import today as local_today
+    from services.suggestions import current_pay_cycle, meal_scorer
     body = request.get_json(silent=True) or {}
     confirm = bool(body.get("confirm"))
+    suggest = bool(body.get("suggest"))
     start, end = get_plan_dates()
+    if body.get("range") == "payday":
+        cycle = current_pay_cycle(local_today())
+        if not cycle:
+            raise ApiError(400, "no_payday", "No payday set. Set it under Settings → Budget.")
+        start, end = cycle["until_payday_start"], cycle["cycle_end"]
     if not (start and end):
         raise AgentError("no_plan_dates", "No plan dates set.")
     if not confirm:
         manual = load_manual_entries(start, end)
-        entries, error = generate_plan_entries(start, end, load_rules(), load_recipes(), manual)
+        scorer, slots = meal_scorer(local_today()) if suggest else (None, None)
+        entries, error = generate_plan_entries(start, end, load_rules(), load_recipes(), manual,
+                                               scorer=scorer, history_slots=slots)
         if error:
             return jsonify({"error": error})
         return jsonify({"plan_start": start, "plan_end": end, "auto_entries": len(entries),
                         "manual_kept": len(manual), "confirmed": False,
                         "note": "Preview; call again with confirm=true to regenerate."})
-    count, error = _generate(start, end)
+    count, error = _generate(start, end, suggest=suggest)
     if error:
         return jsonify({"error": error})
     return jsonify({"plan_start": start, "plan_end": end, "entries": count or 0, "confirmed": True})
+
+
+@api_bp.route("/plan/suggestions")
+@require_api_key
+@_handle
+def plan_suggestions():
+    """Best recipes for one slot (?date=YYYY-MM-DD&meal_type=dinner), with reasons."""
+    from models import MEAL_TYPES, parse_date, today as local_today
+    from services.repository import load_recipes
+    from services.suggestions import meal_scorer
+    day = parse_date(request.args.get("date", ""))
+    meal_type = request.args.get("meal_type", "dinner")
+    if not day or meal_type not in MEAL_TYPES:
+        raise ApiError(400, "validation", "Pass date=YYYY-MM-DD and a meal_type.")
+    scorer, _ = meal_scorer(local_today())
+    limit = max(1, min(request.args.get("limit", 5, type=int), 20))
+    found = scorer.alternatives(load_recipes(), day, meal_type, limit=limit)
+    return jsonify({"date": day.strftime("%Y-%m-%d"), "meal_type": meal_type, "suggestions": [
+        {"recipe_id": s["recipe"]["id"], "recipe": s["recipe"]["name"], "score": s["score"],
+         "reasons": s["reasons"]} for s in found]})
+
+
+@api_bp.route("/pay-cycle")
+@require_api_key
+@_handle
+def pay_cycle_info():
+    """Current pay cycle (from the payday setting) and grocery budget, or null."""
+    from models import today as local_today
+    from services.suggestions import current_pay_cycle
+    return jsonify({"pay_cycle": current_pay_cycle(local_today())})
+
+
+@api_bp.route("/patterns")
+@require_api_key
+@_handle
+def purchase_patterns():
+    """Purchase rhythm per item (?rhythm=regular|occasional|stopped|one_off filters)."""
+    from models import today as local_today
+    from services.suggestions import patterns_for
+    rhythm = request.args.get("rhythm")
+    patterns = [p for p in patterns_for(local_today()) if not rhythm or p["rhythm"] == rhythm]
+    keep = ("key", "label", "ingredient_id", "products", "role", "buys", "interval_days", "rhythm",
+            "last_bought", "next_due", "typical_quantity", "typical_spend")
+    return jsonify({"patterns": [{k: p[k] for k in keep} for p in patterns]})
+
+
+@api_bp.route("/shopping-list/generate", methods=["POST"])
+@require_api_key
+@_handle
+def shopping_generate():
+    """Build a list in a mode (full, meals, nonmeal, staples, household, topup, tight).
+
+    range: "payday" (today until the day before payday, default) or "plan" (plan dates).
+    Without confirm=true it only previews the lines; with it, the generated list is replaced.
+    """
+    from database import get_plan_dates
+    from models import today as local_today
+    from services.cycle_list import MODE_LOOKUP
+    from services.suggestions import build_cycle_list, current_pay_cycle, save_cycle_list
+    body = request.get_json(silent=True) or {}
+    mode = body.get("mode") or "full"
+    if mode not in MODE_LOOKUP:
+        raise ApiError(400, "validation", "mode must be one of: " + ", ".join(MODE_LOOKUP))
+    today = local_today()
+    if (body.get("range") or "payday") == "payday":
+        cycle = current_pay_cycle(today)
+        if not cycle:
+            raise ApiError(400, "no_payday", "No payday set. Set it under Settings → Budget, or use range=plan.")
+        start, end = cycle["until_payday_start"], cycle["cycle_end"]
+    else:
+        start, end = get_plan_dates()
+        if not (start and end):
+            raise AgentError("no_plan_dates", "No plan dates set.")
+    result = build_cycle_list(start, end, mode, today)
+    lines = [{"name": l["ingredient_name"], "quantity": l["quantity"], "unit": l["unit"],
+              "category": l["category"], "source": l["source"], "reason": l.get("reason"),
+              "estimated_cost": l.get("estimated_cost")} for l in result["lines"]]
+    saved = save_cycle_list(result["lines"]) if body.get("confirm") else None
+    return jsonify({"mode": mode, "start": start, "end": end, "lines": lines,
+                    "totals": result["totals"], "trim": result["trim"],
+                    "confirmed": bool(body.get("confirm")), "saved": saved})
 
 
 @api_bp.route("/shopping-list/items", methods=["POST"])

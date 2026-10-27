@@ -258,9 +258,47 @@ def plan_remove_meal(entry_id: int) -> dict:
 
 
 @mcp.tool()
-def plan_generate(confirm: bool = False) -> dict:
-    """Preview regeneration counts; with confirm=true, regenerate auto entries."""
-    return _safe(_client().post, path="/plan/generate", body={"confirm": confirm})
+def plan_generate(confirm: bool = False, suggest: bool = True, until_payday: bool = False) -> dict:
+    """Preview regeneration counts; with confirm=true, regenerate auto entries.
+
+    suggest ranks recipes by meal history, cost and variety and fills usual meals
+    without a rule; until_payday plans from today to the day before payday.
+    """
+    body = {"confirm": confirm, "suggest": suggest}
+    if until_payday:
+        body["range"] = "payday"
+    return _safe(_client().post, path="/plan/generate", body=body)
+
+
+@mcp.tool()
+def plan_suggestions(date: str, meal_type: str = "dinner", limit: int = 5) -> dict:
+    """Best recipes for one plan slot, with the reasons each is suggested."""
+    query = urllib.parse.urlencode({"date": date, "meal_type": meal_type, "limit": limit})
+    return _safe(_client().get, path=f"/plan/suggestions?{query}")
+
+
+@mcp.tool()
+def get_pay_cycle() -> dict:
+    """The current pay cycle: last and next payday, days left and grocery budget."""
+    return _safe(_client().get, path="/pay-cycle")
+
+
+@mcp.tool()
+def get_purchase_patterns(rhythm: str = "") -> dict:
+    """How often each item is bought; rhythm filters to regular, occasional, stopped or one_off."""
+    path = "/patterns" + (f"?rhythm={urllib.parse.quote(rhythm)}" if rhythm else "")
+    return _safe(_client().get, path=path)
+
+
+@mcp.tool()
+def generate_shopping_list(mode: str = "full", until_payday: bool = True, confirm: bool = False) -> dict:
+    """Preview (or with confirm=true, save) a list: full, meals, nonmeal, staples, household, topup or tight.
+
+    until_payday covers today to the day before payday; otherwise the plan dates.
+    Every line has a source (meal, staple, treat, household) and a reason.
+    """
+    return _safe(_client().post, path="/shopping-list/generate",
+                 body={"mode": mode, "range": "payday" if until_payday else "plan", "confirm": confirm})
 
 
 @mcp.tool()

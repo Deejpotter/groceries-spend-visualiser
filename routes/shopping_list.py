@@ -3,7 +3,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 
 from auth import login_required
-from database import get_db, get_plan_dates
+from database import get_db, get_plan_dates, get_setting, set_setting
 from models import CATEGORY_LOOKUP, UNIT_LOOKUP, validate_date_format
 from services.repository import (
     load_linked_products, load_list_rows, load_pantry_stock, load_shopping_inputs, shopping_preferences,
@@ -12,6 +12,8 @@ from services.shopping_list_generator import (
     generate_shopping_list, list_totals, plan_list_lines, recipes_using_spares, spares,
 )
 from services.spend_analysis import average_spend_per_shop
+from services.cycle_list import LIST_MODES, MODE_LOOKUP, MODE_SOURCES, SOURCE_LOOKUP, totals_by_source
+from models import today as local_today
 
 shopping_bp = Blueprint("shopping_list", __name__)
 
@@ -37,7 +39,16 @@ def build_list(start, end):
 def shopping_list_view():
     db = get_db()
     start_str, end_str = get_plan_dates()
-    rows = plan_list_lines(load_list_rows(), load_linked_products())
+    from services.suggestions import current_pay_cycle
+    all_rows = plan_list_lines(load_list_rows(), load_linked_products())
+    for row in all_rows:
+        row["source"] = row.get("source") or ("manual" if row["is_manual"] else "meal")
+    show = request.args.get("show", "all")
+    if show in MODE_SOURCES:
+        rows = [r for r in all_rows if r["source"] in MODE_SOURCES[show] or r["source"] == "manual"]
+    else:
+        show, rows = "all", all_rows
+    pay_cycle = current_pay_cycle(local_today())
     grouped = {}
     for row in rows:
         grouped.setdefault(row["category"] or "other", []).append(row)
@@ -66,6 +77,13 @@ def shopping_list_view():
         avg_shop_spend=average_spend_per_shop(db),
         unit_preference=unit_pref,
         subtract_pantry=subtract,
+        pay_cycle=pay_cycle,
+        list_modes=LIST_MODES,
+        source_labels=SOURCE_LOOKUP,
+        source_totals=totals_by_source(all_rows, (pay_cycle or {}).get("budget")),
+        sources_present=sorted({r["source"] for r in all_rows}),
+        show=show,
+        last_mode=get_setting("last_list_mode", ""),
     )
 
 
@@ -75,6 +93,8 @@ def shopping_list_generate():
     stored_start, stored_end = get_plan_dates()
     plan_start = request.form.get("plan_start", "").strip() or stored_start
     plan_end = request.form.get("plan_end", "").strip() or stored_end
+    if request.form.get("range") == "payday" or request.form.get("mode"):
+        return _generate_cycle_list(plan_start, plan_end)
     if not (validate_date_format(plan_start) and validate_date_format(plan_end)):
         flash("Please set plan dates in Settings.", "error")
         return _back()
@@ -106,6 +126,58 @@ def shopping_list_generate():
 
     item_count = sum(len(items) for items in list_data.values())
     flash(f"Shopping list generated with {item_count} items.", "success")
+    return _back()
+
+
+def _generate_cycle_list(plan_start, plan_end):
+    """Build a list in one of the LIST_MODES, over the pay cycle or the plan dates."""
+    from services.suggestions import build_cycle_list, current_pay_cycle, save_cycle_list
+    today = local_today()
+    mode = request.form.get("mode", "full")
+    if mode not in MODE_LOOKUP:
+        mode = "full"
+    if request.form.get("range") == "payday":
+        cycle = current_pay_cycle(today)
+        if not cycle:
+            flash("Set your payday in Settings → Budget to build a list until payday.", "error")
+            return _back()
+        plan_start, plan_end = cycle["until_payday_start"], cycle["cycle_end"]
+    if not (validate_date_format(plan_start) and validate_date_format(plan_end)) or plan_end < plan_start:
+        flash("Please set plan dates in Settings.", "error")
+        return _back()
+    result = build_cycle_list(plan_start, plan_end, mode, today)
+    count = save_cycle_list(result["lines"])
+    set_setting("last_list_mode", mode)
+    get_db().commit()
+    message = f"{MODE_LOOKUP[mode]} list for {plan_start} to {plan_end}: {count} item{'' if count == 1 else 's'}."
+    trim = result.get("trim")
+    if trim and trim["over_by"] > 0:
+        message += f" About ${trim['over_by']:.2f} over budget"
+        if trim["drop"]:
+            message += "; dropping " + ", ".join(trim["drop"][:4]) + " would help"
+        message += "."
+    flash(message, "warning" if trim and trim["over_by"] > 0 else "success")
+    return _back()
+
+
+@shopping_bp.route("/shopping-list/staple/<int:item_id>", methods=["POST"])
+@login_required
+def shopping_list_staple(item_id):
+    """Never suggest (or always suggest) the regular buy behind a list row."""
+    from services.repository import record_feedback
+    from services.suggestions import staple_key_for_row
+    action = request.form.get("action")
+    row = get_db().execute("SELECT * FROM shopping_list_items WHERE id = ?", (item_id,)).fetchone()
+    key = staple_key_for_row(dict(row)) if row else None
+    if action not in ("never", "always") or not key:
+        flash("That item isn't a suggested regular buy.", "error")
+        return _back()
+    record_feedback("staple", key, action)
+    if action == "never":
+        get_db().execute("DELETE FROM shopping_list_items WHERE id = ?", (item_id,))
+    get_db().commit()
+    flash(f"{row['ingredient_name']} won't be suggested again." if action == "never"
+          else f"{row['ingredient_name']} will be on every list.", "success")
     return _back()
 
 
@@ -190,7 +262,11 @@ def shopping_list_pack(item_id):
 @shopping_bp.route("/shopping-list/delete/<int:item_id>", methods=["POST"])
 @login_required
 def shopping_list_delete(item_id):
+    from services.suggestions import record_removed_line
     db = get_db()
+    row = db.execute("SELECT * FROM shopping_list_items WHERE id = ?", (item_id,)).fetchone()
+    if row:
+        record_removed_line(dict(row))
     db.execute("DELETE FROM shopping_list_items WHERE id = ?", (item_id,))
     db.commit()
     flash("Item removed.", "success")

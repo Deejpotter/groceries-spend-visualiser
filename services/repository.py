@@ -13,7 +13,7 @@ def load_rules() -> List[Dict]:
 
 def load_recipes() -> List[Dict]:
     return [dict(r) for r in get_db().execute(
-        "SELECT id, name, servings, covers_days, tags FROM recipes ORDER BY name"
+        "SELECT id, name, servings, covers_days, tags, is_favourite, prep_time, cook_time FROM recipes ORDER BY name"
     )]
 
 
@@ -104,3 +104,49 @@ def load_linked_products() -> Dict[int, List[Dict]]:
             "url": product_url(r["store"], r["stockcode"]),
         })
     return products
+
+
+def load_purchase_rows(since: str = "0000-00-00") -> List[Dict]:
+    """Purchase lines on or after ``since`` for pattern analysis."""
+    return [dict(r) for r in get_db().execute(
+        "SELECT order_date, basket_id, store, product_name, quantity, unit_price, line_total, ingredient_id"
+        " FROM purchases WHERE order_date >= ? ORDER BY order_date",
+        (since,),
+    )]
+
+
+def load_product_decisions() -> Dict[str, Dict]:
+    return {r["product_name"]: dict(r) for r in get_db().execute("SELECT * FROM product_decisions")}
+
+
+def load_ingredient_map() -> Dict[int, Dict]:
+    return {r["id"]: dict(r) for r in get_db().execute(
+        "SELECT id, name, display_name, unit, category, price FROM ingredients"
+    )}
+
+
+def load_feedback(kind: str) -> List[Dict]:
+    """Suggestion feedback rows of one kind, oldest first."""
+    return [dict(r) for r in get_db().execute(
+        "SELECT item_key, action, created_at FROM suggestion_feedback WHERE kind = ? ORDER BY id", (kind,)
+    )]
+
+
+def record_feedback(kind: str, item_key: str, action: str) -> None:
+    get_db().execute("INSERT INTO suggestion_feedback (kind, item_key, action) VALUES (?, ?, ?)",
+                     (kind, str(item_key), action))
+
+
+def load_meal_history(before: str) -> List[Dict]:
+    """Meal plan entries dated before ``before`` (the record of meals eaten)."""
+    return [dict(r) for r in get_db().execute(
+        "SELECT date, meal_type, recipe_id, is_continuation FROM meal_plan_entries WHERE date < ?",
+        (before,),
+    )]
+
+
+def load_recipe_links() -> Dict[int, List[Dict]]:
+    links: Dict[int, List[Dict]] = {}
+    for r in get_db().execute("SELECT recipe_id, ingredient_id, quantity, unit_override FROM recipe_ingredients"):
+        links.setdefault(r["recipe_id"], []).append(dict(r))
+    return links

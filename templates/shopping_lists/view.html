@@ -24,6 +24,56 @@
         <button type="button" onclick="window.print()" class="btn btn-secondary">{{ icon('printer') }} Print</button>
     </div>
 </div>
+<div class="card mb-3 d-print-none">
+    <div class="card-body py-2">
+        <form method="post" action="{{ url_for('shopping_list.shopping_list_generate') }}" class="form-inline flex-wrap">
+            {{ csrf() }}
+            <label class="mr-2 mb-1 small text-muted" for="list-mode">Build a list</label>
+            <select name="mode" id="list-mode" class="form-control form-control-sm mr-2 mb-1">
+                {% for code, label, help in list_modes %}
+                <option value="{{ code }}" title="{{ help }}" {% if code == (last_mode or 'full') %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+            {% if pay_cycle %}
+            <button type="submit" name="range" value="payday" class="btn btn-primary btn-sm mr-2 mb-1">
+                {{ icon('calendar') }} Until payday ({{ pay_cycle.next_payday|nice_date }})
+            </button>
+            {% endif %}
+            {% if plan_start and plan_end %}
+            <button type="submit" name="range" value="plan" class="btn btn-outline-primary btn-sm mr-2 mb-1">For the plan dates</button>
+            {% endif %}
+        </form>
+        <details class="small text-muted">
+            <summary>What do the list types include?</summary>
+            <ul class="mb-0">{% for code, label, help in list_modes %}<li><strong>{{ label }}</strong>: {{ help }}</li>{% endfor %}</ul>
+            Regular buys come from your <a href="{{ url_for('spend.spend_patterns') }}">purchase patterns</a>.
+            {% if not pay_cycle %}<a href="{{ url_for('settings.settings') }}">Set your payday</a> to build a list until payday.{% endif %}
+        </details>
+    </div>
+</div>
+
+{% if sources_present|length > 1 %}
+<ul class="nav nav-pills mb-2 d-print-none small">
+    <li class="nav-item"><a class="nav-link {{ 'active' if show == 'all' }}" href="{{ url_for('shopping_list.shopping_list_view') }}">All</a></li>
+    <li class="nav-item"><a class="nav-link {{ 'active' if show == 'meals' }}" href="{{ url_for('shopping_list.shopping_list_view', show='meals') }}">Meals</a></li>
+    <li class="nav-item"><a class="nav-link {{ 'active' if show == 'nonmeal' }}" href="{{ url_for('shopping_list.shopping_list_view', show='nonmeal') }}">Not meals</a></li>
+    <li class="nav-item"><a class="nav-link {{ 'active' if show == 'household' }}" href="{{ url_for('shopping_list.shopping_list_view', show='household') }}">Household</a></li>
+</ul>
+{% endif %}
+{% if source_totals.total %}
+<p class="small mb-3">
+    {% for source, amount in source_totals.sources.items() if amount %}
+    <span class="badge badge-light border mr-1">{{ source_labels.get(source, source) }} {{ amount|money }}</span>
+    {% endfor %}
+    {% if source_totals.budget %}
+    <span class="ml-1 {{ 'text-danger' if source_totals.remaining < 0 else 'text-success' }}">
+        {{ source_totals.total|money }} of {{ source_totals.budget|money }} pay-cycle budget
+        ({{ (source_totals.remaining|abs)|money }} {{ 'over' if source_totals.remaining < 0 else 'left' }})
+    </span>
+    {% endif %}
+</p>
+{% endif %}
+
 {% if has_generated %}
 <p class="small text-muted">Regenerating rebuilds the list from the plan — {{ item_count }} item{{ '' if item_count == 1 else 's' }} now, deleted plan items return. {{ checked_count }} ticked {{ 'is' if checked_count == 1 else 'are' }} kept where units match; manual items stay.</p>
 {% endif %}

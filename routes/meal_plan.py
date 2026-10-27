@@ -11,6 +11,7 @@ from services.plan_generator import generate_plan_entries, plan_summary
 from services.repository import load_linked_products, load_list_rows, load_shopping_inputs
 from services.shopping_list_generator import plan_list_lines, recipes_using_spares, spares
 from services.repository import load_rules, load_recipes, load_manual_entries
+from services.suggestions import current_pay_cycle, meal_scorer
 
 meal_bp = Blueprint("meal_plan", __name__)
 
@@ -200,11 +201,17 @@ def meal_rule_delete(rule_id):
 # Plan generation
 # ---------------------------------------------------------------------------
 
-def generate_plan(start_date_str, end_date_str, chooser=random.choice):
-    """Regenerate auto entries in the range, keeping manual entries. Returns (count, error)."""
+def generate_plan(start_date_str, end_date_str, chooser=random.choice, suggest=False):
+    """Regenerate auto entries in the range, keeping manual entries. Returns (count, error).
+
+    With ``suggest``, recipes are ranked from meal history (see MealScorer) and
+    slots the household usually fills are planned even without a rule.
+    """
     manual = load_manual_entries(start_date_str, end_date_str)
+    scorer, slots = meal_scorer(local_today()) if suggest else (None, None)
     entries, error = generate_plan_entries(
         start_date_str, end_date_str, load_rules(), load_recipes(), manual, chooser=chooser,
+        scorer=scorer, history_slots=slots,
     )
     if error:
         return None, error
@@ -220,10 +227,10 @@ def generate_plan(start_date_str, end_date_str, chooser=random.choice):
         cursor = db.execute(
             """INSERT INTO meal_plan_entries
                (date, meal_type, recipe_id, servings, is_auto_generated, is_continuation,
-                continuation_of, source_rule_id)
-               VALUES (?, ?, ?, ?, 1, ?, ?, ?)""",
+                continuation_of, source_rule_id, origin)
+               VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)""",
             (entry["date"], entry["meal_type"], entry["recipe_id"], entry["servings"],
-             entry["is_continuation"], continuation_of, entry["source_rule_id"]),
+             entry["is_continuation"], continuation_of, entry["source_rule_id"], entry.get("origin")),
         )
         if not entry["is_continuation"]:
             entry_ids[(entry["date"], entry["meal_type"])] = cursor.lastrowid
@@ -296,6 +303,7 @@ def _plan_context(editing_rule=None):
     rules = [dict(r) for r in db.execute("SELECT * FROM meal_rules ORDER BY sort_order, id")]
     tab = "rules" if editing_rule or request.args.get("tab") == "rules" else "week"
     slot_entries = [e for d in days for e in d["meals"].values() if e]
+    _attach_alternatives(slot_entries)
     return {
         "days": days,
         "shown_types": shown_types,
@@ -314,7 +322,28 @@ def _plan_context(editing_rule=None):
         "summary": plan_summary(days, shown_types),
         "spare_uses": _spare_uses(start_str, end_str),
         "rule_errors": None,
+        "pay_cycle": current_pay_cycle(local_today()),
     }
+
+
+def _attach_alternatives(slot_entries):
+    """Give each planned meal the three best other recipes for its slot, with reasons."""
+    if not slot_entries:
+        return
+    recipes = load_recipes()
+    by_id = {r["id"]: r for r in recipes}
+    scorer, _ = meal_scorer(local_today())
+    for e in slot_entries:
+        if e["recipe_id"] in by_id:
+            scorer.record(by_id[e["recipe_id"]])
+    for e in slot_entries:
+        if e.get("is_continuation"):
+            continue
+        day = parse_date(e["date"])
+        own = scorer.score(by_id[e["recipe_id"]], day, e["meal_type"]) if e["recipe_id"] in by_id else (0, [])
+        e["reasons"] = [r for r in own[1] if not r.startswith("Shares")][:2]
+        e["alternatives"] = scorer.alternatives(
+            [r for r in recipes if r["id"] not in scorer.placed], day, e["meal_type"], exclude={e["recipe_id"]})
 
 
 @meal_bp.route("/meal-plan/generate", methods=["POST"])
@@ -323,6 +352,12 @@ def meal_plan_generate():
     stored_start, stored_end = get_plan_dates()
     plan_start = request.form.get("plan_start", "").strip() or stored_start
     plan_end = request.form.get("plan_end", "").strip() or stored_end
+    if request.form.get("range") == "payday":
+        cycle = current_pay_cycle(local_today())
+        if not cycle:
+            flash("Set your payday in Settings → Budget first.", "error")
+            return _back_to_plan()
+        plan_start, plan_end = cycle["until_payday_start"], cycle["cycle_end"]
 
     if not (validate_date_format(plan_start) and validate_date_format(plan_end)):
         flash("Please set valid plan start and end dates first.", "error")
@@ -339,7 +374,7 @@ def meal_plan_generate():
     set_setting("plan_end_date", plan_end)
     get_db().commit()
 
-    count, error = generate_plan(plan_start, plan_end)
+    count, error = generate_plan(plan_start, plan_end, suggest=request.form.get("suggest") == "1")
     if error:
         flash(error, "error")
     elif count == 0:
@@ -410,6 +445,21 @@ def meal_plan_swap(entry_id):
             return render_template("meal_plan/_slot_filled.html", entry=entry, recipes=recipes)
         return "", 204
     flash("Meal swapped.", "success")
+    return _back_to_plan()
+
+
+@meal_bp.route("/meal-plan/lock/<int:entry_id>", methods=["POST"])
+@login_required
+def meal_plan_lock(entry_id):
+    """Keep a suggested meal when regenerating (or release it again)."""
+    from services.mutations import lock_meal
+    locked = request.form.get("locked", "1") == "1"
+    try:
+        lock_meal(get_db(), entry_id, locked)
+    except ValueError as exc:
+        flash(str(exc), "error")
+        return _back_to_plan()
+    flash("Meal kept for regeneration." if locked else "Meal handed back to the generator.", "success")
     return _back_to_plan()
 
 

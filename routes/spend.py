@@ -258,9 +258,16 @@ def import_bank_duplicates():
 @spend_bp.route("/spend/products")
 @login_required
 def spend_products():
+    from services.product_matching import (
+        NON_FOOD_ROLES, ROLES, classify_product, suggest_links,
+    )
+    from services.repository import load_product_decisions
     db = get_db()
     search = request.args.get("q", "").strip()
     only_unlinked = request.args.get("unlinked") == "1"
+    show = request.args.get("show", "food")
+    if show not in ("food", "nonfood", "ignored", "all"):
+        show = "food"
     per_page = 100
     page = max(1, request.args.get("page", type=int) or 1)
     where, having, params = "WHERE 1=1", "", []
@@ -269,13 +276,6 @@ def spend_products():
         params.append(f"%{search}%")
     if only_unlinked:
         having = " HAVING MAX(p.ingredient_id) IS NULL"
-    total_count = db.execute(
-        f"SELECT COUNT(*) FROM (SELECT p.product_name FROM purchases p {where}"
-        f" GROUP BY p.product_name{having})",
-        params,
-    ).fetchone()[0]
-    total_pages = max(1, (total_count + per_page - 1) // per_page)
-    page = min(page, total_pages)
     products = db.execute(
         """SELECT p.product_name,
                 COUNT(DISTINCT p.store || '|' || p.basket_id) AS orders,
@@ -287,15 +287,39 @@ def spend_products():
                 (SELECT cup_price FROM purchases x WHERE x.product_name = p.product_name
                  ORDER BY x.order_date DESC LIMIT 1) AS last_cup_price
          FROM purchases p """ + where + " GROUP BY p.product_name" + having +
-        " ORDER BY total_spend DESC LIMIT ? OFFSET ?",
-        (*params, per_page, (page - 1) * per_page),
+        " ORDER BY total_spend DESC",
+        params,
     ).fetchall()
+    decisions = load_product_decisions()
+    all_rows = []
+    hidden = {"nonfood": 0, "ignored": 0}
+    for p in products:
+        row = dict(p)
+        decision = decisions.get(row["product_name"]) or {}
+        row["role"] = decision.get("role") or classify_product(row["product_name"])
+        row["role_chosen"] = bool(decision.get("role"))
+        row["ignored"] = bool(decision.get("ignored"))
+        if row["ignored"]:
+            hidden["ignored"] += 1
+        elif row["role"] in NON_FOOD_ROLES:
+            hidden["nonfood"] += 1
+        if show == "food" and (row["ignored"] or row["role"] in NON_FOOD_ROLES):
+            continue
+        if show == "nonfood" and (row["ignored"] or row["role"] not in NON_FOOD_ROLES):
+            continue
+        if show == "ignored" and not row["ignored"]:
+            continue
+        all_rows.append(row)
+    total_count = len(all_rows)
+    total_pages = max(1, (total_count + per_page - 1) // per_page)
+    page = min(page, total_pages)
+    product_rows = all_rows[(page - 1) * per_page:page * per_page]
     ingredients = db.execute("SELECT id, name, display_name, unit, price FROM ingredients ORDER BY name").fetchall()
-    product_rows = [dict(p) for p in products]
     suggestions = {}
     if request.args.get("suggest") == "1":
-        from services.product_matching import suggest_links
         suggestions = suggest_links(product_rows, [dict(i) for i in ingredients])
+        for name, review in _ai_product_suggestions(db, [r for r in product_rows if r["product_name"] not in suggestions]).items():
+            suggestions[name] = review
     return render_template(
         "spend/products.html",
         products=product_rows,
@@ -304,10 +328,123 @@ def spend_products():
         suggestions=suggestions,
         search=search,
         only_unlinked=only_unlinked,
+        show=show,
+        hidden=hidden,
+        roles=ROLES,
         page=page,
         total_pages=total_pages,
         total_count=total_count,
+        ai_configured=_ai_config()["configured"],
     )
+
+
+def _ai_config():
+    from services.ai_review import resolve_config
+    return resolve_config(get_setting)
+
+
+def _ai_product_suggestions(db, rows):
+    """Cached AI link suggestions for unlinked rows, shaped like suggest_links output."""
+    from services.product_ai_review import cached_product_reviews
+    unlinked = [r for r in rows if not r.get("ingredient_id")]
+    found = {}
+    for name, review in cached_product_reviews(db, unlinked).items():
+        if review.get("ingredient_id"):
+            found[name] = {"ingredient_id": review["ingredient_id"], "score": 0.7, "confidence": "ai",
+                           "matched_on": [], "reason": review.get("reason")}
+    return found
+
+
+@spend_bp.route("/spend/products/role", methods=["POST"])
+@login_required
+def spend_product_role():
+    """Set a product's role (food, household, ...) or ignore/restore it."""
+    from services.product_matching import ROLE_LOOKUP
+    db = get_db()
+    name = request.form.get("product_name", "").strip()
+    role = request.form.get("role", "").strip()
+    ignored = request.form.get("ignored")
+    back = redirect(url_for("spend.spend_products", q=request.form.get("q", ""),
+                            show=request.form.get("show", "food"), page=request.form.get("page", "1")))
+    if not name or (role and role not in ROLE_LOOKUP):
+        flash("Choose a product and a valid role.", "error")
+        return back
+    existing = db.execute("SELECT role, ignored FROM product_decisions WHERE product_name = ?", (name,)).fetchone()
+    new_role = role or (existing["role"] if existing else None)
+    new_ignored = (1 if ignored == "1" else 0) if ignored in ("0", "1") else (existing["ignored"] if existing else 0)
+    db.execute(
+        "INSERT INTO product_decisions (product_name, role, ignored, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)"
+        " ON CONFLICT(product_name) DO UPDATE SET role = excluded.role, ignored = excluded.ignored,"
+        " updated_at = CURRENT_TIMESTAMP",
+        (name, new_role, new_ignored),
+    )
+    db.commit()
+    if request.headers.get("HX-Request"):
+        return '<span class="text-success small">saved</span>'
+    if ignored == "1":
+        flash(f"{name} is hidden and won't be suggested.", "success")
+    elif ignored == "0":
+        flash(f"{name} is back.", "success")
+    else:
+        flash(f"{name} marked as {ROLE_LOOKUP[new_role].lower()}.", "success")
+    return back
+
+
+@spend_bp.route("/spend/products/accept-suggestions", methods=["POST"])
+@login_required
+def spend_accept_suggestions():
+    """Link every unlinked food product whose best match is high confidence."""
+    from services.mutations import link_product
+    from services.product_matching import suggest_links
+    from services.repository import load_product_decisions
+    from services.product_matching import product_role
+    db = get_db()
+    decisions = load_product_decisions()
+    rows = [{"product_name": r["product_name"], "ingredient_id": None,
+             "role": product_role(r["product_name"], decisions)}
+            for r in db.execute("SELECT product_name FROM purchases GROUP BY product_name"
+                                " HAVING MAX(ingredient_id) IS NULL")
+            if not (decisions.get(r["product_name"]) or {}).get("ignored")]
+    ingredients = [dict(i) for i in db.execute("SELECT id, name, display_name FROM ingredients")]
+    linked = 0
+    for name, match in suggest_links(rows, ingredients).items():
+        if match["confidence"] != "high":
+            continue
+        level, _, _ = link_product(db, name, str(match["ingredient_id"]), True, "other")
+        linked += 1 if level != "error" else 0
+    flash(f"Linked {linked} product{'s' if linked != 1 else ''} with a high-confidence match."
+          if linked else "No high-confidence matches to link.", "success" if linked else "info")
+    return redirect(url_for("spend.spend_products", unlinked="1"))
+
+
+@spend_bp.route("/spend/products/ai-review", methods=["POST"])
+@login_required
+def spend_products_ai_review():
+    """Ask the AI to suggest ingredients and roles for products the rules couldn't match."""
+    from services.ai_review import AIReviewError
+    from services.product_ai_review import product_candidates, review_products, save_product_reviews
+    from services.repository import load_product_decisions
+    config = _ai_config()
+    if not config["configured"]:
+        flash("Add an OpenRouter key in Settings → AI review first.", "error")
+        return redirect(url_for("spend.spend_products"))
+    db = get_db()
+    ingredients = [dict(i) for i in db.execute("SELECT id, name, display_name, unit FROM ingredients")]
+    rows = [dict(r) for r in db.execute(
+        "SELECT product_name, MAX(ingredient_id) AS ingredient_id, COUNT(*) AS buys FROM purchases"
+        " GROUP BY product_name ORDER BY SUM(line_total) DESC")]
+    candidates = product_candidates(db, rows, ingredients, load_product_decisions())
+    if not candidates:
+        flash("Every product already has a link or a recent AI review.", "info")
+        return redirect(url_for("spend.spend_products", suggest=1, unlinked=1))
+    try:
+        reviews = review_products(candidates, ingredients, config["key"], config["model"])
+    except AIReviewError as exc:
+        flash(f"AI review failed: {exc}", "error")
+        return redirect(url_for("spend.spend_products"))
+    saved = save_product_reviews(db, candidates, reviews)
+    flash(f"AI reviewed {saved} product{'s' if saved != 1 else ''}. Suggestions are pre-selected below.", "success")
+    return redirect(url_for("spend.spend_products", suggest=1, unlinked=1))
 
 
 def _import_invoice(raw: bytes):
@@ -461,6 +598,41 @@ def spend_link_batch():
     for problem in problems[:3]:
         flash(problem, "error")
     return back
+
+
+@spend_bp.route("/spend/patterns")
+@login_required
+def spend_patterns():
+    """What we buy regularly, how often, and how well that predicted the last cycle."""
+    from models import today as local_today
+    from services.purchase_patterns import feedback_suppressed
+    from services.repository import load_feedback
+    from services.suggestions import accuracy_last_cycle, current_pay_cycle, patterns_for
+    today = local_today()
+    patterns = patterns_for(today)
+    feedback = load_feedback("staple")
+    for p in patterns:
+        p["suppressed"], p["forced"] = feedback_suppressed(feedback, p["key"])
+    groups = {r: [p for p in patterns if p["rhythm"] == r] for r in ("regular", "occasional", "stopped", "one_off")}
+    return render_template("spend/patterns.html", groups=groups, accuracy=accuracy_last_cycle(today),
+                           pay_cycle=current_pay_cycle(today), today=today.isoformat())
+
+
+@spend_bp.route("/spend/patterns/feedback", methods=["POST"])
+@login_required
+def spend_patterns_feedback():
+    """Always / never / reset suggestions for one regular buy."""
+    from services.repository import record_feedback
+    key = request.form.get("key", "").strip()
+    action = request.form.get("action", "")
+    if not (key.startswith("ing:") or key.startswith("prod:")) or action not in ("always", "never", "kept"):
+        flash("Unknown item.", "error")
+        return redirect(url_for("spend.spend_patterns"))
+    record_feedback("staple", key, action)
+    get_db().commit()
+    flash({"always": "It will be on every pay-cycle list.", "never": "It won't be suggested again.",
+           "kept": "Back to automatic suggestions."}[action], "success")
+    return redirect(url_for("spend.spend_patterns"))
 
 
 def register_spend_routes(app):
