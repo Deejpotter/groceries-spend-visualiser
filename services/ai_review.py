@@ -59,11 +59,16 @@ so only use "noise" when the money is clearly not a cost they keep paying.
   about the same date. Streaming, music, gym, phone/internet plans, insurance,
   memberships, and software or AI tools paid as a plan (for example Reclaim.ai,
   OpenCode, ChatGPT Plus, Microsoft 365, Adobe), even for work or hobbies.
+  Shops that sell everyday things also sell subscriptions: about the same amount
+  about once a month from a cafe, coffee roaster, meal kit or pet food brand is a
+  subscription (for example a monthly coffee bean subscription), not recurring
+  spending. Decide from the dates and amounts, not the kind of business.
 - "bill": a scheduled household bill whose amount varies, such as electricity,
   gas, water, council rates, rent, mortgage, loan repayments, childcare.
 - "recurring": money spent at the same merchant again and again, but not on a
   fixed date or for a fixed amount. Fuel and petrol stations (U-Go, Ampol, BP,
-  Shell, Caltex, 7-Eleven), cafes and coffee shops, takeaway, regular parking,
+  Shell, Caltex, 7-Eleven), cafe visits on different days for different amounts,
+  takeaway, regular parking,
   tolls, and services billed by usage (OpenAI, OpenRouter, DeepInfra, Vast.ai,
   Cloudflare, AWS). Repeated fees for a service the person chose to use, such as
   a pay-advance or buy-now-pay-later fee, are also recurring.
@@ -153,7 +158,7 @@ def _as_date(value):
 
 # Part of every evidence hash, so changing the prompt re-reviews everything
 # instead of keeping verdicts made under the old instructions.
-PROMPT_VERSION = 4
+PROMPT_VERSION = 5
 
 
 def _evidence_hash(candidate: Dict) -> str:
@@ -649,6 +654,20 @@ def _rank(suggestion: Dict):
             -suggestion.get("monthly_cost", 0))
 
 
+def _fixed_schedule_wins(review: Dict, candidate: Optional[Dict]) -> Dict:
+    """A "recurring" verdict on a fixed amount paid on a steady schedule is a subscription.
+
+    The model sometimes judges by the kind of business (a cafe) rather than the
+    evidence (the same amount every month). The rules' evidence wins here.
+    """
+    if not candidate or review.get("verdict") != "recurring" or review.get("user_override"):
+        return review
+    fixed = (candidate.get("amount_variance") or 0) <= 0.15
+    if fixed and candidate.get("rule_frequency") in FREQUENCIES:
+        return {**review, "verdict": "bill", "frequency": review.get("frequency") or candidate["rule_frequency"]}
+    return review
+
+
 _PERIOD_DAYS = {"weekly": 7, "fortnightly": 14, "monthly": 365.25 / 12}
 
 
@@ -704,6 +723,7 @@ def merge_suggestions(detected: List[Dict], candidates: List[Dict],
     and loose merchants appear only when the model calls them a bill.
     """
     by_key = {c["merchant_key"]: c for c in candidates}
+    reviews = {key: _fixed_schedule_wins(review, by_key.get(key)) for key, review in reviews.items()}
     merged = []
     seen = set()
     newest = max((d for c in candidates for d in c.get("dates") or []),

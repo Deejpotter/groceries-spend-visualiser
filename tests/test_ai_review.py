@@ -447,7 +447,7 @@ COFFEE = [txn(f"2026-10-{d:02d}", "BERMUDA COFFEE STUD", a)
 class TestRecurringType:
     def test_prompt_treats_fuel_cafes_and_usage_as_recurring(self):
         recurring = _SYSTEM_PROMPT.split('- "recurring"')[1].split('- "noise"')[0]
-        for word in ("Fuel", "cafes", "OpenAI", "parking"):
+        for word in ("Fuel", "cafe visits", "OpenAI", "parking"):
             assert word in recurring
         assert "Reclaim.ai" in _SYSTEM_PROMPT.split('- "subscription"')[1].split('- "bill"')[0]
 
@@ -531,3 +531,32 @@ def test_override_route_and_accepting_stores_kind(app, client, db):
                                                        "merchant_key": key, "kind": "recurring"})
     assert db.execute("SELECT kind FROM subscriptions").fetchone()["kind"] == "recurring"
     assert "recurring</span>" in client.get("/subscriptions").get_data(as_text=True)
+
+
+class TestCoffeeSubscription:
+    MONTHLY = [txn(d, "BERMUDA COFFEE STUD", 48.0) for d in ("2026-07-03", "2026-08-03", "2026-09-03", "2026-10-03")]
+
+    def test_prompt_says_monthly_coffee_is_a_subscription(self):
+        subscription = _SYSTEM_PROMPT.split('- "subscription"')[1].split('- "bill"')[0]
+        assert "coffee bean subscription" in subscription
+
+    def test_recurring_verdict_on_a_fixed_monthly_amount_becomes_a_subscription(self, db):
+        candidates = build_candidates(self.MONTHLY)
+        key = candidates[0]["merchant_key"]
+        save_reviews(db, [{"merchant_key": key, "evidence_hash": candidates[0]["evidence_hash"], "bill": True,
+                           "type": "recurring", "name": "Bermuda Coffee", "category": "other",
+                           "frequency": None, "reason": "Cafe"}])
+        merged = merge_suggestions([], candidates, cached_reviews(db, candidates))
+        assert len(merged) == 1
+        assert merged[0]["kind"] == "subscription"
+        assert merged[0]["frequency"] == "monthly" and merged[0]["amount"] == 48.0
+
+    def test_user_choice_of_recurring_is_respected(self, db):
+        candidates = build_candidates(self.MONTHLY)
+        key = candidates[0]["merchant_key"]
+        save_reviews(db, [{"merchant_key": key, "evidence_hash": candidates[0]["evidence_hash"], "bill": True,
+                           "type": "subscription", "name": "Bermuda Coffee", "category": "other",
+                           "frequency": "monthly", "reason": "Plan"}])
+        override_review(db, key, "recurring")
+        merged = merge_suggestions([], candidates, cached_reviews(db, candidates))
+        assert merged[0]["kind"] == "recurring"
