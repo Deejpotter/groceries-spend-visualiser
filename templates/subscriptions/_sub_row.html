@@ -26,8 +26,9 @@
         {% endif %}
     </td>
     <td>{{ format_frequency(s.frequency) }}</td>
-    <td>{{ s.next_due }}</td>
+    <td>{% if s.kind == 'recurring' %}<span class="text-muted small">no fixed date</span>{% else %}{{ s.next_due }}{% endif %}</td>
     <td class="text-right">
+        {% if s.kind != 'recurring' %}
         <form method="post" action="{{ url_for('subscriptions.subscription_mark_paid', sub_id=s.id) }}" class="d-inline"
               hx-post="{{ url_for('subscriptions.subscription_mark_paid', sub_id=s.id) }}"
               hx-target="#sub-{{ s.id }}"
@@ -35,6 +36,7 @@
             {{ csrf() }}
             <button type="submit" class="btn btn-sm btn-outline-success" title="Mark paid & advance">Mark paid</button>
         </form>
+        {% endif %}
         <a href="{{ url_for('subscriptions.subscription_edit', sub_id=s.id) }}" class="btn btn-sm btn-outline-primary">Edit</a>
         <form method="post" action="{{ url_for('subscriptions.subscription_toggle', sub_id=s.id) }}" class="d-inline"
               hx-post="{{ url_for('subscriptions.subscription_toggle', sub_id=s.id) }}"

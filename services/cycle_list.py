@@ -9,6 +9,7 @@ are just filters over the same lines and always agree with each other.
 from datetime import date
 from typing import Dict, Iterable, List, Optional, Set
 
+from models import parse_ymd
 from services.product_matching import NON_FOOD_ROLES
 from services.purchase_patterns import feedback_suppressed
 
@@ -68,7 +69,11 @@ def _cadence(pattern: Dict) -> str:
 def _staple_line(need: Dict) -> Dict:
     times = need.get("times", 1)
     product = (need.get("products") or [need["label"]])[0]
-    reason = f"Usually bought {_cadence(need)}, last on {need['last_bought']}"
+    try:
+        last = parse_ymd(need["last_bought"]).strftime("%a %-d %b")
+    except (TypeError, ValueError):
+        last = need["last_bought"]
+    reason = f"Usually bought {_cadence(need)}, last on {last}"
     if times > 1:
         reason += f"; due {times} times this cycle"
     if product != need["label"]:

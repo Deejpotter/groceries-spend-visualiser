@@ -102,19 +102,21 @@
                     {{ csrf() }}
                     <input type="hidden" name="product_name" value="{{ p.product_name }}">
                     <input type="hidden" name="show" value="{{ show }}">
-                    <select name="role" class="form-control form-control-sm" aria-label="Type of {{ p.product_name }}">
+                    <select name="role" class="form-select form-select-sm" style="min-width: 9rem" aria-label="Type of {{ p.product_name }}">
                         {% for code, label in roles %}<option value="{{ code }}" {% if code == p.role %}selected{% endif %}>{{ label }}</option>{% endfor %}
                     </select>
                     <noscript><button type="submit" class="btn btn-sm btn-link p-0">Save</button></noscript>
                 </form>
-                <span id="role-status-{{ loop.index0 }}">{% if not p.role_chosen %}<span class="small text-muted">guessed</span>{% endif %}</span>
+                <div class="d-flex gap-2 small mt-1">
+                <span id="role-status-{{ loop.index0 }}">{% if not p.role_chosen %}<span class="text-muted" title="Guessed from the product name">guessed</span>{% endif %}</span>
                 <form method="post" action="{{ url_for('spend.spend_product_role') }}" class="d-inline">
                     {{ csrf() }}
                     <input type="hidden" name="product_name" value="{{ p.product_name }}">
                     <input type="hidden" name="show" value="{{ show }}">
                     <input type="hidden" name="ignored" value="{{ '0' if p.ignored else '1' }}">
-                    <button type="submit" class="btn btn-link btn-sm p-0 small" title="{{ 'Show this product again' if p.ignored else 'Hide this product and never suggest it' }}">{{ 'restore' if p.ignored else 'ignore' }}</button>
+                    <button type="submit" class="btn btn-link btn-sm p-0 link-secondary align-baseline" title="{{ 'Show this product again' if p.ignored else 'Hide this product and never suggest it' }}">{{ 'Restore' if p.ignored else 'Ignore' }}</button>
                 </form>
+                </div>
             </td>
             <td>
                 <form method="post" action="{{ url_for('spend.spend_link_product') }}"
@@ -137,7 +139,7 @@
                     </div>
                 </form>
                 <div id="link-status-{{ loop.index0 }}" class="small mt-1">
-                    {% if p.ingredient_id %}<span class="text-success">linked</span>{% elif suggestion %}<span class="text-info">{{ 'AI' if suggestion.confidence == 'ai' else suggestion.confidence ~ ' confidence' }} suggestion{% if suggestion.matched_on %}, matched on “{{ suggestion.matched_on|join(' ') }}”{% endif %}{% if suggestion.reason %}: {{ suggestion.reason }}{% endif %}. Check and save</span>{% else %}<span class="text-muted">not linked</span>{% endif %}
+                    {% if p.ingredient_id %}<span class="text-success">linked</span>{% elif suggestion %}<span class="text-body-secondary">{{ 'AI' if suggestion.confidence == 'ai' else suggestion.confidence ~ ' confidence' }} suggestion{% if suggestion.matched_on %}, matched on “{{ suggestion.matched_on|join(' ') }}”{% endif %}{% if suggestion.reason %}: {{ suggestion.reason }}{% endif %}. Check and save</span>{% else %}<span class="text-muted">not linked</span>{% endif %}
                 </div>
             </td>
         </tr>

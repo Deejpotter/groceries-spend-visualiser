@@ -21,12 +21,12 @@
             {% if entry.is_auto_generated %}
             <form method="post" action="{{ url_for('meal_plan.meal_plan_lock', entry_id=entry.id) }}" class="d-inline">
                 {{ csrf() }}<input type="hidden" name="locked" value="1">
-                <button type="submit" class="btn btn-sm btn-link p-0" title="Keep this meal when you regenerate">Keep this meal</button>
+                <button type="submit" class="btn btn-sm btn-link p-0 link-secondary" title="Keep this meal when you regenerate">Keep this meal</button>
             </form>
             {% else %}
             <form method="post" action="{{ url_for('meal_plan.meal_plan_lock', entry_id=entry.id) }}" class="d-inline">
                 {{ csrf() }}<input type="hidden" name="locked" value="0">
-                <button type="submit" class="btn btn-sm btn-link p-0" title="Let regeneration replace this meal">Let regenerate replace it</button>
+                <button type="submit" class="btn btn-sm btn-link p-0 link-secondary" title="Let regeneration replace this meal">Let regenerate replace it</button>
             </form>
             {% endif %}
         </div>
@@ -37,7 +37,7 @@
             {% for alt in entry.alternatives %}
             <form method="post" action="{{ url_for('meal_plan.meal_plan_swap', entry_id=entry.id) }}" class="mb-1">
                 {{ csrf() }}<input type="hidden" name="recipe_id" value="{{ alt.recipe.id }}">
-                <button type="submit" class="btn btn-sm btn-outline-secondary btn-block text-left">
+                <button type="submit" class="btn btn-sm btn-outline-secondary w-100 text-start">
                     {{ alt.recipe.name }}{% if alt.reasons %}<br><span class="text-muted">{{ alt.reasons[:2]|join(' · ') }}</span>{% endif %}
                 </button>
             </form>

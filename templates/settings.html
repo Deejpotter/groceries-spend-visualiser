@@ -130,6 +130,7 @@
                             calculate spare money after groceries and bills. Leave blank to hide.
                         </small>
                     </div>
+                    <h3 class="h6 mt-3 mb-2">Pay cycle</h3>
                     <div class="form-row">
                         <div class="form-group col-sm-6">
                             <label for="payday_date">A recent payday</label>
@@ -225,8 +226,9 @@
                     <input type="hidden" name="action" value="save_ai">
                     {% if error_form == 'ai' %}{{ form_errors(errors) }}{% endif %}
                     <p class="text-muted small">
-                        When enabled, the suggestions page can ask an AI model to keep or dismiss
-                        each detected merchant and give it a clean name. The rules still decide
+                        When enabled, the suggestions page asks an AI model whether each regular
+                        merchant is a subscription, a bill, recurring spending or noise, and gives it a
+                        clean name. The Products page can also ask it to link products the rules can't match. The rules still decide
                         amounts and dates. Only merchant descriptions, amounts and dates are sent;
                         card and account numbers are removed first.
                     </p>

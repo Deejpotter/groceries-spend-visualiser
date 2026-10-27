@@ -7,10 +7,10 @@
 <form method="post" action="{{ url_for('spend.spend_patterns_feedback') }}" class="d-inline">
     {{ csrf() }}<input type="hidden" name="key" value="{{ p.key }}">
     {% if p.suppressed or p.forced %}
-    <button type="submit" name="action" value="kept" class="btn btn-link btn-sm p-0">automatic</button>
+    <button type="submit" name="action" value="kept" class="btn btn-link btn-sm p-0 link-secondary">automatic</button>
     {% endif %}
-    {% if not p.forced %}<button type="submit" name="action" value="always" class="btn btn-link btn-sm p-0 ml-1">always</button>{% endif %}
-    {% if not p.suppressed %}<button type="submit" name="action" value="never" class="btn btn-link btn-sm p-0 ml-1 text-muted">never</button>{% endif %}
+    {% if not p.forced %}<button type="submit" name="action" value="always" class="btn btn-link btn-sm p-0 ms-1 link-secondary">always</button>{% endif %}
+    {% if not p.suppressed %}<button type="submit" name="action" value="never" class="btn btn-link btn-sm p-0 ms-1 link-secondary">never</button>{% endif %}
 </form>
 {%- endmacro %}
 
@@ -27,7 +27,7 @@
         <td class="num">{{ p.buys }}</td>
         <td class="num">{% if p.interval_days %}{{ p.interval_days|round|int }} days{% endif %}</td>
         <td>{{ p.last_bought|nice_date }}</td>
-        {% if show_due %}<td>{% if p.next_due %}<span class="{{ 'text-danger' if p.next_due < today }}">{{ p.next_due|nice_date }}</span>{% endif %}</td>{% endif %}
+        {% if show_due %}<td>{% if p.next_due %}<span class="{{ 'text-danger fw-semibold' if p.next_due < today else ('fw-semibold' if p.next_due == today) }}">{{ p.next_due|nice_date }}</span>{% if p.next_due < today %} <span class="small text-danger">overdue</span>{% elif p.next_due == today %} <span class="small">today</span>{% endif %}{% endif %}</td>{% endif %}
         <td class="num">{{ p.typical_spend|money }}</td>
         <td class="small">{% if p.suppressed %}never · {% elif p.forced %}always · {% endif %}{{ feedback_buttons(p) }}</td>
     </tr>

@@ -220,7 +220,7 @@
 <div class="card mb-4 section-card">
     <div class="card-header">
         <span class="section-title">Often bought &mdash; not bills</span>
-        <span class="small text-muted ml-2">from your grocery history</span>
+        <span class="small text-muted ml-2">from your grocery history &middot; <a href="{{ url_for('spend.spend_patterns') }}">see all purchase patterns</a></span>
     </div>
     <div class="card-body py-2">
         <p class="small text-muted mb-2">
@@ -280,7 +280,7 @@
     <div class="card-header">How suggestions work</div>
     <div class="card-body">
         <ul>
-            <li><strong>Bank transactions:</strong> every imported or synced transaction is stored. A merchant with three or more payments on a regular cadence becomes a suggestion (two is enough for a yearly bill). Fixed amounts are marked as subscriptions; variable amounts (utilities) as bills.</li>
+            <li><strong>Bank transactions:</strong> every imported or synced transaction is stored. A merchant with three or more payments on a regular cadence becomes a suggestion (two is enough for a yearly bill). Fixed amounts are marked as subscriptions; variable amounts (utilities) as bills. With AI review, regular spending without a fixed date or amount (fuel, coffee, parking, usage-billed services) is suggested as <strong>recurring</strong>, shown as a weekly, fortnightly or monthly total.</li>
             <li><strong>Merchant names:</strong> known Australian brands (Netflix, Telstra, AGL, insurers) are named and categorised automatically. Everything else uses the description on the transaction.</li>
             <li><strong>Purchase history:</strong> regularly bought groceries appear separately below as "Often bought — not bills". They are never added to your subscriptions.</li>
             <li>Suggestions are opt-in: nothing is added until you click <strong>Add</strong>. <strong>Dismiss</strong> hides a merchant until a new regular pattern starts (three payments after the dismissal); dismissed merchants can also be restored from the list above.</li>

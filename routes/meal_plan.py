@@ -323,6 +323,8 @@ def _plan_context(editing_rule=None):
         "spare_uses": _spare_uses(start_str, end_str),
         "rule_errors": None,
         "pay_cycle": current_pay_cycle(local_today()),
+        "has_history": bool(db.execute("SELECT 1 FROM meal_plan_entries WHERE date < ? LIMIT 1",
+                                       (local_today().isoformat(),)).fetchone()),
     }
 
 
