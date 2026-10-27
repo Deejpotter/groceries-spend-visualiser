@@ -150,6 +150,10 @@ writes the approved lines to the `purchases` table (de-duplicated by `UNIQUE(sto
 where a PDF invoice's order number is the basket id, so re-imports are recognised and flagged per line).
 The spend dashboard computes total/monthly/per-shop spend, days between shops, and top products by frequency and spend over 3/6/12 months or all time. Purchased products can be linked to ingredients; the cup price (e.g. `$1.51 / 100G`) is parsed and converted to a per-unit price so shopping-list estimates match real spend.
 
+## Planned: Suggestions and Pay-Cycle Lists
+
+Not built yet; see `MEAL_AND_GROCERY_PLAN.md`. The intended design keeps the layering above: new pure services (`purchase_patterns.py`, `cycle_list.py`, product roles in `product_matching.py`) feed the existing plan and shopping list generators. Every list line carries a `source` (meal, staple, household, manual), so the full, meals-only and non-meal lists are filters over one generated list. AI is an optional reviewer on top of the rule-based results, as with subscription suggestions.
+
 ## Deployment
 
 ### Branches

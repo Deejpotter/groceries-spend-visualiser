@@ -51,6 +51,10 @@ pace this month's spend and project where you'll land by month end. Link purchas
 
 The shopping list shows your average shop spend next to the list's estimated cost.
 
+**Planned:** meal plans suggested from the meals you actually eat, and a grocery list
+covering everything you need until your next payday (full, meals only, or non-meal
+items only). See [`MEAL_AND_GROCERY_PLAN.md`](MEAL_AND_GROCERY_PLAN.md).
+
 ---
 
 ## Quick start
