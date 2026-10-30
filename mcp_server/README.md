@@ -1,6 +1,6 @@
 # Groceries MCP server
 
-Agent-friendly face of the Grocery Visualiser app. It is a **thin stdio
+Agent-friendly face of the Larder app. It is a **thin stdio
 client over the app's HTTP API** (`/api/v1`): the server itself holds no
 database connection and no business logic, so the same binary works
 against a local dev instance, staging or production by changing

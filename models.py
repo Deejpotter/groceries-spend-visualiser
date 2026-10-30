@@ -1,10 +1,12 @@
-"""Constants, validation, and helper functions for Grocery Visualiser."""
+"""Constants, validation, and helper functions for Larder."""
 
 import os
 import re
 from datetime import date, datetime, timedelta
 from typing import Optional
 from zoneinfo import ZoneInfo
+
+APP_NAME = "Larder"
 
 DEFAULT_TIMEZONE = "Australia/Sydney"
 

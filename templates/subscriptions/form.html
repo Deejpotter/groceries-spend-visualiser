@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "_macros.html" import csrf, form_errors %}
 
-{% block title %}{{ 'Edit' if form and form.id else 'Add' }} Subscription — Grocery Visualiser{% endblock %}
+{% block title %}{{ 'Edit' if form and form.id else 'Add' }} Subscription — {{ app_name }}{% endblock %}
 
 {% block content %}
 <div class="row">

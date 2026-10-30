@@ -1,4 +1,4 @@
-"""Flask application entry point for Grocery Visualiser."""
+"""Flask application entry point for Larder."""
 
 import logging
 import os
@@ -13,7 +13,7 @@ from flask_wtf.csrf import CSRFProtect
 from database import init_db, get_db, close_db, get_plan_dates, get_database_path, backup_database, database_stats, set_setting, get_setting
 from auth import login_user, logout_user, get_current_user, is_logged_in, login_required, hash_password, verify_password
 from models import (
-    CATEGORIES, UNITS, MEAL_TYPES, DAYS_OF_WEEK,
+    APP_NAME, CATEGORIES, UNITS, MEAL_TYPES, DAYS_OF_WEEK,
     CATEGORY_LOOKUP, DAY_LABELS, UNIT_LOOKUP, MEAL_TYPE_LABELS,
     category_label, is_http_url, parse_date, label_of,
 )
@@ -131,6 +131,7 @@ def create_app(testing=False):
     @application.context_processor
     def inject_common():
         return {
+            "app_name": APP_NAME,
             "current_user": get_current_user(),
             "is_logged_in": is_logged_in(),
             "categories": CATEGORIES,

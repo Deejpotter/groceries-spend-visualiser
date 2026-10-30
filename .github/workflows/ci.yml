@@ -37,6 +37,6 @@ jobs:
           docker run -d --name app -p 5000:5000 -e SECRET_KEY=ci grocery-visualiser:ci
           for i in $(seq 1 20); do curl -fs http://localhost:5000/health && break; sleep 1; done
           curl -fs http://localhost:5000/health
-          curl -fsL http://localhost:5000/login | grep -q "Grocery Visualiser"  # base template renders (setup page on a fresh DB)
+          curl -fsL http://localhost:5000/login | grep -q "Larder"  # base template renders (setup page on a fresh DB)
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:5000/)" = "302"  # dashboard redirects when logged out
           docker logs app 2>&1 | grep -qi "traceback" && { docker logs app; exit 1; } || true

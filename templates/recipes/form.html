@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "_macros.html" import form_errors, icon %}
 
-{% block title %}{{ 'Edit' if recipe and recipe.id else 'Add' }} Recipe — Grocery Visualiser{% endblock %}
+{% block title %}{{ 'Edit' if recipe and recipe.id else 'Add' }} Recipe — {{ app_name }}{% endblock %}
 
 {% block content %}
 <div class="row">

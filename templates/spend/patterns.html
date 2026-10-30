@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "_macros.html" import csrf %}
 
-{% block title %}Purchase Patterns: Grocery Visualiser{% endblock %}
+{% block title %}Purchase Patterns: {{ app_name }}{% endblock %}
 
 {% macro feedback_buttons(p) -%}
 <form method="post" action="{{ url_for('spend.spend_patterns_feedback') }}" class="d-inline">

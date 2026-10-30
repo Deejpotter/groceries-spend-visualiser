@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "_macros.html" import csrf, post_button, form_errors, icon %}
 
-{% block title %}Meal Plan — Grocery Visualiser{% endblock %}
+{% block title %}Meal Plan — {{ app_name }}{% endblock %}
 
 {% macro recipe_select(name="recipe_id", selected=None, label="Recipe") -%}
 <select name="{{ name }}" class="form-control form-control-sm" required aria-label="{{ label }}">

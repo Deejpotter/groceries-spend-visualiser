@@ -1,9 +1,9 @@
-# Grocery Visualiser
+# Larder
 
-A self-hosted meal planner, shopping-list generator and grocery spend tracker.
+A self-hosted household budgeting app: meal planning, shopping lists, grocery spend and bills.
 Plan meals from simple rules, turn the plan into a shopping list, and see what you
-actually spend from your supermarket order history — all in one small Flask app backed
-by a single SQLite file.
+actually spend from your supermarket order history and bank feed — all in one small Flask
+app backed by a single SQLite file.
 
 ---
 

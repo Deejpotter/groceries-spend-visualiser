@@ -1,4 +1,4 @@
-// Grocery Visualiser - shared client-side behaviour
+// Larder - shared client-side behaviour
 
 document.addEventListener('DOMContentLoaded', function () {
     // Auto-dismiss success/info flash messages; keep errors visible until closed.

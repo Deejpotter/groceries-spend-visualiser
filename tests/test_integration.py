@@ -1,4 +1,4 @@
-"""Integration tests for Grocery Visualiser — full workflow via Flask test client.
+"""Integration tests for Larder — full workflow via Flask test client.
 
 These tests exercise the actual routes: login, add ingredient, add recipe,
 create rules, set dates, generate plan, view shopping list.
@@ -23,6 +23,13 @@ class TestAuthentication:
         assert b"Password" in resp.data
         assert b"Show password" in resp.data
         assert b"Need to set up an account?" not in resp.data
+
+    def test_pages_show_app_name(self, client):
+        """The brand comes from APP_NAME, not hard-coded template text."""
+        _login(client, "branduser", "test123")
+        resp = client.get("/")
+        assert b"<title>Dashboard - Larder</title>" in resp.data
+        assert b"Grocery Visualiser" not in resp.data
 
     def test_dashboard_more_link_and_checklist(self, client, db):
         """Capped lists link onward; checklist stays until dates exist (B5)."""
