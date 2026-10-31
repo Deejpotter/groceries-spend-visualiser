@@ -2,7 +2,8 @@
 
 from datetime import date, timedelta
 
-from services.budget import budget_status, prorate_estimate
+from conftest import login
+from services.budget import budget_status, payday_split, prorate_estimate
 
 
 def _rows(*pairs):
@@ -171,3 +172,50 @@ def test_fortnight_prorates_long_plan(client, db):
         assert b"prorated" in resp.data
     else:
         assert b"prorated" not in resp.data
+
+
+def _summary(income=2000.0, groceries=600.0, bills=500.0):
+    return {"has_income": bool(income), "income": income, "groceries": groceries,
+            "subscription_total": bills}
+
+
+def test_payday_split_needs_income():
+    assert payday_split(_summary(income=None)) is None
+
+
+def test_payday_split_sets_savings_aside_before_spending():
+    split = payday_split(_summary(), 200, 50)
+    assert split["bills"] == 500
+    assert split["spending"] == 1250
+    assert split["left_to_spend"] == 650
+    assert split["overcommitted"] is False
+
+
+def test_payday_split_accepts_saved_setting_strings():
+    assert payday_split(_summary(), "200.00", "")["savings"] == 200
+
+
+def test_payday_split_flags_overcommitted_pay():
+    split = payday_split(_summary(), 1000, 0)
+    assert split["left_to_spend"] == -100
+    assert split["overcommitted"] is True
+
+
+def test_fortnight_page_shows_payday_split(client, db):
+    login(client, "splituser", "test123")
+    for key, value in (("fortnightly_income", "2100"), ("savings_per_pay", "200")):
+        db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value))
+    db.commit()
+    resp = client.get("/subscriptions/fortnight")
+    assert resp.status_code == 200
+    assert b"Payday split" in resp.data
+    assert b"$200.00" in resp.data
+
+
+def test_settings_saves_payday_amounts_and_rejects_bad_ones(client, db):
+    login(client, "savesplit", "test123")
+    client.post("/settings/save", data={"action": "save_budget", "savings_per_pay": "$150"})
+    row = db.execute("SELECT value FROM settings WHERE key = 'savings_per_pay'").fetchone()
+    assert row["value"] == "150.00"
+    resp = client.post("/settings/save", data={"action": "save_budget", "savings_per_pay": "lots"})
+    assert b"Savings each payday must be a dollar amount." in resp.data
