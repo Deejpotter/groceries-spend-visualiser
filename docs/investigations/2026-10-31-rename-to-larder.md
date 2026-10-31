@@ -38,12 +38,20 @@ with an empty database.
 
 ## 6. Verification
 
-`myenv/Scripts/python.exe -m pytest -q`: 690 passed. Staging is checked after the push
-to `dev`.
+- Before rebasing onto newer `dev` commits: 690 passed.
+- After rebasing: 799 passed, 5 failed, all in `tests/test_suggestions_routes.py::TestCycleList`
+  with `ValueError: Invalid format string`.
+- The same 5 fail on `dd4d6ce`, the commit before the rename, so the rename did not
+  cause them. That baseline run also failed 2 AI-key tests, which pass in the main checkout.
+- The rename was pushed before these failures were read, because the test command's exit
+  code was hidden by a pipe to `tail`.
+- Staging `/login` shows `<title>Login — Larder</title>` and `/health` returns 200.
+  Logged-in pages were not checked on staging; the test client covers the dashboard.
 
 ## 7. Open items
 
 - Decide whether to add a new domain and redirect the old one.
+- `%-d` in `services/cycle_list.py` and `routes/shopping_list.py` only works on Linux, so those 5 tests fail on Windows. CI and the Linux containers are not affected by this format.
 
 ## 8. Commands to reproduce
 
