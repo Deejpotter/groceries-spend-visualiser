@@ -35,7 +35,7 @@ how much to move anywhere, and savings had no place in the budget.
 ## 6. Verification
 
 - `pytest`: 824 passed, including 6 new tests.
-- Staging check recorded in the PR.
+- The first push did not reach staging, so a docs commit was pushed to redeploy it. Staging check recorded in the PR.
 
 ## 7. Open items
 
