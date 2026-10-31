@@ -67,7 +67,7 @@ def test_run_waits_then_reports_the_wrong_commit(app, monkeypatch):
     naps = []
     problems = sc.run("http://staging", "bbbbbbbbbbbb", KEY, timeout=0,
                       fetcher=_fetcher(app.test_client()), sleep=naps.append)
-    assert problems == ["staging runs aaaaaaaaaaaa, expected bbbbbbbbbbbb after 0s"]
+    assert problems == ["staging runs aaaaaaaaaaaa, expected bbbbbbbbbbbb after 0s."]
 
 
 def test_run_explains_a_missing_commit(app, monkeypatch):
@@ -94,12 +94,20 @@ def test_wait_for_commit_polls_until_it_appears():
     answers = iter([(502, ""), (200, json.dumps({"commit": "old1234"})),
                     (200, json.dumps({"commit": "new1234"}))])
     naps = []
-    ok, seen = sc.wait_for_commit("http://s", "new1234", 60, 5,
-                                  fetcher=lambda url: next(answers), sleep=naps.append)
-    assert ok and seen == "new1234"
+    ok, status, body = sc.wait_for_commit("http://s", "new1234", 60, 5,
+                                          fetcher=lambda url: next(answers), sleep=naps.append)
+    assert ok and sc.deployed_commit(body) == "new1234"
     assert naps == [5, 5]
 
 
 def test_main_needs_a_url(monkeypatch, capsys):
     monkeypatch.delenv("STAGING_URL", raising=False)
     assert sc.main([]) == 2
+
+
+def test_health_problem_names_the_cause():
+    assert "down or unreachable" in sc.health_problem(0, "", "abc1234", 60)
+    assert "down or unreachable" in sc.health_problem(502, "", "abc1234", 60)
+    assert "from before the staging check" in sc.health_problem(200, '{"status": "ok"}', "abc1234", 60)
+    assert "Include Source Commit" in sc.health_problem(200, '{"status": "ok", "commit": null}', "abc1234", 60)
+    assert "did not return JSON" in sc.health_problem(200, "<html>", "abc1234", 60)
