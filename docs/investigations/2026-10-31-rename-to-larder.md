@@ -51,7 +51,7 @@ with an empty database.
 ## 7. Open items
 
 - Decide whether to add a new domain and redirect the old one.
-- `%-d` in `services/cycle_list.py` and `routes/shopping_list.py` only works on Linux, so those 5 tests fail on Windows. CI and the Linux containers are not affected by this format.
+- Fixed the same day: `short_date` in `models.py` replaces the Linux-only `%-d` format, and all tests pass on Windows.
 
 ## 8. Commands to reproduce
 

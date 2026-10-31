@@ -240,6 +240,11 @@ def parse_ymd(text: str) -> date:
         return datetime.strptime(text, "%Y-%m-%d").date()
 
 
+def short_date(value: date) -> str:
+    """Format as ``Mon 5 Jan``. Avoids ``%-d``, which is invalid on Windows."""
+    return f"{value:%a} {value.day} {value:%b}"
+
+
 def validate_date_format(date_str: str) -> bool:
     """Check if a string is a valid YYYY-MM-DD date."""
     try:

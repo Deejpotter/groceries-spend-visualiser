@@ -2,11 +2,12 @@
 
 import io
 import sqlite3
+from datetime import date
 
 import pytest
 
 from conftest import create_user, login
-from models import label_of, short_name
+from models import label_of, short_date, short_name
 from services.plan_generator import generate_plan_entries, make_recipe, make_rule
 from services.shopping_list_generator import (
     generate_shopping_list, make_ingredient, make_plan_entry, make_recipe_dict, make_recipe_ingredient,
@@ -361,3 +362,7 @@ def test_display_name_shortens_the_list_and_spares(client, db):
     page = client.get("/shopping-list").data.decode()
     assert "Carrots" in page and "The Odd Bunch Carrots 1.5kg" not in page
     assert "Carrot soup ♻ uses spare Carrots" in client.get("/meal-plan").data.decode()
+
+
+def test_short_date_has_no_leading_zero():
+    assert short_date(date(2026, 1, 5)) == "Mon 5 Jan"
