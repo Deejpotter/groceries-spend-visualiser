@@ -26,6 +26,27 @@ document.addEventListener('DOMContentLoaded', function () {
         paint();
     })();
 
+    // KPI numbers count up on load. The real value is already in the HTML, so no-JS still works.
+    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        document.querySelectorAll('.kpi-value').forEach(function (el) {
+            var node = el.firstChild;
+            var match = node && node.nodeType === 3 && node.nodeValue.match(/^(\s*\$?)([\d,]+(?:\.(\d+))?)([\s\S]*)$/);
+            if (!match) { return; }
+            var target = parseFloat(match[2].replace(/,/g, ''));
+            var decimals = match[3] ? match[3].length : 0;
+            var started = performance.now();
+            (function frame(now) {
+                var t = Math.min((now - started) / 900, 1);
+                var value = target * (1 - Math.pow(1 - t, 3));
+                node.nodeValue = match[1] + value.toLocaleString('en-AU', {
+                    minimumFractionDigits: decimals, maximumFractionDigits: decimals
+                }) + match[4];
+                if (t < 1) { requestAnimationFrame(frame); }
+                else { node.nodeValue = match[0]; }
+            })(started);
+        });
+    }
+
     // Print: expand every disclosure first so packed/hidden options reach paper.
     window.addEventListener('beforeprint', function () {
         document.querySelectorAll('details:not([open])').forEach(function (d) {
