@@ -63,6 +63,47 @@
     </div>
 </div>
 
+{% if split %}
+<div class="card mb-4 section-card">
+    <div class="card-header">
+        <span class="section-title">Payday split</span>
+        <span class="small text-muted ml-2">where this fortnight's pay should go</span>
+    </div>
+    <div class="card-body">
+        <div class="kpi-row">
+            <div class="kpi-tile">
+                <div class="kpi-label">Bills</div>
+                <div class="kpi-value">{{ split.bills|money }}</div>
+                <div class="kpi-context">due this fortnight</div>
+            </div>
+            <div class="kpi-tile">
+                <div class="kpi-label">Savings</div>
+                <div class="kpi-value">{{ split.savings|money }}</div>
+                <div class="kpi-context">set aside first</div>
+            </div>
+            <div class="kpi-tile">
+                <div class="kpi-label">Long term savings</div>
+                <div class="kpi-value">{{ split.long_term|money }}</div>
+                <div class="kpi-context">leave untouched</div>
+            </div>
+            <div class="kpi-tile" data-tone="{{ 'danger' if split.overcommitted else 'ok' }}">
+                <div class="kpi-label">Spending</div>
+                <div class="kpi-value">{{ split.spending|money }}</div>
+                <div class="kpi-context">{{ split.groceries|money }} planned groceries, {{ split.left_to_spend|money }} left</div>
+            </div>
+        </div>
+        {% if split.overcommitted %}
+        <p class="text-danger small mt-3 mb-0">
+            This plan is over your pay by {{ (-split.left_to_spend)|money }}. Lower your savings or your groceries.
+        </p>
+        {% endif %}
+        <p class="text-muted small mt-3 mb-0">
+            Set your savings amounts in <a href="{{ url_for('settings.settings') }}">Settings</a>.
+        </p>
+    </div>
+</div>
+{% endif %}
+
 {% if summary.subscriptions %}
 <div class="card mb-4 section-card">
     <div class="card-header">

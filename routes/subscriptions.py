@@ -443,7 +443,7 @@ def subscription_mark_paid(sub_id):
 @login_required
 def subscription_fortnight():
     """Fortnightly budget summary: income - groceries - subscriptions = spare."""
-    from services.budget import fortnightly_summary
+    from services.budget import fortnightly_summary, payday_split
     from services.repository import load_shopping_inputs, shopping_preferences
     from services.shopping_list_generator import generate_shopping_list, total_cost
 
@@ -483,9 +483,11 @@ def subscription_fortnight():
         income = None
 
     summary = fortnightly_summary(subs, grocery_estimate, income, start, end)
+    split = payday_split(summary, get_setting("savings_per_pay"), get_setting("long_term_per_pay"))
     return render_template(
         "subscriptions/fortnight.html",
         summary=summary,
+        split=split,
         start=start,
         end=end,
         today=today,

@@ -130,3 +130,28 @@ def fortnightly_summary(subscriptions: List[Dict], grocery_estimate: float,
         "tone": tone,
         "has_income": income is not None and income > 0,
     }
+
+
+def payday_split(summary: Dict, savings=None, long_term=None) -> Optional[Dict]:
+    """Where this fortnight's pay should go: bills, savings, long term, spending.
+
+    summary is a fortnightly_summary() result; None without an income. Savings
+    are set aside before spending, so left_to_spend is what remains after
+    groceries. A negative left_to_spend means the plan overcommits the pay.
+    """
+    if not summary["has_income"]:
+        return None
+    savings = round(float(savings or 0), 2)
+    long_term = round(float(long_term or 0), 2)
+    bills = summary["subscription_total"]
+    spending = round(summary["income"] - bills - savings - long_term, 2)
+    left = round(spending - summary["groceries"], 2)
+    return {
+        "bills": bills,
+        "savings": savings,
+        "long_term": long_term,
+        "spending": spending,
+        "groceries": summary["groceries"],
+        "left_to_spend": left,
+        "overcommitted": left < 0,
+    }

@@ -57,6 +57,8 @@ def _settings_values():
         "payday_date": get_setting("payday_date", ""),
         "pay_frequency": get_setting("pay_frequency", "fortnightly"),
         "cycle_grocery_budget": get_setting("cycle_grocery_budget", ""),
+        "savings_per_pay": get_setting("savings_per_pay", ""),
+        "long_term_per_pay": get_setting("long_term_per_pay", ""),
         "detected_payday": _detected_payday(),
         "api_keys": list_keys(get_db(), user_id) if user_id else [],
         "new_api_key": None,
@@ -210,14 +212,31 @@ def save():
                 cycle_budget = f"{value:.2f}"
             except ValueError:
                 problems.append("The grocery budget per pay cycle must be a dollar amount above zero.")
+        pay_amounts = {}
+        for key, label in (("savings_per_pay", "Savings"), ("long_term_per_pay", "Long term savings")):
+            raw_amount = request.form.get(key, "").strip()
+            pay_amounts[key] = ""
+            if raw_amount:
+                try:
+                    value = float(raw_amount.replace("$", "").replace(",", ""))
+                    if value < 0:
+                        raise ValueError
+                    pay_amounts[key] = f"{value:.2f}"
+                except ValueError:
+                    problems.append(f"{label} each payday must be a dollar amount.")
         if problems:
             values = _settings_values()
             values.update({"payday_date": payday, "pay_frequency": frequency,
-                           "cycle_grocery_budget": cycle_raw, "errors": problems, "error_form": "budget"})
+                           "cycle_grocery_budget": cycle_raw,
+                           "savings_per_pay": request.form.get("savings_per_pay", ""),
+                           "long_term_per_pay": request.form.get("long_term_per_pay", ""),
+                           "errors": problems, "error_form": "budget"})
             return render_template("settings.html", **values)
         set_setting("payday_date", payday)
         set_setting("pay_frequency", frequency)
         set_setting("cycle_grocery_budget", cycle_budget)
+        for key, value in pay_amounts.items():
+            set_setting(key, value)
 
         db.commit()
         if request.headers.get("HX-Request"):
