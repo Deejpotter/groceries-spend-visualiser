@@ -475,24 +475,64 @@ def subscription_fortnight():
         if plan_days and overlap_days != plan_days:
             grocery_note = f"{plan_days}-day plan, prorated to {overlap_days} days"
 
-    # Fortnightly income from settings.
-    raw_income = (get_setting("fortnightly_income") or "").strip()
-    try:
-        income = float(raw_income.replace("$", "").replace(",", "")) if raw_income else None
-    except ValueError:
-        income = None
-
+    income = _fortnightly_income()
     summary = fortnightly_summary(subs, grocery_estimate, income, start, end)
     split = payday_split(summary, get_setting("savings_per_pay"), get_setting("long_term_per_pay"))
     return render_template(
         "subscriptions/fortnight.html",
         summary=summary,
         split=split,
+        advice=_savings_advice(subs, income),
         start=start,
         end=end,
         today=today,
         grocery_note=grocery_note,
     )
+
+
+def _fortnightly_income():
+    """Fortnightly income from settings, or None when blank or unreadable."""
+    raw_income = (get_setting("fortnightly_income") or "").strip()
+    try:
+        return float(raw_income.replace("$", "").replace(",", "")) if raw_income else None
+    except ValueError:
+        return None
+
+
+def _savings_advice(subs, income):
+    """Suggested savings per payday from the last few months of bank rows."""
+    from services.pay_cycle import detect_payday
+    from services.savings_advice import cash_flow, parse_accounts, suggest_savings
+    from services.subscriptions import monthly_cost_total
+
+    rows = [dict(r) for r in get_db().execute(
+        "SELECT txn_date, description, merchant_key, amount, direction, status"
+        " FROM bank_transactions ORDER BY txn_date")]
+    pay = detect_payday(rows)
+    if not pay:
+        return None
+    flow = cash_flow(rows, pay["merchant_key"], parse_accounts(get_setting("savings_accounts")))
+    override = income if pay["frequency"] == "fortnightly" else None
+    return suggest_savings(flow, pay, monthly_cost_total(subs), override)
+
+
+@subscriptions_bp.route("/subscriptions/fortnight/apply-savings", methods=["POST"])
+@login_required
+def subscription_apply_savings():
+    """Save the suggested savings amounts, and the detected pay if none is set."""
+    subs = [dict(r) for r in get_db().execute(
+        "SELECT * FROM subscriptions WHERE active = 1").fetchall()]
+    advice = _savings_advice(subs, _fortnightly_income())
+    if not advice or advice["overspending"]:
+        flash("There is no savings suggestion to use yet.", "warning")
+        return redirect(url_for("subscriptions.subscription_fortnight"))
+    set_setting("savings_per_pay", f"{advice['savings']:.2f}")
+    set_setting("long_term_per_pay", f"{advice['long_term']:.2f}")
+    if advice["frequency"] == "fortnightly" and not (get_setting("fortnightly_income") or "").strip():
+        set_setting("fortnightly_income", f"{advice['income']:.2f}")
+    get_db().commit()
+    flash("Saved the suggested savings amounts.", "success")
+    return redirect(url_for("subscriptions.subscription_fortnight"))
 
 
 def _save_late_reviews(reviews):

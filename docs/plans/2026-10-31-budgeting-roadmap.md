@@ -1,7 +1,7 @@
 # Larder budgeting roadmap
 
 - **Date:** 2026-10-31
-- **Status:** Paused. Resume from "Where this stopped".
+- **Status:** In progress. Resume from "Where this stopped".
 
 ## Goal
 
@@ -42,23 +42,29 @@ This is proposed and not yet set up.
 - Rename to Larder.
 - Count each shop once across invoices and bank rows.
 - Aurora theme, live on production.
+- Payday split, merged to `main` in PR #75 (not checked on staging first, at Deej's request).
 
 ## Where this stopped
 
-The payday split is on `dev` but is not on production.
+Suggested savings is built and pushed for review. See
+`docs/investigations/2026-10-31-suggested-savings.md`.
 
-1. Confirm the commit reached staging. Coolify's build queue was backed up on 31 Oct,
-   with `78f8103` queued behind other apps.
-2. Set an income and savings amounts on staging, check the Fortnightly Budget page, then
-   restore the staging settings.
-3. Open the PR from `dev` to `main` and merge it.
-4. Set real savings amounts in production Settings.
+1. Merge the suggested savings PR into `dev` and check it on staging with real bank rows.
+2. Set the savings account endings (`9910`) in Settings.
+3. Press "Use these amounts" on the Fortnightly Budget page, or adjust them by hand.
+4. Open the PR from `dev` to `main`.
 
 ## Next improvements
 
-1. Warn when transfers show savings being pulled back into spending.
-2. Treat transfers between Deej's own accounts as moves, using the account roles.
+1. Done in suggested savings: warn when money is moved back out of savings.
+2. Done in suggested savings: treat own-account transfers as moves.
 3. Add spending beyond groceries to the Spend page.
 4. Add `STE SUPERMARKET` to the merchant patterns and exclude `ALDIMOBILE`.
 5. Use Inter for Chart.js labels.
 6. Decide whether to add a Larder domain and redirect the old one.
+
+## Later ideas for automation
+
+- Track savings balances (BankSync balances) to show progress to the emergency fund goal.
+- Recalculate the suggestion each payday and flag when it changes by more than 10%.
+- Use account endings to set the roles in the account table automatically.
