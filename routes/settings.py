@@ -59,6 +59,7 @@ def _settings_values():
         "cycle_grocery_budget": get_setting("cycle_grocery_budget", ""),
         "savings_per_pay": get_setting("savings_per_pay", ""),
         "long_term_per_pay": get_setting("long_term_per_pay", ""),
+        "savings_accounts": get_setting("savings_accounts", ""),
         "detected_payday": _detected_payday(),
         "api_keys": list_keys(get_db(), user_id) if user_id else [],
         "new_api_key": None,
@@ -230,6 +231,7 @@ def save():
                            "cycle_grocery_budget": cycle_raw,
                            "savings_per_pay": request.form.get("savings_per_pay", ""),
                            "long_term_per_pay": request.form.get("long_term_per_pay", ""),
+                           "savings_accounts": request.form.get("savings_accounts", ""),
                            "errors": problems, "error_form": "budget"})
             return render_template("settings.html", **values)
         set_setting("payday_date", payday)
@@ -237,6 +239,8 @@ def save():
         set_setting("cycle_grocery_budget", cycle_budget)
         for key, value in pay_amounts.items():
             set_setting(key, value)
+        from services.savings_advice import parse_accounts
+        set_setting("savings_accounts", ", ".join(parse_accounts(request.form.get("savings_accounts", ""))))
 
         db.commit()
         if request.headers.get("HX-Request"):

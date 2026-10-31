@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import csrf %}
+{% from "_macros.html" import csrf, post_button %}
 
 {% block title %}Fortnightly Budget — {{ app_name }}{% endblock %}
 
@@ -103,6 +103,85 @@
     </div>
 </div>
 {% endif %}
+
+<div class="card mb-4 section-card">
+    <div class="card-header">
+        <span class="section-title">Suggested savings</span>
+        <span class="small text-muted ml-2">worked out from your bank history</span>
+    </div>
+    <div class="card-body">
+        {% if not advice %}
+        <p class="text-muted small mb-0">
+            Import bank transactions with at least three paydays in
+            <a href="{{ url_for('spend.spend_import') }}">Spend</a> and Larder will suggest savings amounts.
+        </p>
+        {% else %}
+        <div class="kpi-row">
+            <div class="kpi-tile">
+                <div class="kpi-label">Pay</div>
+                <div class="kpi-value">{{ advice.income|money }}</div>
+                <div class="kpi-context">each {{ {'weekly': 'week', 'monthly': 'month'}.get(advice.frequency, 'fortnight') }}</div>
+            </div>
+            <div class="kpi-tile">
+                <div class="kpi-label">Usual costs</div>
+                <div class="kpi-value">{{ advice.costs|money }}</div>
+                <div class="kpi-context">{{ advice.bills|money }} bills, {{ advice.groceries|money }} groceries, {{ advice.everyday|money }} other</div>
+            </div>
+            <div class="kpi-tile" data-tone="{{ 'ok' if advice.long_term else 'danger' }}">
+                <div class="kpi-label">Long term savings</div>
+                <div class="kpi-value">{{ advice.long_term|money }}</div>
+                <div class="kpi-context">emergency fund goal {{ advice.emergency_target|money }}{% if advice.pays_to_target %}, about {{ advice.pays_to_target }} pays{% endif %}</div>
+            </div>
+            <div class="kpi-tile" data-tone="{{ 'ok' if advice.savings else 'danger' }}">
+                <div class="kpi-label">Savings</div>
+                <div class="kpi-value">{{ advice.savings|money }}</div>
+                <div class="kpi-context">{{ advice.save_share }}% of pay saved in total</div>
+            </div>
+        </div>
+
+        {% if advice.overspending %}
+        <p class="text-danger small mt-3 mb-0">
+            Your usual costs are {{ (-advice.surplus)|money }} more than your pay, so there is nothing safe to save yet.
+        </p>
+        {% elif advice.benchmark_gap %}
+        <p class="small mt-3 mb-0">
+            That is {{ advice.benchmark_gap|money }} short of saving 20% of your pay ({{ advice.benchmark|money }}).
+        </p>
+        {% endif %}
+        {% if advice.from_savings %}
+        <p class="text-danger small mt-2 mb-0">
+            About {{ advice.from_savings|money }} each pay was moved back out of savings.
+        </p>
+        {% endif %}
+        {% if not advice.enough_history %}
+        <p class="text-muted small mt-2 mb-0">Based on only {{ advice.days }} days of history, so treat this as a rough guess.</p>
+        {% endif %}
+
+        <details class="mt-3">
+            <summary class="small">How this is worked out</summary>
+            <ul class="small text-muted mt-2 mb-0">
+                <li>Pay is your regular salary credit. Costs are bank spending from {{ advice.start|nice_date }} to {{ advice.end|nice_date }}, scaled to one pay.</li>
+                <li>Transfers between your own accounts are moves, so they are not counted as costs or income.</li>
+                <li>A fifth of what is left ({{ advice.buffer|money }}) stays as a buffer for irregular costs.</li>
+                <li>The rest is split in half. Long term savings build an emergency fund of three months of bills and groceries.</li>
+                <li>Saving 20% of your pay is a common benchmark, not a rule.</li>
+            </ul>
+            {% if advice.top_spending %}
+            <p class="small mt-2 mb-1">Biggest other spending each pay:</p>
+            <ul class="small text-muted mb-0">
+                {% for item in advice.top_spending %}<li>{{ item.name }}: {{ item.amount|money }}</li>{% endfor %}
+            </ul>
+            {% endif %}
+        </details>
+
+        {% if not advice.overspending %}
+        <div class="mt-3">
+            {{ post_button(url_for('subscriptions.subscription_apply_savings'), 'Use these amounts', class='btn btn-sm btn-primary') }}
+        </div>
+        {% endif %}
+        {% endif %}
+    </div>
+</div>
 
 {% if summary.subscriptions %}
 <div class="card mb-4 section-card">
