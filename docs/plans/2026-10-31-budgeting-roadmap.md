@@ -49,7 +49,9 @@ This is proposed and not yet set up.
 Suggested savings is built and pushed for review. See
 `docs/investigations/2026-10-31-suggested-savings.md`.
 
-1. Merge the suggested savings PR into `dev` and check it on staging with real bank rows.
+1. Suggested savings is merged to `dev` (`fd802c9`). An automated staging check now runs
+   after each `dev` deploy and on PRs to `main`. It needs two one-off steps from Deej: the
+   `STAGING_API_KEY` secret in GitHub, and "Include Source Commit in Build" on in Coolify.
 2. Set the savings account endings (`9910`) in Settings.
 3. Press "Use these amounts" on the Fortnightly Budget page, or adjust them by hand.
 4. Open the PR from `dev` to `main`.

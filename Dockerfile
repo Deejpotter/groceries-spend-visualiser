@@ -26,6 +26,11 @@ ENV DATABASE_PATH=/app/data/groceries.db
 ENV PYTHONUNBUFFERED=1
 ENV PORT=5000
 
+# Coolify passes the deployed commit when "Include Source Commit in Build" is on.
+# Declared last so a new commit only rebuilds this layer. /health reports it.
+ARG SOURCE_COMMIT=""
+ENV SOURCE_COMMIT=${SOURCE_COMMIT}
+
 USER appuser
 
 EXPOSE 5000

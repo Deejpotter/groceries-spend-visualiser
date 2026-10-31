@@ -12,6 +12,7 @@ That decision logic lives in services/, not here.
 """
 
 import base64
+import os
 import secrets
 from datetime import datetime
 
@@ -89,7 +90,7 @@ def _handle(f):
 
 @api_bp.route("/health")
 def health():
-    return jsonify({"status": "ok"}), 200
+    return jsonify({"status": "ok", "commit": os.getenv("SOURCE_COMMIT") or None}), 200
 
 
 # ---------------------------------------------------------------------------
@@ -669,6 +670,15 @@ def pay_cycle_info():
     from models import today as local_today
     from services.suggestions import current_pay_cycle
     return jsonify({"pay_cycle": current_pay_cycle(local_today())})
+
+
+@api_bp.route("/budget/savings")
+@require_api_key
+@_handle
+def budget_savings():
+    """Suggested savings per payday from bank history, or null without a detected pay."""
+    from services.suggestions import savings_suggestion
+    return jsonify({"savings": savings_suggestion()})
 
 
 @api_bp.route("/patterns")

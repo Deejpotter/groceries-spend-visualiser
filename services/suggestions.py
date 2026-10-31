@@ -138,3 +138,31 @@ def record_removed_line(row: Dict) -> None:
     if key:
         get_db().execute("INSERT INTO suggestion_feedback (kind, item_key, action) VALUES ('staple', ?, 'removed')",
                          (key,))
+
+
+def fortnightly_income() -> Optional[float]:
+    """Fortnightly income from settings, or None when blank or unreadable."""
+    raw = (get_setting("fortnightly_income") or "").strip()
+    try:
+        return float(raw.replace("$", "").replace(",", "")) if raw else None
+    except ValueError:
+        return None
+
+
+def savings_suggestion() -> Optional[Dict]:
+    """Suggested savings per payday from bank history and active bills, or None."""
+    from services.pay_cycle import detect_payday
+    from services.savings_advice import cash_flow, parse_accounts, suggest_savings
+    from services.subscriptions import monthly_cost_total
+
+    db = get_db()
+    rows = [dict(r) for r in db.execute(
+        "SELECT txn_date, description, merchant_key, amount, direction, status"
+        " FROM bank_transactions ORDER BY txn_date")]
+    pay = detect_payday(rows)
+    if not pay:
+        return None
+    subs = [dict(r) for r in db.execute("SELECT * FROM subscriptions WHERE active = 1")]
+    flow = cash_flow(rows, pay["merchant_key"], parse_accounts(get_setting("savings_accounts")))
+    override = fortnightly_income() if pay["frequency"] == "fortnightly" else None
+    return suggest_savings(flow, pay, monthly_cost_total(subs), override)
