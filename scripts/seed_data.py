@@ -1,4 +1,4 @@
-"""Seed the Grocery Visualiser database with ingredients and recipes.
+"""Seed the Larder database with ingredients and recipes.
 
 Ingredients are sourced from the user's Woolworths order history
 (data/woolworths_order_history.csv) — the most frequently purchased

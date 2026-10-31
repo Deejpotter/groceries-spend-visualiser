@@ -10,7 +10,7 @@ from auth import login_required
 from database import get_db, get_setting
 from models import label_of
 from services.budget import budget_status
-from services.spend_analysis import analyze_purchases, load_purchases
+from services.spend_analysis import analyze_purchases, load_purchases, load_spend
 from services.spend_import import (
     commit_import_batch, create_import_batch, discard_import_batch, get_import_batch,
     import_csv_file, import_purchases, parse_purchase_csv,
@@ -96,7 +96,7 @@ def spend_dashboard():
         target = float(raw_target) if raw_target else None
     except ValueError:
         target = None
-    budget = budget_status(load_purchases(db), target)
+    budget = budget_status(load_spend(db), target)
     unlinked = db.execute(
         "SELECT COUNT(DISTINCT product_name) FROM purchases WHERE ingredient_id IS NULL"
     ).fetchone()[0]

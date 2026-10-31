@@ -149,8 +149,8 @@ def _generate_cycle_list(plan_start, plan_end):
     count = save_cycle_list(result["lines"])
     set_setting("last_list_mode", mode)
     get_db().commit()
-    from models import parse_ymd
-    span = " to ".join(parse_ymd(d).strftime("%a %-d %b") for d in (plan_start, plan_end))
+    from models import parse_ymd, short_date
+    span = " to ".join(short_date(parse_ymd(d)) for d in (plan_start, plan_end))
     message = f"{MODE_LOOKUP[mode]} list for {span}: {count} item{'' if count == 1 else 's'}."
     trim = result.get("trim")
     if trim and trim["over_by"] > 0:

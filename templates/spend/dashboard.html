@@ -2,7 +2,7 @@
 
 {% from "_macros.html" import icon %}
 
-{% block title %}Spend — Grocery Visualiser{% endblock %}
+{% block title %}Spend — {{ app_name }}{% endblock %}
 
 {% macro product_table(title, rows) -%}
 <div class="card mb-4">
@@ -51,14 +51,18 @@
 </ul>
 <p class="text-muted small mb-2">
     {{ stats.first_date.strftime('%d %b %Y') }} – {{ stats.last_date.strftime('%d %b %Y') }}
-    &middot; {{ stats.total_shops }} shops &middot; {{ stats.total_items }} line items
+    &middot; {{ stats.total_shops }} shops &middot; {{ stats.total_items }} itemised products
+</p>
+<p class="text-muted small mb-2">
+    Totals use your bank payments where they exist, otherwise your invoices, so each shop counts
+    once. Only recognised supermarkets are tracked, not all of your spending.
 </p>
 
 <div class="kpi-row mb-4">
     <div class="kpi-tile" data-tone="neutral">
         <div class="kpi-label">{{ icon('receipt') }} Total spend</div>
         <div class="kpi-value">{{ stats.total_spend|money }}</div>
-        <div class="kpi-context">{{ stats.total_shops }} shop{{ '' if stats.total_shops == 1 else 's' }} &middot; {{ stats.total_items }} line items</div>
+        <div class="kpi-context">{{ stats.total_shops }} shop{{ '' if stats.total_shops == 1 else 's' }} &middot; {{ stats.total_items }} itemised products</div>
     </div>
     <div class="kpi-tile" data-tone="neutral">
         <div class="kpi-label">{{ icon('calendar-days') }} Per month</div>
@@ -101,7 +105,8 @@
     <p>
         You spent <strong>{{ stats.avg_spend_per_month|money }}</strong> a month on average.
         {% if stats.store_spend %}
-        {{ stats.store_spend[0].store }} took <strong>{{ stats.store_spend[0].share }}%</strong> of it.
+        {{ stats.store_spend[0].store }} took <strong>{{ stats.store_spend[0].share }}%</strong> of that,
+        out of the {{ stats.store_spend|length }} grocery store{{ '' if stats.store_spend|length == 1 else 's' }} tracked.
         {% endif %}
         {% if stats.top_by_spend %}
         Your biggest single product was <strong>{{ stats.top_by_spend[0].product_name }}</strong>

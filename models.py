@@ -1,10 +1,12 @@
-"""Constants, validation, and helper functions for Grocery Visualiser."""
+"""Constants, validation, and helper functions for Larder."""
 
 import os
 import re
 from datetime import date, datetime, timedelta
 from typing import Optional
 from zoneinfo import ZoneInfo
+
+APP_NAME = "Larder"
 
 DEFAULT_TIMEZONE = "Australia/Sydney"
 
@@ -236,6 +238,11 @@ def parse_ymd(text: str) -> date:
         return date.fromisoformat(text)
     except ValueError:
         return datetime.strptime(text, "%Y-%m-%d").date()
+
+
+def short_date(value: date) -> str:
+    """Format as ``Mon 5 Jan``. Avoids ``%-d``, which is invalid on Windows."""
+    return f"{value:%a} {value.day} {value:%b}"
 
 
 def validate_date_format(date_str: str) -> bool:

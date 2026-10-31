@@ -1,4 +1,4 @@
-"""Database connection, schema, and settings helpers for Grocery Visualiser."""
+"""Database connection, schema, and settings helpers for Larder."""
 
 import os
 import sqlite3

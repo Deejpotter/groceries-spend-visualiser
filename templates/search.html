@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "_macros.html" import icon %}
 
-{% block title %}{% if query %}Search: {{ query }}{% else %}Search{% endif %} — Grocery Visualiser{% endblock %}
+{% block title %}{% if query %}Search: {{ query }}{% else %}Search{% endif %} — {{ app_name }}{% endblock %}
 
 {% block content %}
 <div class="page-head mb-3">

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "_macros.html" import csrf, post_button, icon %}
 
-{% block title %}Shopping List — Grocery Visualiser{% endblock %}
+{% block title %}Shopping List — {{ app_name }}{% endblock %}
 
 {% macro pack_label(o) -%}
 {%- if o.unit == 'each' %}{{ o.count }} × {{ o.size|qty }}-pack
