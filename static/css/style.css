@@ -1177,6 +1177,7 @@ main h1 { font-size: 1.65rem; font-weight: 700; letter-spacing: -0.01em; }
     .form-check-input:checked { background-color: var(--brand); border-color: var(--brand); }
 
     /* Tables and lists */
+    .card-body:has(> .table) { overflow-x: auto; }
     .table {
         --bs-table-bg: transparent;
         --bs-table-color: var(--ink);
