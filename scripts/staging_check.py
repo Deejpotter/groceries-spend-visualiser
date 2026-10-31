@@ -71,17 +71,34 @@ def check_savings(payload):
     return problems
 
 
+def health_problem(status, body, expected, timeout):
+    """Why /health does not show the expected commit, in words Deej can act on."""
+    if status != 200:
+        return f"/health returned {status or 'no answer'} for {timeout}s: staging is down or unreachable."
+    try:
+        payload = json.loads(body)
+    except ValueError:
+        payload = None
+    if not isinstance(payload, dict):
+        return "/health did not return JSON."
+    if "commit" not in payload:
+        return ("/health has no commit field, so staging is still running code from before the "
+                "staging check was added. Check the Coolify deploy log for the dev service.")
+    if not payload["commit"]:
+        return ("Staging runs the new code but /health reports no commit. Turn on 'Include "
+                "Source Commit in Build' in Coolify (Advanced) and redeploy.")
+    return f"staging runs {payload['commit'][:12]}, expected {expected[:12]} after {timeout}s."
+
+
 def wait_for_commit(base, expected, timeout, interval, fetcher=fetch, sleep=time.sleep):
-    """Poll /health until it reports `expected`. Returns (ok, last commit seen)."""
+    """Poll /health until it reports `expected`. Returns (ok, last status, last body)."""
     deadline = time.monotonic() + timeout
-    seen = None
     while True:
         status, body = fetcher(base + "/health")
-        seen = deployed_commit(body) if status == 200 else None
-        if commit_matches(seen, expected):
-            return True, seen
+        if status == 200 and commit_matches(deployed_commit(body), expected):
+            return True, status, body
         if time.monotonic() >= deadline:
-            return False, seen
+            return False, status, body
         sleep(interval)
 
 
@@ -90,15 +107,9 @@ def run(base, expected, key, timeout=1200, interval=20, fetcher=fetch, sleep=tim
     base = base.rstrip("/")
     problems = []
     if expected:
-        ok, seen = wait_for_commit(base, expected, timeout, interval, fetcher, sleep)
+        ok, status, body = wait_for_commit(base, expected, timeout, interval, fetcher, sleep)
         if not ok:
-            if seen is None:
-                problems.append("/health reports no commit. Turn on 'Include Source Commit in "
-                                "Build' in Coolify (Advanced) and redeploy.")
-            else:
-                problems.append(f"staging runs {seen[:12]}, expected {expected[:12]} "
-                                f"after {timeout}s")
-            return problems
+            return [health_problem(status, body, expected, timeout)]
     status, body = fetcher(base + "/login")
     if status != 200 or "Larder" not in body:
         problems.append(f"/login returned {status}")
