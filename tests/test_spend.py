@@ -5,7 +5,9 @@ import io
 import pytest
 
 from conftest import login
-from services.spend_analysis import analyze_purchases
+from services.spend_analysis import (
+    analyze_purchases, average_spend_per_shop, load_purchases, load_spend,
+)
 from services.spend_import import (
     import_purchases, parse_cup_price, parse_purchase_csv, price_per_unit, product_url,
 )
@@ -301,3 +303,134 @@ def test_analyze_purchases_all_bad_dates_returns_none():
          "product_name": "Bad", "quantity": 1, "line_total": 5.0},
     ]
     assert analyze_purchases(rows) is None
+
+
+# ---------------------------------------------------------------------------
+# Each shop counts once
+# ---------------------------------------------------------------------------
+
+def _line(day, basket, name, total, **extra):
+    return {"order_date": day, "basket_id": basket, "store": "Woolworths", "product_name": name,
+            "quantity": 1, "line_total": total, "origin": "ui", **extra}
+
+
+def _bank(day, txn, total, store="Woolworths", value_date=True):
+    name = f"{store} Online, Card xx2287" + (", Value date: 01/01/2026" if value_date else "")
+    return {"order_date": day, "basket_id": f"bs:{txn}", "store": store, "product_name": name,
+            "quantity": 1, "line_total": total, "origin": "banksync"}
+
+
+def test_invoice_and_its_bank_payment_count_once():
+    stats = analyze_purchases([
+        _line("2026-03-02", "1_1", "Milk", 30.0), _line("2026-03-02", "1_1", "Eggs", 20.0),
+        _bank("2026-03-04", "a", 55.0),
+    ])
+    assert stats["total_spend"] == 55.0
+    assert stats["total_shops"] == 1
+    assert stats["monthly_spend"] == [("2026-03", 55.0)]
+    assert stats["total_items"] == 2
+    assert [p["product_name"] for p in stats["top_by_spend"]] == ["Milk", "Eggs"]
+
+
+def test_invoices_outside_bank_coverage_still_count():
+    stats = analyze_purchases([
+        _line("2023-05-01", "1_1", "Milk", 10.0),
+        _bank("2026-03-04", "a", 55.0),
+        _line("2026-03-20", "1_9", "Eggs", 7.0),  # newer than the last bank sync
+    ])
+    assert stats["total_spend"] == 72.0
+    assert stats["total_shops"] == 3
+
+
+def test_invoice_just_before_first_bank_row_is_that_payment():
+    stats = analyze_purchases([_line("2026-03-02", "1_1", "Milk", 50.0), _bank("2026-03-04", "a", 51.0)])
+    assert stats["total_spend"] == 51.0
+
+
+def test_bank_coverage_is_per_store():
+    stats = analyze_purchases([
+        _line("2026-03-05", "c1", "Milk", 12.0, store="Coles"),
+        _bank("2026-03-01", "a", 40.0), _bank("2026-03-10", "b", 40.0),
+    ])
+    assert stats["total_spend"] == 92.0
+    assert {s["store"]: s["share"] for s in stats["store_spend"]} == {"Woolworths": 87, "Coles": 13}
+
+
+def test_amended_order_keeps_the_later_invoice():
+    names = ["Milk", "Eggs", "Bread", "Tea"]
+    rows = [_line("2023-05-01", "1_100", n, 10.0) for n in names]
+    rows += [_line("2023-05-01", "1_200", n, 10.0) for n in names + ["Jam"]]
+    stats = analyze_purchases(rows)
+    assert stats["total_spend"] == 50.0
+    assert stats["total_shops"] == 1
+    assert stats["total_items"] == 5
+    assert stats["top_by_frequency"][0]["orders"] == 1
+
+
+def test_small_same_day_shops_are_not_treated_as_amended():
+    stats = analyze_purchases([
+        _line("2023-05-01", "1_100", "Milk", 3.0), _line("2023-05-01", "1_200", "Milk", 3.0),
+    ])
+    assert stats["total_shops"] == 2
+
+
+def test_different_same_day_orders_both_count():
+    stats = analyze_purchases(
+        [_line("2023-05-01", "1_100", n, 5.0) for n in "abcde"]
+        + [_line("2023-05-01", "1_200", n, 5.0) for n in "vwxyz"])
+    assert stats["total_spend"] == 50.0
+
+
+def test_pending_copy_of_a_posted_payment_counts_once():
+    stats = analyze_purchases([
+        _bank("2026-10-26", "pending", 210.44, value_date=False),
+        _bank("2026-10-28", "posted", 210.44),
+    ])
+    assert stats["total_spend"] == 210.44
+    assert stats["total_shops"] == 1
+
+
+def test_same_amount_shops_without_value_dates_both_count():
+    stats = analyze_purchases([
+        _bank("2026-10-26", "a", 9.0, store="ALDI", value_date=False),
+        _bank("2026-10-27", "b", 9.0, store="ALDI", value_date=False),
+    ])
+    assert stats["total_shops"] == 2
+
+
+def test_bank_only_period_has_no_products():
+    stats = analyze_purchases([_bank("2026-10-05", "a", 90.0)])
+    assert stats["total_spend"] == 90.0
+    assert stats["total_items"] == 0
+    assert stats["top_by_spend"] == []
+    assert stats["category_spend"] == []
+
+
+def _insert(db, rows):
+    for r in rows:
+        db.execute(
+            "INSERT INTO purchases (order_date, basket_id, store, product_name, quantity, line_total, origin)"
+            " VALUES (:order_date, :basket_id, :store, :product_name, :quantity, :line_total, :origin)", r)
+    db.commit()
+
+
+def test_window_edge_does_not_split_a_shop_from_its_payment(db):
+    _insert(db, [_bank("2026-02-01", "first", 20.0), _line("2026-03-02", "1_1", "Milk", 50.0),
+                 _bank("2026-03-04", "a", 51.0)])
+    assert analyze_purchases(load_purchases(db, start="2026-03-01"))["total_spend"] == 51.0
+    assert [r["line_total"] for r in load_spend(db, start="2026-03-01")] == [51.0]
+
+
+def test_average_spend_per_shop_ignores_duplicates(db):
+    _insert(db, [_line("2026-03-02", "1_1", "Milk", 50.0), _bank("2026-03-04", "a", 60.0)])
+    assert average_spend_per_shop(db) == 60.0
+
+
+def test_budget_on_spend_page_counts_each_shop_once(client, db):
+    from datetime import date
+    login(client)
+    today = date.today()
+    day = today.replace(day=1).isoformat()
+    _insert(db, [_line(day, "1_1", "Milk", 50.0), _bank(day, "a", 60.0)])
+    from services.budget import budget_status
+    assert budget_status(load_spend(db), 100.0, today=today)["spent"] == 60.0

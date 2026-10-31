@@ -232,7 +232,7 @@ def create_app(testing=False):
         from services import dashboard as dash
         from services.repository import load_linked_products, load_list_rows, load_shopping_inputs
         from services.shopping_list_generator import plan_list_lines, recipes_using_spares, spares
-        from services.spend_analysis import analyze_purchases, load_purchases
+        from services.spend_analysis import analyze_purchases, load_purchases, load_spend
 
         db = get_db()
 
@@ -270,8 +270,8 @@ def create_app(testing=False):
             latest_day = date.fromisoformat(str(latest)[:10])
             recent_start = (latest_day - timedelta(days=90)).isoformat()
             prior_start = (latest_day - timedelta(days=180)).isoformat()
-            spend = dash.spend_window(load_purchases(db, start=recent_start))
-            prior = dash.spend_window(load_purchases(db, start=prior_start, end=recent_start))
+            spend = dash.spend_window(load_spend(db, start=recent_start))
+            prior = dash.spend_window(load_spend(db, start=prior_start, end=recent_start))
             spend_delta = dash.trend(spend["avg_per_shop"], prior["avg_per_shop"])
             stats = analyze_purchases(load_purchases(db), top_n=5)
             monthly = stats["monthly_spend"] if stats else []
