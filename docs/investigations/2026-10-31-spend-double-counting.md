@@ -32,7 +32,7 @@ to 2026-10-28.
 | Removing duplicates fixes the 98% | **Rejected** | Woolworths is 96.6%, shown as 97%, of $14,954.26. |
 | Refunds are ignored | **Rejected** | No grocery credits exist in the bank data. |
 | Grocery shops are missed by the merchant patterns | **Minor** | `STE SUPERMARKET` $169.27 is unclassified. Adding it changes the share by about 1 point. |
-| Money spent from another account is invisible | **Likely, unverified** | 28 transfers labelled "Groceries" total $2,230 (including one typed "Groceeies") to another account. The bank data only shows them leaving. If all of it was spent at other stores, Woolworths would be about 84%. |
+| Money spent from another account is invisible | **Rejected** | First recorded here as likely, on the wrong claim that the bank data only shows the 28 "Groceries" transfers ($2,230) leaving. The feed holds both sides: all 28 pair by date and amount, moving between Deej's own accounts into the one that receives every "Groceries" transfer. Deej confirmed one account pays and another holds savings. These are top-ups before a shop, not spending elsewhere, so the 84% estimate is withdrawn. 27 of the 28 have a grocery payment within 3 days, which is weak support because shops are only 3.6 days apart. |
 | The figure reads as a share of all spending | **Confirmed** as a wording fault | "of it" sat next to the plain "you spent". Woolworths is about 39% of the $37,298 non-transfer bank debits. |
 | Invoices of about 42 to 45 lines lost items | **Likely, unverified** | Those baskets sit $80 to $190 below their bank charge, while small baskets are within about $10. The source invoices were not available to check. Totals no longer depend on this, but product figures may be low. |
 
@@ -94,13 +94,11 @@ Reconciliation: bank rows of $15,164.70 less the $210.44 pending copy is $14,954
 
 ## 7. Open items
 
-1. What is the account receiving the "Groceries" transfers? If it pays other
-   supermarkets, connect it, or the store share stays overstated.
-2. Are invoices of about 43 lines losing items on import? This needs one original
+1. Are invoices of about 43 lines losing items on import? This needs one original
    invoice to compare.
-3. Should `STE SUPERMARKET` be added to the merchant patterns, and `ALDIMOBILE`
+2. Should `STE SUPERMARKET` be added to the merchant patterns, and `ALDIMOBILE`
    excluded?
-4. The "All time" monthly average spreads across the gap from Oct 2023 to Sep 2025,
+3. The "All time" monthly average spreads across the gap from Oct 2023 to Sep 2025,
    which has no data.
 
 ## 8. Commands to reproduce
