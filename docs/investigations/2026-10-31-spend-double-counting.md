@@ -84,6 +84,12 @@ Reconciliation: bank rows of $15,164.70 less the $210.44 pending copy is $14,954
 - New tests in `tests/test_spend.py` cover each duplicate type, bank coverage per
   store, range edges, the budget and the guards against false matches.
 - The new code was run read-only against production rows and matched the table above.
+- Linux CI passed on the fix commit.
+- Staging runs the fix and shows the new wording. Its 12-month view went from 79
+  shops and $12,169.11 to 74 shops and $11,272.17, which is the amended orders
+  dropping out.
+- Staging's `purchases` table has no bank rows, so the invoice and bank overlap
+  could only be checked with the production run above.
 - Full test results are in section 8.
 
 ## 7. Open items
