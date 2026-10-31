@@ -86,7 +86,13 @@ def test_health_needs_no_auth(client):
     """The health check stays unauthenticated (CI + deploy checks use it)."""
     r = client.get("/api/v1/health")
     assert r.status_code == 200
-    assert r.get_json() == {"status": "ok"}
+    assert r.get_json() == {"status": "ok", "commit": None}
+
+
+def test_health_reports_deployed_commit(client, monkeypatch):
+    monkeypatch.setenv("SOURCE_COMMIT", "abc123")
+    assert client.get("/api/v1/health").get_json()["commit"] == "abc123"
+    assert client.get("/health").get_json()["commit"] == "abc123"
 
 
 def test_missing_key_is_401(client):

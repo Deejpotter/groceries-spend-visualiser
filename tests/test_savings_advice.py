@@ -210,3 +210,30 @@ def test_settings_saves_savings_accounts(client, db):
     from database import get_setting
     assert get_setting("savings_accounts") == "9910, 4321"
     assert 'value="9910, 4321"' in client.get("/settings").get_data(as_text=True)
+
+
+def test_api_savings_needs_key(client):
+    assert client.get("/api/v1/budget/savings").status_code == 401
+
+
+def test_api_savings_null_without_history(app):
+    from database import get_db, set_setting
+    with app.app_context():
+        set_setting("mcp_api_key", "k-123")
+        get_db().commit()
+    client = app.test_client()
+    r = client.get("/api/v1/budget/savings", headers={"Authorization": "Bearer k-123"})
+    assert r.status_code == 200
+    assert r.get_json() == {"savings": None}
+
+
+def test_api_savings_matches_page(app):
+    from database import get_db, set_setting
+    with app.app_context():
+        set_setting("mcp_api_key", "k-123")
+        _store(get_db(), _history())
+    client = app.test_client()
+    body = client.get("/api/v1/budget/savings", headers={"Authorization": "Bearer k-123"}).get_json()
+    assert body["savings"]["savings"] == 800
+    assert body["savings"]["long_term"] == 790
+    assert body["savings"]["enough_history"] is True
