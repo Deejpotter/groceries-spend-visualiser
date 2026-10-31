@@ -1093,7 +1093,14 @@ main h1 { font-size: 1.65rem; font-weight: 700; letter-spacing: -0.01em; }
     }
     .insight strong { color: var(--ink); text-shadow: 0 0 14px var(--brand); }
     .bottom-nav { background: var(--glass); backdrop-filter: blur(16px) saturate(1.5); }
-    .sticky-actions { top: 4.2rem; border-radius: var(--radius-sm); }
+    .sticky-actions {
+        top: 4.2rem;
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+        background: var(--glass);
+        border-radius: var(--radius-sm);
+        backdrop-filter: blur(16px) saturate(1.5);
+    }
     footer.bg-light,
     .bg-light,
     .bg-white { background: var(--card) !important; }
@@ -1108,7 +1115,8 @@ main h1 { font-size: 1.65rem; font-weight: 700; letter-spacing: -0.01em; }
     .kpi-tile[data-tone="ok"]::before { background: var(--ok); box-shadow: 0 0 16px var(--ok); }
     .kpi-tile[data-tone="warn"]::before { background: var(--warn); box-shadow: 0 0 16px var(--warn); }
     .kpi-tile[data-tone="danger"]::before { background: var(--danger); box-shadow: 0 0 16px var(--danger); }
-    .kpi-value { font-size: 2.2rem; font-weight: 800; letter-spacing: -0.03em; }
+    .kpi-value { font-size: clamp(1.7rem, 2.4vw, 2.2rem); font-weight: 800; letter-spacing: -0.03em; }
+    .kpi-tile .sparkline { position: static; margin-top: 0.35rem; margin-left: auto; }
     .stat-main { font-weight: 800; }
 
     /* Controls */
@@ -1128,6 +1136,20 @@ main h1 { font-size: 1.65rem; font-weight: 700; letter-spacing: -0.01em; }
         box-shadow: 0 8px 26px color-mix(in srgb, #FF006E 48%, transparent);
     }
     .btn-outline-primary:hover { color: #fff; box-shadow: 0 0 18px var(--brand); }
+    .btn-outline-secondary {
+        --bs-btn-color: var(--ink);
+        --bs-btn-border-color: var(--ink-soft);
+        --bs-btn-hover-color: var(--ink);
+        --bs-btn-hover-bg: var(--brand-tint);
+        --bs-btn-hover-border-color: var(--sky-b);
+    }
+    .btn-secondary {
+        --bs-btn-color: var(--ink);
+        --bs-btn-bg: var(--line);
+        --bs-btn-border-color: var(--line);
+        --bs-btn-hover-color: var(--ink);
+        --bs-btn-hover-bg: var(--ink-soft);
+    }
     .nav-pills .nav-link { border-radius: 999px; }
     .nav-pills .nav-link.active {
         color: #fff !important;
