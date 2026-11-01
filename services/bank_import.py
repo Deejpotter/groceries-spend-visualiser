@@ -21,7 +21,11 @@ DEFAULT_MERCHANT_PATTERNS = [
     ("foodworks", "Foodworks"),
     ("spar", "Spar"),
     ("costco", "Costco"),
+    ("ste supermarket", "STE Supermarket"),
 ]
+
+# Merchants whose names contain a grocery keyword but aren't groceries.
+NOT_GROCERY = ("aldimobile", "aldi mobile")
 
 
 def _num(value, default=None):
@@ -110,6 +114,17 @@ def resolve_directions(rows: List[Dict]) -> List[Dict]:
     return resolved
 
 
+def restamp_grocery(rows: List[Dict], patterns) -> List[Dict]:
+    """Copies of bank rows with 'grocery' status worked out again from patterns.
+
+    Status is stamped at import, so rows imported before a pattern changed keep
+    the old answer. Totals use this so history follows the current patterns.
+    """
+    return [dict(row, status="grocery" if classify_merchant(row.get("description"), patterns)
+                 else ("other" if row.get("status") == "grocery" else row.get("status")))
+            for row in rows]
+
+
 def load_merchant_patterns(db) -> List[Tuple[str, str]]:
     """Grocery merchant patterns from settings, or the defaults.
 
@@ -138,6 +153,8 @@ def load_merchant_patterns(db) -> List[Tuple[str, str]]:
 def classify_merchant(description: str, patterns) -> Optional[str]:
     """The first grocery merchant matching the description, or None."""
     text = (description or "").lower()
+    if any(word in text for word in NOT_GROCERY):
+        return None
     for keyword, name in patterns:
         if keyword and keyword in text:
             return name

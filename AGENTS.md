@@ -145,6 +145,12 @@ mount on `/app/data` configured in the Coolify UI.
   The web UI, the MCP server and any other agent all go through the same services.
   Staging/prod containers need `flask --app app set-api-key` run once so the key exists
   in their database; the key is a real remote credential — HTTPS only.
+- **Logging in with the Coolify admin values:** `ADMIN_USERNAME` / `ADMIN_PASSWORD` in
+  Coolify are correct, but `auto_create_admin()` only uses them when the database has no
+  users. Staging accepts them; production's account has a different stored password, so a
+  login there fails with "Invalid username or password". That is expected, not a wrong
+  value. To check production, use the read-only API with a key from `set-api-key`, not a
+  login. `COOLIFY_API_TOKEN` works; Cloudflare error 1033 means the tunnel is down.
 
 ## Reference docs
 
@@ -157,6 +163,9 @@ mount on `/app/data` configured in the Coolify UI.
 - `POST_MORTEM_2026-10-18_AGENT_CRUD.md` — what went wrong (and right) while making
   ingredient/recipe CRUD agent-friendly over the API and MCP. Read before extending
   the API or MCP server.
+- `POST_MORTEM_2026-11-01_SAVINGS_RELEASE.md`: the savings and staging check release. Real
+  bank data has `direction = 'unknown'` for BankSync money in; read it before touching bank
+  data or the deploy pipeline.
 - `ux-audit-report-2.html` / `ux-audit-report-3.html` — UX audits with evidence and
   recommendations. Round 3 records the design/workflow fixes (undo, search, scaling,
   favourites, image upload, quick-start rules).

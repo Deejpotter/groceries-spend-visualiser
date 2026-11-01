@@ -46,15 +46,17 @@ This is proposed and not yet set up.
 
 ## Where this stopped
 
-Suggested savings and the staging check are on `dev` and running on staging. The step by
-step plan to finish the release is `docs/plans/2026-11-01-finish-savings-release.md`.
+Released to `main` on 1 Nov (PR #83): suggested savings, all spending on the Spend page and
+the staging check. See `POST_MORTEM_2026-11-01_SAVINGS_RELEASE.md` for what happened and
+the open items. The remaining release steps (API key secret, Coolify webhook cause) are in
+`docs/plans/2026-11-01-finish-savings-release.md`.
 
 ## Next improvements
 
 1. Done in suggested savings: warn when money is moved back out of savings.
 2. Done in suggested savings: treat own-account transfers as moves.
-3. Add spending beyond groceries to the Spend page.
-4. Add `STE SUPERMARKET` to the merchant patterns and exclude `ALDIMOBILE`.
+3. Done: all spending on the Spend page (#82).
+4. Done: `STE SUPERMARKET` is a grocery store and `ALDIMOBILE` is not.
 5. Use Inter for Chart.js labels.
 6. Decide whether to add a Larder domain and redirect the old one.
 
