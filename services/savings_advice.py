@@ -172,6 +172,49 @@ def suggest_savings(flow: Optional[Dict], pay: Optional[Dict], monthly_bills: fl
     }
 
 
+SAVINGS_WORDS = ("saver", "savings", "goal", "save", "bonus")
+
+
+def savings_accounts(accounts: Iterable[Dict], endings: Iterable[str] = ()) -> List[Dict]:
+    """The accounts that hold savings.
+
+    Uses the endings from Settings when there are any; otherwise any account
+    whose name says saver, savings, goal or bonus, or whose type is exactly
+    savings. CDR types like TRANS_AND_SAVINGS_ACCOUNTS cover everyday accounts
+    too, so a type that merely contains "savings" doesn't count.
+    """
+    accounts = list(accounts or [])
+    endings = [e for e in endings if e]
+    if endings:
+        return [a for a in accounts if a.get("ending") and a["ending"] in endings]
+    return [a for a in accounts
+            if any(w in (a.get("name") or "").lower() for w in SAVINGS_WORDS)
+            or (a.get("type") or "").strip().lower() in ("savings", "saver")]
+
+
+def savings_progress(accounts: Iterable[Dict], target: float,
+                     long_term_per_pay: float = 0.0) -> Optional[Dict]:
+    """Progress of savings balances towards the emergency fund target, or None.
+
+    None when no savings account has a known balance.
+    """
+    known = [a for a in accounts if a.get("balance") is not None]
+    if not known:
+        return None
+    saved = round(sum(float(a["balance"]) for a in known), 2)
+    remaining = round(max(target - saved, 0.0), 2)
+    return {
+        "saved": saved,
+        "target": target,
+        "remaining": remaining,
+        "percent": min(100, round(saved / target * 100)) if target else 100,
+        "reached": bool(target) and saved >= target,
+        "pays_to_go": math.ceil(remaining / long_term_per_pay) if remaining and long_term_per_pay else None,
+        "accounts": [{"name": a.get("name") or "Account", "ending": a.get("ending") or "",
+                      "balance": round(float(a["balance"]), 2)} for a in known],
+    }
+
+
 def make_txn(day: str, amount: float, description: str, direction: str = "debit",
              status: str = "other", merchant_key: Optional[str] = None) -> Dict:
     """A bank_transactions row for tests."""

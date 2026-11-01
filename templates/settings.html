@@ -149,7 +149,13 @@
                                name="savings_accounts" value="{{ savings_accounts }}" placeholder="e.g. 9910">
                         <small class="text-muted">
                             Last four digits, separated by commas. Transfers out of these accounts are flagged as savings being spent.
+                            Leave blank to use accounts named saver, savings or goal.
                         </small>
+                        {% if bank_accounts %}
+                        <ul class="small text-muted mt-1 mb-0">
+                            {% for a in bank_accounts %}<li>{{ a.name or a.type or 'Account' }}{% if a.ending %} xx{{ a.ending }}{% endif %}{% if a.balance is not none %}: {{ a.balance|money }}{% endif %}</li>{% endfor %}
+                        </ul>
+                        {% endif %}
                     </div>
                     <h3 class="h6 mt-3 mb-2">Pay cycle</h3>
                     <div class="form-row">

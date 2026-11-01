@@ -203,6 +203,27 @@ def map_banksync_transaction(txn: Dict) -> Optional[Dict]:
             "direction": "debit" if value < 0 else "unknown"}
 
 
+def account_snapshot(account: Dict) -> Optional[Dict]:
+    """A BankSync account as {id, ending, name, type, balance, available}, or None.
+
+    ``ending`` is the last four digits of the account number, matching the
+    "xx9910" endings in bank descriptions and the Settings field.
+    """
+    account_id = str(account.get("id") or account.get("accountId") or "")
+    if not account_id:
+        return None
+    from services.bank_import import _num
+    digits = "".join(ch for ch in str(account.get("accountNumber") or "") if ch.isdigit())
+    return {
+        "id": account_id,
+        "ending": digits[-4:],
+        "name": str(account.get("accountName") or account.get("name") or "").strip(),
+        "type": str(account.get("accountType") or account.get("type") or "").strip(),
+        "balance": _num(account.get("balance")),
+        "available": _num(account.get("availableBalance")),
+    }
+
+
 def sync_accounts(db, client, patterns, from_date_override: Optional[str] = None,
                   update_cursor: bool = True) -> Dict:
     """Fetch transactions for every connected account and import them.
@@ -225,6 +246,7 @@ def sync_accounts(db, client, patterns, from_date_override: Optional[str] = None
     unclassified: List[Dict] = []
     errors: List[str] = []
     today = date.today()
+    snapshots: List[Dict] = []
     for bank in client.list_banks():
         bank_id = str(bank.get("id") or bank.get("bankId") or "")
         if not bank_id:
@@ -233,6 +255,9 @@ def sync_accounts(db, client, patterns, from_date_override: Optional[str] = None
             account_id = str(account.get("id") or account.get("accountId") or "")
             if not account_id:
                 continue
+            snapshot = account_snapshot(account)
+            if snapshot:
+                snapshots.append(snapshot)
             bookmark = cursors.get(account_id) or {}
             from_date = from_date_override or bookmark.get("date") or (
                 today - timedelta(days=FIRST_SYNC_DAYS)).isoformat()
@@ -266,6 +291,10 @@ def sync_accounts(db, client, patterns, from_date_override: Optional[str] = None
             if latest and update_cursor:
                 cursors[account_id] = {"date": latest}
     set_setting("banksync_cursors", json.dumps(cursors))
+    if snapshots:
+        set_setting("banksync_accounts", json.dumps(
+            {"as_of": datetime.now(timezone.utc).isoformat(timespec="minutes"),
+             "accounts": snapshots}))
     db.commit()
     from services.bank_import import remember_unclassified
     remember_unclassified(db, unclassified)
