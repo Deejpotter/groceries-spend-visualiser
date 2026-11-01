@@ -145,6 +145,12 @@ mount on `/app/data` configured in the Coolify UI.
   The web UI, the MCP server and any other agent all go through the same services.
   Staging/prod containers need `flask --app app set-api-key` run once so the key exists
   in their database; the key is a real remote credential — HTTPS only.
+- **Logging in with the Coolify admin values:** `ADMIN_USERNAME` / `ADMIN_PASSWORD` in
+  Coolify are correct, but `auto_create_admin()` only uses them when the database has no
+  users. Staging accepts them; production's account has a different stored password, so a
+  login there fails with "Invalid username or password". That is expected, not a wrong
+  value. To check production, use the read-only API with a key from `set-api-key`, not a
+  login. `COOLIFY_API_TOKEN` works; Cloudflare error 1033 means the tunnel is down.
 
 ## Reference docs
 

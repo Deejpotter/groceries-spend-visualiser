@@ -56,7 +56,7 @@ the open items. The remaining release steps (API key secret, Coolify webhook cau
 1. Done in suggested savings: warn when money is moved back out of savings.
 2. Done in suggested savings: treat own-account transfers as moves.
 3. Done: all spending on the Spend page (#82).
-4. Add `STE SUPERMARKET` to the merchant patterns and exclude `ALDIMOBILE`.
+4. Done: `STE SUPERMARKET` is a grocery store and `ALDIMOBILE` is not.
 5. Use Inter for Chart.js labels.
 6. Decide whether to add a Larder domain and redirect the old one.
 
