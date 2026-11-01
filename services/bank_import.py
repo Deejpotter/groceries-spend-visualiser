@@ -92,6 +92,24 @@ def parse_netbank_csv(text: str) -> Tuple[List[Dict], List[str]]:
     return rows, errors
 
 
+def resolve_directions(rows: List[Dict]) -> List[Dict]:
+    """Copies of bank rows with 'unknown' directions resolved where it is safe.
+
+    BankSync stores money out (a negative amount) as 'debit' and everything
+    else as 'unknown', because some providers don't sign amounts. When a
+    source has any debit rows it does sign them, so its unknown rows are money
+    in. A source with no debit rows keeps 'unknown'.
+    """
+    signed = {row.get("source") for row in rows if row.get("direction") == "debit"}
+    resolved = []
+    for row in rows:
+        row = dict(row)
+        if row.get("direction") == "unknown" and row.get("source") in signed:
+            row["direction"] = "credit"
+        resolved.append(row)
+    return resolved
+
+
 def load_merchant_patterns(db) -> List[Tuple[str, str]]:
     """Grocery merchant patterns from settings, or the defaults.
 

@@ -118,7 +118,12 @@ tests/            Unit tests for services + integration tests via Flask test cli
 - **Branches:** `dev` (staging on Coolify, auto-deploys) → `main` (production, via PR from `dev`).
 - **Commit style:** Conventional Commits (`feat:`, `fix:`, `refactor:`, `docs:`, `chore:`, `test:`) with a short imperative subject and a body bullet-listing the logical changes.
 - **CI** (`.github/workflows/ci.yml`) runs pytest and a Docker build + `/health` check on pushes and PRs to `dev` and `main`.
-- `GET /health` returns `{"status": "ok"}` — used by CI and the deploy health check. Keep it unauthenticated and cheap.
+- `GET /health` returns `{"status": "ok", "commit": ...}` — used by CI and the deploy health check. Keep it unauthenticated and cheap.
+- **Staging check** (`.github/workflows/staging-check.yml` → `scripts/staging_check.py`): on each
+  push to `dev`, and on every PR to `main`, it waits for staging's `/health` to report the
+  expected commit, then calls the read-only API (including `/api/v1/budget/savings`). It needs
+  the `STAGING_API_KEY` secret and Coolify's "Include Source Commit in Build" on. Don't merge
+  to `main` while it is red.
 
 ### Data persistence — don't break this
 

@@ -150,7 +150,7 @@ def create_app(testing=False):
 
     @application.route("/health")
     def health():
-        return jsonify({"status": "ok"}), 200
+        return jsonify({"status": "ok", "commit": os.getenv("SOURCE_COMMIT") or None}), 200
 
     @application.before_request
     def ensure_admin():

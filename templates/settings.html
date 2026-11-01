@@ -143,6 +143,14 @@
                             Used for the payday split on the Fortnightly Budget page.
                         </small>
                     </div>
+                    <div class="form-group">
+                        <label for="savings_accounts">Savings account endings</label>
+                        <input type="text" class="form-control" id="savings_accounts"
+                               name="savings_accounts" value="{{ savings_accounts }}" placeholder="e.g. 9910">
+                        <small class="text-muted">
+                            Last four digits, separated by commas. Transfers out of these accounts are flagged as savings being spent.
+                        </small>
+                    </div>
                     <h3 class="h6 mt-3 mb-2">Pay cycle</h3>
                     <div class="form-row">
                         <div class="form-group col-sm-6">

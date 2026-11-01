@@ -1,0 +1,35 @@
+name: Staging check
+
+# Confirms staging runs the expected commit and that it works, using
+# scripts/staging_check.py. Needs the STAGING_API_KEY secret (the staging
+# site's mcp_api_key); STAGING_URL is an optional repository variable.
+on:
+  # On each push to dev, wait for Coolify to deploy that commit. (A push
+  # trigger runs from dev's own copy; workflow_run would only run from main.)
+  push:
+    branches: [dev]
+  # A PR from dev to main is only ready when staging runs its head commit.
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: staging-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  staging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Check staging
+        env:
+          STAGING_URL: ${{ vars.STAGING_URL || 'https://groceries-staging.deejpotter.com' }}
+          STAGING_API_KEY: ${{ secrets.STAGING_API_KEY }}
+          EXPECTED_COMMIT: >-
+            ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python scripts/staging_check.py --timeout 1200
