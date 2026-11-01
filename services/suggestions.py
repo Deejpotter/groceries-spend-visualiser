@@ -151,14 +151,15 @@ def fortnightly_income() -> Optional[float]:
 
 def savings_suggestion() -> Optional[Dict]:
     """Suggested savings per payday from bank history and active bills, or None."""
+    from services.bank_import import resolve_directions
     from services.pay_cycle import detect_payday
     from services.savings_advice import cash_flow, parse_accounts, suggest_savings
     from services.subscriptions import monthly_cost_total
 
     db = get_db()
-    rows = [dict(r) for r in db.execute(
-        "SELECT txn_date, description, merchant_key, amount, direction, status"
-        " FROM bank_transactions ORDER BY txn_date")]
+    rows = resolve_directions([dict(r) for r in db.execute(
+        "SELECT source, txn_date, description, merchant_key, amount, direction, status"
+        " FROM bank_transactions ORDER BY txn_date")])
     pay = detect_payday(rows)
     if not pay:
         return None
