@@ -36,8 +36,8 @@
 - Credit card repayments match the internal transfer patterns, so card spending only
   counts if the card account is imported too.
 - Bank rows have no account column. Moves are found from the description.
-- No balances, so the emergency fund goal shows a target and pays to reach it, not
-  progress.
+- Balances come from the last BankSync sync (the account list's `balance`), so progress
+  is only as fresh as that sync. CSV-only users see the target without progress.
 
 ## 4. Verification
 

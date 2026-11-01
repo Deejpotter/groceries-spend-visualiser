@@ -139,6 +139,25 @@
             </div>
         </div>
 
+        {% if advice.progress %}
+        {% set p = advice.progress %}
+        <div class="mt-3">
+            <div class="d-flex justify-content-between small">
+                <span><strong>Emergency fund:</strong> {{ p.saved|money }} of {{ p.target|money }}</span>
+                <span>{{ p.percent }}%</span>
+            </div>
+            <div class="progress mt-1" style="height: 8px;" role="progressbar" aria-valuenow="{{ p.percent }}" aria-valuemin="0" aria-valuemax="100" aria-label="Emergency fund progress">
+                <div class="progress-bar" style="width: {{ p.percent }}%"></div>
+            </div>
+            <p class="small text-muted mt-1 mb-0">
+                {% if p.reached %}Goal reached. Extra long term savings can go towards bigger goals.
+                {% elif p.pays_to_go %}About {{ p.pays_to_go }} more pay{{ '' if p.pays_to_go == 1 else 's' }} at the suggested amount.
+                {% else %}{{ p.remaining|money }} to go.{% endif %}
+                From {% for a in p.accounts %}{{ a.name }}{% if a.ending %} xx{{ a.ending }}{% endif %}{{ ', ' if not loop.last }}{% endfor %}.
+            </p>
+        </div>
+        {% endif %}
+
         {% if advice.overspending %}
         <p class="text-danger small mt-3 mb-0">
             Your usual costs are {{ (-advice.surplus)|money }} more than your pay, so there is nothing safe to save yet.
