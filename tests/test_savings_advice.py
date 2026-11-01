@@ -237,3 +237,55 @@ def test_api_savings_matches_page(app):
     assert body["savings"]["savings"] == 800
     assert body["savings"]["long_term"] == 790
     assert body["savings"]["enough_history"] is True
+
+
+def _banksync(rows):
+    """Rows as BankSync stores them: money out is 'debit', money in is 'unknown'."""
+    out = []
+    for row in rows:
+        row = dict(row, source="banksync")
+        if row["direction"] == "credit":
+            row["direction"] = "unknown"
+        out.append(row)
+    return out
+
+
+def test_resolve_directions_trusts_sources_that_sign_debits():
+    from services.bank_import import resolve_directions
+    rows = [{"source": "banksync", "direction": "debit"}, {"source": "banksync", "direction": "unknown"},
+            {"source": "other", "direction": "unknown"}, {"source": "csv", "direction": "credit"}]
+    resolved = resolve_directions(rows)
+    assert [r["direction"] for r in resolved] == ["debit", "credit", "unknown", "credit"]
+    assert rows[1]["direction"] == "unknown"
+
+
+def test_unknown_pay_rows_count_as_pay_not_spending():
+    rows = [dict(r, direction="unknown") if r["direction"] == "credit" else r for r in _history()]
+    flow = cash_flow(rows, "acme payroll")
+    assert flow["pay"] == 18000
+    assert flow["spending"] == 4201
+
+
+def _store_with_source(db, rows):
+    for n, row in enumerate(rows):
+        db.execute(
+            "INSERT INTO bank_transactions (source, external_id, txn_date, description, merchant_key,"
+            " amount, direction, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (row.get("source", "csv"), str(n), row["txn_date"], row["description"], row["merchant_key"],
+             row["amount"], row["direction"], row["status"]))
+    db.commit()
+
+
+def test_fortnight_page_suggests_savings_from_banksync_rows(client, db):
+    login(client)
+    _store_with_source(db, _banksync(_history()))
+    html = client.get("/subscriptions/fortnight").get_data(as_text=True)
+    assert "$800.00" in html
+    assert "$790.00" in html
+
+
+def test_settings_detects_payday_from_banksync_rows(client, db):
+    login(client)
+    _store_with_source(db, _banksync(_history()))
+    html = client.get("/settings").get_data(as_text=True)
+    assert "Your bank data looks like a fortnightly pay" in html

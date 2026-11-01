@@ -85,7 +85,9 @@ def cash_flow(transactions: Iterable[Dict], pay_key: Optional[str],
         first = min(first, day)
         amount = abs(float(row.get("amount") or 0))
         description = row.get("description") or ""
-        if (row.get("direction") or "debit") == "credit":
+        direction = row.get("direction") or "debit"
+        is_pay = bool(pay_key) and (row.get("merchant_key") or "") == pay_key
+        if direction == "credit" or (direction == "unknown" and is_pay):
             transfer = transfer_account(description)
             if (row.get("merchant_key") or "") == pay_key and pay_key:
                 totals["pay"] += amount

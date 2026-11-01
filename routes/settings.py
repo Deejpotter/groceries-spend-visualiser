@@ -27,11 +27,12 @@ def _detected_payday():
     """A payday guessed from bank credits, offered when none is set yet."""
     if get_setting("payday_date"):
         return None
+    from services.bank_import import resolve_directions
     from services.pay_cycle import detect_payday
     rows = [dict(r) for r in get_db().execute(
-        "SELECT txn_date, description, merchant_key, amount, direction FROM bank_transactions"
-        " WHERE direction = 'credit' ORDER BY txn_date")]
-    return detect_payday(rows)
+        "SELECT source, txn_date, description, merchant_key, amount, direction"
+        " FROM bank_transactions ORDER BY txn_date")]
+    return detect_payday(resolve_directions(rows))
 
 
 def _settings_values():
