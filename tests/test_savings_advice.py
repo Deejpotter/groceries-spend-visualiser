@@ -60,7 +60,7 @@ def test_cash_flow_splits_rows():
     assert flow["moved_out"] == 500
     assert flow["from_savings"] == 200
     assert flow["other_in"] == 0
-    assert flow["top_spending"][0] == {"name": "bunnings", "amount": 4200}
+    assert flow["top_spending"][0] == {"name": "bunnings", "amount": 4200, "example": "BUNNINGS 552"}
 
 
 def test_cash_flow_ignores_rows_outside_window():
