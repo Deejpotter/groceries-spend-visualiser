@@ -100,11 +100,11 @@ def spend_dashboard():
     unlinked = db.execute(
         "SELECT COUNT(DISTINCT product_name) FROM purchases WHERE ingredient_id IS NULL"
     ).fetchone()[0]
-    from services.bank_import import resolve_directions
+    from services.bank_import import load_merchant_patterns, resolve_directions, restamp_grocery
     from services.bank_spending import bank_spending
-    bank_rows = resolve_directions([dict(r) for r in db.execute(
+    bank_rows = restamp_grocery(resolve_directions([dict(r) for r in db.execute(
         "SELECT source, txn_date, description, merchant_key, amount, direction, status"
-        " FROM bank_transactions ORDER BY txn_date")])
+        " FROM bank_transactions ORDER BY txn_date")]), load_merchant_patterns(db))
     return render_template(
         "spend/dashboard.html",
         bank=bank_spending(bank_rows, RANGES[range_key]),

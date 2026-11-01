@@ -165,7 +165,7 @@ def test_merchant_patterns_from_settings(db):
         ("woolworths", "Woolworths"), ("coles", "Coles"),
         ("aldi", "ALDI"), ("iga", "IGA"), ("foodland", "Foodland"),
         ("drakes", "Drakes"), ("foodworks", "Foodworks"),
-        ("spar", "Spar"), ("costco", "Costco"),
+        ("spar", "Spar"), ("costco", "Costco"), ("ste supermarket", "STE Supermarket"),
     ]
     db.execute(
         "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",

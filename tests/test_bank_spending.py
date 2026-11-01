@@ -70,3 +70,39 @@ def test_spend_page_without_bank_rows(client):
     login(client)
     html = client.get("/spend").get_data(as_text=True)
     assert "All spending" not in html
+
+
+def test_aldimobile_is_not_groceries():
+    from services.bank_import import DEFAULT_MERCHANT_PATTERNS, classify_merchant
+    assert classify_merchant("ALDIMOBILE CHATSWOOD AU", DEFAULT_MERCHANT_PATTERNS) is None
+    assert classify_merchant("ALDI MOBILE RECHARGE", DEFAULT_MERCHANT_PATTERNS) is None
+    assert classify_merchant("ALDI STORES CARRUM", DEFAULT_MERCHANT_PATTERNS) == "ALDI"
+
+
+def test_ste_supermarket_is_groceries():
+    from services.bank_import import DEFAULT_MERCHANT_PATTERNS, classify_merchant
+    assert classify_merchant("STE SUPERMARKET DANDENONG", DEFAULT_MERCHANT_PATTERNS) == "STE Supermarket"
+
+
+def test_restamp_grocery_follows_current_patterns():
+    from services.bank_import import DEFAULT_MERCHANT_PATTERNS, restamp_grocery
+    rows = [make_txn("2026-10-01", 30, "ALDIMOBILE AU", status="grocery"),
+            make_txn("2026-10-02", 40, "STE SUPERMARKET DANDENONG"),
+            make_txn("2026-10-03", 9, "NETFLIX.COM", status="other")]
+    assert [r["status"] for r in restamp_grocery(rows, DEFAULT_MERCHANT_PATTERNS)] == ["other", "grocery", "other"]
+    assert rows[0]["status"] == "grocery"
+
+
+def test_spend_page_uses_current_patterns(client, db):
+    login(client)
+    rows = [make_txn("2026-10-01", 30, "ALDIMOBILE AU", status="grocery"),
+            make_txn("2026-10-02", 40, "STE SUPERMARKET DANDENONG")]
+    for n, row in enumerate(rows):
+        db.execute(
+            "INSERT INTO bank_transactions (source, external_id, txn_date, description, merchant_key,"
+            " amount, direction, status) VALUES ('csv', ?, ?, ?, ?, ?, ?, ?)",
+            (str(n), row["txn_date"], row["description"], row["merchant_key"], row["amount"],
+             row["direction"], row["status"]))
+    db.commit()
+    html = client.get("/spend?range=all").get_data(as_text=True)
+    assert "$40.00 of all spending" in html
