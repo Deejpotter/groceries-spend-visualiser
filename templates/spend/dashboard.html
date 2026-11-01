@@ -37,6 +37,66 @@
     </div>
 </div>
 
+{% if bank %}
+<div class="card mb-4 section-card">
+    <div class="card-header py-2"><strong>{{ icon('receipt') }} All spending</strong>
+        <span class="small text-muted ml-2">from your bank, {{ bank.start|nice_date }} to {{ bank.end|nice_date }}</span></div>
+    <div class="card-body">
+        <div class="kpi-row mb-3">
+            <div class="kpi-tile" data-tone="neutral">
+                <div class="kpi-label">Total out</div>
+                <div class="kpi-value">{{ bank.total|money }}</div>
+                <div class="kpi-context">over {{ bank.days }} days</div>
+            </div>
+            <div class="kpi-tile" data-tone="neutral">
+                <div class="kpi-label">Per month</div>
+                <div class="kpi-value">{{ bank.per_month|money }}</div>
+                <div class="kpi-context">on average</div>
+            </div>
+            <div class="kpi-tile" data-tone="neutral">
+                <div class="kpi-label">Groceries</div>
+                <div class="kpi-value">{{ bank.groceries_share }}<span class="kpi-unit">%</span></div>
+                <div class="kpi-context">{{ bank.groceries|money }} of all spending</div>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm mb-2">
+                <thead><tr><th>Category</th><th class="text-right">Spent</th><th class="text-right">Share</th></tr></thead>
+                <tbody>
+                    {% for c in bank.categories %}
+                    <tr><td>{{ c.label }}</td><td class="text-right">{{ c.amount|money }}</td><td class="text-right">{{ c.share }}%</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <details class="mb-2">
+            <summary class="small">Biggest places your money went</summary>
+            <ul class="small mt-2 mb-0">
+                {% for m in bank.top_merchants %}<li>{{ m.name }} ({{ m.label }}): {{ m.amount|money }}, {{ m.count }} payment{{ '' if m.count == 1 else 's' }}</li>{% endfor %}
+            </ul>
+        </details>
+        <details class="mb-2">
+            <summary class="small">Month by month</summary>
+            <div class="table-responsive mt-2">
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>Month</th><th class="text-right">Groceries</th><th class="text-right">Everything else</th><th class="text-right">Total</th></tr></thead>
+                    <tbody>
+                        {% for m in bank.months %}
+                        <tr><td>{{ m.month }}</td><td class="text-right">{{ m.groceries|money }}</td><td class="text-right">{{ m.other|money }}</td><td class="text-right">{{ m.total|money }}</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </details>
+        <p class="text-muted small mb-0">
+            Transfers between your own accounts are left out{% if bank.moved %} ({{ bank.moved|money }}){% endif %}.
+            {% if bank.unsure %}{{ bank.unsure|money }} could not be told apart from money in, so it is left out too.{% endif %}
+            Categories are a best guess from the merchant name.
+        </p>
+    </div>
+</div>
+{% endif %}
+
 {% if not stats %}
 <div class="alert alert-secondary">
     <p class="mb-2">No purchase history yet.</p>

@@ -78,6 +78,7 @@ def cash_flow(transactions: Iterable[Dict], pay_key: Optional[str],
     totals = {"pay": 0.0, "other_in": 0.0, "from_savings": 0.0, "groceries": 0.0,
               "spending": 0.0, "moved_out": 0.0}
     merchants: Dict[str, float] = {}
+    examples: Dict[str, str] = {}
     first = end
     for row, day in rows:
         if day < start:
@@ -104,13 +105,15 @@ def cash_flow(transactions: Iterable[Dict], pay_key: Optional[str],
             totals["spending"] += amount
             key = normalise_merchant(description) or row.get("merchant_key") or description
             merchants[key] = merchants.get(key, 0.0) + amount
+            examples[key] = description
     top = sorted(merchants.items(), key=lambda item: -item[1])[:5]
     return {
         "start": first.isoformat(),
         "end": end.isoformat(),
         "days": (end - first).days + 1,
         **{key: round(value, 2) for key, value in totals.items()},
-        "top_spending": [{"name": name, "amount": round(total, 2)} for name, total in top],
+        "top_spending": [{"name": name, "amount": round(total, 2), "example": examples[name]}
+                         for name, total in top],
     }
 
 
@@ -159,7 +162,7 @@ def suggest_savings(flow: Optional[Dict], pay: Optional[Dict], monthly_bills: fl
         "emergency_target": emergency_target,
         "pays_to_target": math.ceil(emergency_target / long_term) if long_term and emergency_target else None,
         "from_savings": from_savings,
-        "top_spending": [{"name": item["name"], "amount": round(item["amount"] * per_cycle, 2)}
+        "top_spending": [dict(item, amount=round(item["amount"] * per_cycle, 2))
                          for item in flow["top_spending"]],
         "days": flow["days"],
         "start": flow["start"],

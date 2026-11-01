@@ -169,7 +169,7 @@
             {% if advice.top_spending %}
             <p class="small mt-2 mb-1">Biggest other spending each pay:</p>
             <ul class="small text-muted mb-0">
-                {% for item in advice.top_spending %}<li>{{ item.name }}: {{ item.amount|money }}</li>{% endfor %}
+                {% for item in advice.top_spending %}<li>{{ item.name }}: {{ item.amount|money }}{% if item.example %} <span class="text-muted">(latest: {{ item.example }})</span>{% endif %}</li>{% endfor %}
             </ul>
             {% endif %}
         </details>
