@@ -155,6 +155,7 @@ def savings_suggestion() -> Optional[Dict]:
     from services.pay_cycle import detect_payday
     from services.savings_advice import (
         cash_flow, parse_accounts, savings_accounts, savings_progress, suggest_savings,
+        suggestion_change,
     )
     from services.subscriptions import monthly_cost_total
 
@@ -171,9 +172,16 @@ def savings_suggestion() -> Optional[Dict]:
     endings = parse_accounts(get_setting("savings_accounts")) or [a["ending"] for a in savers if a.get("ending")]
     flow = cash_flow(rows, pay["merchant_key"], endings)
     override = fortnightly_income() if pay["frequency"] == "fortnightly" else None
-    advice = suggest_savings(flow, pay, monthly_cost_total(subs), override)
+    bills = monthly_cost_total(subs)
+    advice = suggest_savings(flow, pay, bills, override)
     if advice:
         advice["progress"] = savings_progress(savers, advice["emergency_target"], advice["long_term"])
+        before = [r for r in rows if str(r.get("txn_date") or "")[:10] < pay["last_payday"]]
+        previous = suggest_savings(cash_flow(before, pay["merchant_key"], endings), pay, bills, override)
+        change = suggestion_change(previous, advice)
+        if change:
+            change["since"] = pay["last_payday"]
+        advice["change"] = change
     return advice
 
 

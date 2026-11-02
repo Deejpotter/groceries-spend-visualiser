@@ -172,6 +172,34 @@ def suggest_savings(flow: Optional[Dict], pay: Optional[Dict], monthly_bills: fl
     }
 
 
+def suggestion_change(previous: Optional[Dict], current: Optional[Dict],
+                      threshold: float = 0.10) -> Optional[Dict]:
+    """What moved by more than `threshold` between two suggest_savings() results.
+
+    Compares usual costs and total suggested savings. Returns
+    {"items": [{label, before, after, delta, percent}]} or None when nothing
+    moved that much (or either side is missing).
+    """
+    if not previous or not current:
+        return None
+    fields = (("Usual costs", lambda a: a["costs"]),
+              ("Suggested savings", lambda a: a["savings"] + a["long_term"]))
+    items = []
+    for label, value in fields:
+        before, after = round(value(previous), 2), round(value(current), 2)
+        delta = round(after - before, 2)
+        if before:
+            percent = round(delta / before * 100)
+            moved = abs(delta) / before > threshold
+        else:
+            percent = None
+            moved = abs(delta) >= ROUND_TO
+        if moved:
+            items.append({"label": label, "before": before, "after": after,
+                          "delta": delta, "percent": percent})
+    return {"items": items} if items else None
+
+
 SAVINGS_WORDS = ("saver", "savings", "goal", "save", "bonus")
 
 
