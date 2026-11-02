@@ -10,12 +10,30 @@ from collections import defaultdict
 from datetime import timedelta
 from typing import Dict, Iterable, List, Optional
 
-from services.recurring import guess_category, known_merchant, normalise_merchant, transfer_payee
+from functools import lru_cache
+
+from services.recurring import (
+    _display_name, guess_category, known_merchant, normalise_merchant, transfer_payee,
+)
 from services.savings_advice import _day, is_move
 from services.subscriptions import subscription_category_label
 
 DAYS_PER_MONTH = 365.25 / 12
 TOP_MERCHANTS = 8
+
+
+@lru_cache(maxsize=4096)
+def merchant_label(description: str) -> str:
+    """A readable merchant name from a bank description: "U Go Carrum Downs", not "u"."""
+    payee = transfer_payee(description)
+    if payee:
+        return f"Transfer to {payee}"
+    words, seen = [], set()
+    for word in _display_name([description]).split():
+        if word.lower() not in seen:
+            seen.add(word.lower())
+            words.append(word)
+    return " ".join(words[:4]) or "Unknown merchant"
 
 
 def category_for(row: Dict) -> str:
@@ -60,10 +78,9 @@ def spend_items(transactions: Iterable[Dict], days: Optional[int] = None) -> Opt
             moved += amount
             continue
         key = normalise_merchant(description) or row.get("merchant_key") or description
-        payee = transfer_payee(description)
         items.append({"day": day, "amount": amount, "description": description,
                       "category": category_for(row), "key": key,
-                      "name": f"Transfer to {payee}" if payee else key})
+                      "name": merchant_label(description)})
     return {"end": end, "items": items, "moved": round(moved, 2), "unsure": round(unsure, 2)}
 
 
