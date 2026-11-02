@@ -115,3 +115,11 @@ def test_merchant_labels_are_readable():
     assert merchant_label("Transfer To Kelly Pearson, CommBank App Love you") == "Transfer to Kelly Pearson"
     names = [m["name"] for m in bank_spending([make_txn("2026-10-01", 20, "U GO CARRUM DOWNS CARRUM DOWNS AU")])["top_merchants"]]
     assert names == ["U Go Carrum Downs"]
+
+
+def test_charts_use_the_page_font(client):
+    login(client)
+    for path in ("/spend", "/subscriptions"):
+        html = client.get(path).get_data(as_text=True)
+        if "new Chart(" in html:
+            assert "Chart.defaults.font.family = getComputedStyle(document.body).fontFamily" in html
