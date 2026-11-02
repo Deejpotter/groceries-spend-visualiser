@@ -100,11 +100,12 @@ def spend_dashboard():
     unlinked = db.execute(
         "SELECT COUNT(DISTINCT product_name) FROM purchases WHERE ingredient_id IS NULL"
     ).fetchone()[0]
-    from services.bank_spending import bank_spending
+    from services.bank_spending import bank_spending, spending_changes
     bank_rows = _bank_rows(db)
     return render_template(
         "spend/dashboard.html",
         bank=bank_spending(bank_rows, RANGES[range_key]),
+        changes=spending_changes(bank_rows),
         stats=stats,
         range_key=range_key,
         ranges=[("3m", "3 months"), ("6m", "6 months"), ("12m", "12 months"), ("all", "All time")],

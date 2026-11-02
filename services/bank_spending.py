@@ -170,3 +170,74 @@ def bank_spending(transactions: Iterable[Dict], days: Optional[int] = None) -> O
         "moved": round(moved, 2),
         "unsure": round(unsure, 2),
     }
+
+
+RECENT_DAYS = 30
+BASELINE_DAYS = 90
+MIN_CHANGE = 50.0
+MIN_SHARE = 0.25
+
+
+def spending_changes(transactions: Iterable[Dict], recent_days: int = RECENT_DAYS,
+                     baseline_days: int = BASELINE_DAYS, min_change: float = MIN_CHANGE,
+                     min_share: float = MIN_SHARE) -> Optional[Dict]:
+    """Categories that moved in the last `recent_days` against your usual, or None.
+
+    The usual is the `baseline_days` before that, scaled to the same length.
+    A category counts as changed when it moved by at least `min_change`
+    dollars and by `min_share` of its usual amount. Each change names the
+    merchant that moved most in the same direction. None when there is less
+    than one full recent period of earlier history, or nothing changed.
+    """
+    window = spend_items(transactions)
+    if not window or not window["items"]:
+        return None
+    end = window["end"]
+    recent_start = end - timedelta(days=recent_days - 1)
+    baseline_start = recent_start - timedelta(days=baseline_days)
+    first = min(item["day"] for item in window["items"])
+    span = (recent_start - max(first, baseline_start)).days
+    if span < recent_days:
+        return None
+    scale = recent_days / span
+    recent: Dict[str, float] = defaultdict(float)
+    usual: Dict[str, float] = defaultdict(float)
+    by_merchant: Dict[str, Dict[str, List[float]]] = defaultdict(dict)
+    names: Dict[str, str] = {}
+    for item in window["items"]:
+        day, code, key = item["day"], item["category"], item["key"]
+        if day >= recent_start:
+            slot = 0
+        elif day >= baseline_start:
+            slot = 1
+        else:
+            continue
+        (recent if slot == 0 else usual)[code] += item["amount"]
+        by_merchant[code].setdefault(key, [0.0, 0.0])[slot] += item["amount"]
+        names[key] = item["name"]
+    up, down = [], []
+    for code in set(recent) | set(usual):
+        now, before = recent.get(code, 0.0), usual.get(code, 0.0) * scale
+        delta = now - before
+        if abs(delta) < min_change or (before and abs(delta) / before < min_share):
+            continue
+        moves = [(key, amounts[0] - amounts[1] * scale) for key, amounts in by_merchant[code].items()]
+        key, move = max(moves, key=lambda m: m[1] if delta > 0 else -m[1])
+        entry = {
+            "code": code, "label": category_label(code),
+            "recent": round(now, 2), "usual": round(before, 2), "delta": round(delta, 2),
+            "percent": round(delta / before * 100) if before else None,
+            "driver": names[key] if move * delta > 0 else None,
+            "driver_delta": round(move, 2),
+        }
+        (up if delta > 0 else down).append(entry)
+    if not up and not down:
+        return None
+    return {
+        "start": recent_start.isoformat(),
+        "end": end.isoformat(),
+        "days": recent_days,
+        "baseline_start": max(first, baseline_start).isoformat(),
+        "up": sorted(up, key=lambda e: -e["delta"])[:5],
+        "down": sorted(down, key=lambda e: e["delta"])[:5],
+    }
