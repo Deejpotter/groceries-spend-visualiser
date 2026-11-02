@@ -274,6 +274,7 @@ document.body.addEventListener('htmx:afterRequest', function (event) {
     const money = value => '$' + Number(value).toFixed(2);
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
         Chart.defaults.animation = false;
+        Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
     }
     let colours = theme();
 

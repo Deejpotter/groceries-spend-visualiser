@@ -135,6 +135,7 @@
     const points = {{ points|tojson }};
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
         Chart.defaults.animation = false;
+        Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
     }
     function theme() {
         const css = getComputedStyle(document.documentElement);
