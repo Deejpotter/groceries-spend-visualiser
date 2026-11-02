@@ -583,6 +583,13 @@ def _merchant_streams(groups, excluded, revive) -> List[Dict]:
                 multi=True, stream_count=len(clusters))
             if suggestion:
                 streams.append(suggestion)
+        sibling_decided = any(
+            f"{base_key}#{index}" in (excluded or ())
+            for index in range(1, len(clusters) + 1))
+        if len(streams) == 1 and not sibling_decided:
+            # The amount only tells streams apart; with one stream and no
+            # tracked sibling it's noise.
+            streams[0]["name"] = re.sub(r" \(\d+\.\d{2}\)$", "", streams[0]["name"])
         if streams:
             found.extend(streams)
             continue
