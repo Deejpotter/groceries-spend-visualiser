@@ -158,6 +158,14 @@
         </div>
         {% endif %}
 
+        {% if advice.change %}
+        <div class="alert alert-info small mt-3 mb-0" role="status">
+            <strong>Changed since your last payday ({{ advice.change.since|nice_date }}):</strong>
+            {% for c in advice.change["items"] %}{{ c.label }} {{ 'up' if c.delta > 0 else 'down' }} {{ (c.delta if c.delta > 0 else -c.delta)|money }}{% if c.percent is not none %} ({{ c.percent|abs }}%){% endif %}, from {{ c.before|money }} to {{ c.after|money }}{{ '. ' if loop.last else '; ' }}{% endfor %}
+            Check the biggest spending below to see why.
+        </div>
+        {% endif %}
+
         {% if advice.overspending %}
         <p class="text-danger small mt-3 mb-0">
             Your usual costs are {{ (-advice.surplus)|money }} more than your pay, so there is nothing safe to save yet.

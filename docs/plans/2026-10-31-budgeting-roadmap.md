@@ -63,5 +63,5 @@ the open items. The remaining release steps (API key secret, Coolify webhook cau
 ## Later ideas for automation
 
 - Done: savings balances from BankSync show progress to the emergency fund goal.
-- Recalculate the suggestion each payday and flag when it changes by more than 10%.
+- Done: the suggestion flags changes over 10% since the last payday.
 - Use account endings to set the roles in the account table automatically.
