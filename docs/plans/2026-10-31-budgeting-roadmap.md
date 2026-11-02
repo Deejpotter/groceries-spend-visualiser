@@ -57,11 +57,11 @@ the open items. The remaining release steps (API key secret, Coolify webhook cau
 2. Done in suggested savings: treat own-account transfers as moves.
 3. Done: all spending on the Spend page (#82).
 4. Done: `STE SUPERMARKET` is a grocery store and `ALDIMOBILE` is not.
-5. Use Inter for Chart.js labels.
+5. Done: chart labels use Inter.
 6. Decide whether to add a Larder domain and redirect the old one.
 
 ## Later ideas for automation
 
 - Done: savings balances from BankSync show progress to the emergency fund goal.
-- Recalculate the suggestion each payday and flag when it changes by more than 10%.
+- Done: the suggestion flags changes over 10% since the last payday.
 - Use account endings to set the roles in the account table automatically.

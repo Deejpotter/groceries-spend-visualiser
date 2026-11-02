@@ -32,7 +32,7 @@ The database is created automatically at `./data/groceries.db` (gitignored).
 ## Run tests
 
 ```bash
-python -m pytest            # ~800 tests, in parallel (pytest-xdist via pytest.ini)
+python -m pytest            # ~900 tests, in parallel (pytest-xdist via pytest.ini)
 python -m pytest -q         # quiet
 python -m pytest tests/test_plan_generator.py   # one file
 python -m pytest -p no:xdist                    # single process (for profiling)

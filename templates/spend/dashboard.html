@@ -364,6 +364,7 @@
     const money = value => '$' + Number(value).toFixed(2);
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
         Chart.defaults.animation = false;
+        Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
     }
     const short = (text, max) => text.length > max
         ? text.slice(0, max - 1) + '…' : text;
