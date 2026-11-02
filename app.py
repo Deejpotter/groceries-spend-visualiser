@@ -233,6 +233,7 @@ def create_app(testing=False):
         from services.repository import load_linked_products, load_list_rows, load_shopping_inputs
         from services.shopping_list_generator import plan_list_lines, recipes_using_spares, spares
         from services.spend_analysis import analyze_purchases, load_purchases, load_spend
+        from services.suggestions import savings_suggestion, untracked_regular_payments
 
         db = get_db()
 
@@ -342,6 +343,8 @@ def create_app(testing=False):
             spare_recipes=spare_recipes,
             sub_spare=sub_spare,
             sub_due_count=sub_due_count,
+            advice=savings_suggestion(),
+            regular_count=len(untracked_regular_payments()),
         )
 
     @application.cli.command("init-db")

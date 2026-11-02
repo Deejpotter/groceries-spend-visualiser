@@ -475,7 +475,7 @@ def subscription_fortnight():
         if plan_days and overlap_days != plan_days:
             grocery_note = f"{plan_days}-day plan, prorated to {overlap_days} days"
 
-    from services.suggestions import fortnightly_income, savings_suggestion
+    from services.suggestions import fortnightly_income, savings_suggestion, untracked_regular_payments
     income = fortnightly_income()
     summary = fortnightly_summary(subs, grocery_estimate, income, start, end)
     split = payday_split(summary, get_setting("savings_per_pay"), get_setting("long_term_per_pay"))
@@ -484,6 +484,7 @@ def subscription_fortnight():
         summary=summary,
         split=split,
         advice=savings_suggestion(),
+        regular=untracked_regular_payments(),
         start=start,
         end=end,
         today=today,
@@ -725,6 +726,60 @@ def subscription_ai_review():
     return redirect(url_for("subscriptions.subscription_suggest"))
 
 
+def _track_suggestion(db, name, amount, frequency, category, next_due, merchant_key,
+                      stream_key, stream_amount, kind):
+    """Add a suggested payment to Bills and remember the decision. Caller commits."""
+    cursor = db.execute(
+        """INSERT INTO subscriptions
+           (name, amount, frequency, category, next_due, notes, merchant_key,
+            stream_key, stream_amount, kind)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (name, amount, frequency, category, next_due,
+         "Recurring spending, no fixed date" if kind == "recurring" else "Added from suggestion",
+         merchant_key or None, stream_key, stream_amount, kind),
+    )
+    if merchant_key:
+        db.execute(
+            """INSERT INTO merchant_decisions
+               (merchant_key, display_name, amount, frequency, decision, subscription_id)
+               VALUES (?, ?, ?, ?, 'accepted', ?)
+               ON CONFLICT(merchant_key) DO UPDATE SET
+                 decision = 'accepted',
+                 display_name = excluded.display_name,
+                 amount = excluded.amount,
+                 frequency = excluded.frequency,
+                 subscription_id = excluded.subscription_id""",
+            (stream_key, name, amount, frequency, cursor.lastrowid),
+        )
+    return cursor.lastrowid
+
+
+@subscriptions_bp.route("/subscriptions/track-regular", methods=["POST"])
+@login_required
+def subscription_track_regular():
+    """Count the ticked regular payments as bills, worked out again on the server."""
+    from services.suggestions import untracked_regular_payments
+    chosen = set(request.form.getlist("stream_key"))
+    db = get_db()
+    added = []
+    for stream in untracked_regular_payments():
+        if stream["stream_key"] not in chosen:
+            continue
+        _track_suggestion(db, stream["name"], stream["amount"], stream["frequency"],
+                          stream["category"], stream.get("next_due") or date.today().isoformat(),
+                          stream["merchant_key"], stream["stream_key"], stream.get("stream_amount"),
+                          stream.get("kind"))
+        added.append(stream["name"])
+    db.commit()
+    if added:
+        flash(f"Now counting {len(added)} regular payment{'s' if len(added) != 1 else ''} as bills: "
+              + ", ".join(added) + ".", "success")
+    else:
+        flash("Nothing was ticked, so no bills were added.", "warning")
+    return redirect(request.form.get("next") == "dashboard" and url_for("dashboard")
+                    or url_for("subscriptions.subscription_fortnight"))
+
+
 @subscriptions_bp.route("/subscriptions/suggest/accept", methods=["POST"])
 @login_required
 def subscription_accept_suggestion():
@@ -766,29 +821,8 @@ def subscription_accept_suggestion():
     db = get_db()
     stream_key = (request.form.get("stream_key", "").strip()
                   or merchant_key or name.lower())
-    stream_amount = _amount_or_none(request.form.get("stream_amount"))
-    cursor = db.execute(
-        """INSERT INTO subscriptions
-           (name, amount, frequency, category, next_due, notes, merchant_key,
-            stream_key, stream_amount, kind)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (name, amount, frequency, category, next_due,
-         "Recurring spending, no fixed date" if kind == "recurring" else "Added from suggestion",
-         merchant_key or None, stream_key, stream_amount, kind),
-    )
-    if merchant_key:
-        db.execute(
-            """INSERT INTO merchant_decisions
-               (merchant_key, display_name, amount, frequency, decision, subscription_id)
-               VALUES (?, ?, ?, ?, 'accepted', ?)
-               ON CONFLICT(merchant_key) DO UPDATE SET
-                 decision = 'accepted',
-                 display_name = excluded.display_name,
-                 amount = excluded.amount,
-                 frequency = excluded.frequency,
-                 subscription_id = excluded.subscription_id""",
-            (stream_key, name, amount, frequency, cursor.lastrowid),
-        )
+    _track_suggestion(db, name, amount, frequency, category, next_due, merchant_key,
+                      stream_key, _amount_or_none(request.form.get("stream_amount")), kind)
     db.commit()
     if is_htmx:
         return _suggest_response(db, notice=f"Added '{name}' to Bills.")

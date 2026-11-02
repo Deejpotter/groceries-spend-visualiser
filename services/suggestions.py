@@ -155,7 +155,7 @@ def savings_suggestion() -> Optional[Dict]:
     from services.pay_cycle import detect_payday
     from services.savings_advice import (
         cash_flow, parse_accounts, savings_accounts, savings_progress, suggest_savings,
-        suggestion_change,
+        suggestion_change, bills_per_cycle, CYCLE_DAYS,
     )
     from services.subscriptions import monthly_cost_total
 
@@ -173,11 +173,12 @@ def savings_suggestion() -> Optional[Dict]:
     flow = cash_flow(rows, pay["merchant_key"], endings)
     override = fortnightly_income() if pay["frequency"] == "fortnightly" else None
     bills = monthly_cost_total(subs)
-    advice = suggest_savings(flow, pay, bills, override)
+    per_pay = bills_per_cycle(subs, CYCLE_DAYS.get(pay["frequency"], 14))
+    advice = suggest_savings(flow, pay, bills, override, per_pay)
     if advice:
         advice["progress"] = savings_progress(savers, advice["emergency_target"], advice["long_term"])
         before = [r for r in rows if str(r.get("txn_date") or "")[:10] < pay["last_payday"]]
-        previous = suggest_savings(cash_flow(before, pay["merchant_key"], endings), pay, bills, override)
+        previous = suggest_savings(cash_flow(before, pay["merchant_key"], endings), pay, bills, override, per_pay)
         change = suggestion_change(previous, advice)
         if change:
             change["since"] = pay["last_payday"]
@@ -193,3 +194,38 @@ def bank_accounts() -> Dict:
     except ValueError:
         data = {}
     return {"as_of": data.get("as_of"), "accounts": data.get("accounts") or []}
+
+
+def untracked_regular_payments(cycle_days: float = 14) -> List[Dict]:
+    """Regular payments the detector is sure of that aren't bills yet.
+
+    Same detection and exclusions as the Bills suggestions page: merchants
+    already accepted, dismissed or linked to a bill are left out, and so are
+    ones the AI review (or the user) called noise. Each item carries
+    ``per_pay``, its cost over one pay cycle.
+    """
+    from services.recurring import build_streams
+    from services.savings_advice import per_cycle
+
+    db = get_db()
+    excluded = {r["merchant_key"] for r in db.execute("SELECT merchant_key FROM merchant_decisions")}
+    excluded |= {
+        r["stream_key"] or r["merchant_key"]
+        for r in db.execute("SELECT stream_key, merchant_key FROM subscriptions")
+        if r["stream_key"] or r["merchant_key"]
+    }
+    excluded |= {
+        r["merchant_key"] for r in db.execute(
+            "SELECT merchant_key FROM ai_reviews WHERE COALESCE(user_override, verdict) = 'noise'")
+    }
+    tracked_names = {(r["name"] or "").strip().lower() for r in db.execute("SELECT name FROM subscriptions")}
+    transactions = [dict(r) for r in db.execute(
+        "SELECT txn_date, description, amount, merchant_key, direction, status FROM bank_transactions")]
+    items = []
+    for stream in build_streams(transactions, excluded_keys=excluded):
+        if stream["confidence"] not in ("high", "medium"):
+            continue
+        if stream["name"].strip().lower() in tracked_names:
+            continue
+        items.append({**stream, "per_pay": per_cycle(stream["amount"], stream["frequency"], cycle_days)})
+    return sorted(items, key=lambda s: -s["per_pay"])
