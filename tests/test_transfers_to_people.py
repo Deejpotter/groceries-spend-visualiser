@@ -119,3 +119,13 @@ def test_other_bank_transfers_use_the_reference():
     rows = [make_txn((date(2026, 5, 1) + timedelta(days=14 * n)).isoformat(), 200, real) for n in range(8)]
     found = {s["name"]: s for s in detect_recurring(rows)}
     assert found["Transfer to Other Bank (Dan Car)"]["frequency"] == "fortnightly"
+
+
+def test_single_surviving_stream_has_no_amount_in_its_name():
+    rows = [make_txn((date(2026, 5, 1) + timedelta(days=14 * n)).isoformat(), 700, KELLY.format(note="x"))
+            for n in range(8)]
+    rows += [make_txn("2026-05-20", 400, KELLY.format(note="extra")),
+             make_txn("2026-07-02", 400, KELLY.format(note="extra"))]
+    names = [s["name"] for s in detect_recurring(rows)]
+    assert "Transfer to Kelly Pearson" in names
+    assert not any("(" in n for n in names)
