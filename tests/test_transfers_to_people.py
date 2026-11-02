@@ -108,3 +108,14 @@ def test_suggestions_page_shows_transfers(client, db):
     page = client.get("/subscriptions/suggest").get_data(as_text=True)
     assert "Transfer to Kelly Pearson" in page
     assert "Transfer to Nana" in page
+
+
+def test_other_bank_transfers_use_the_reference():
+    real = "Transfer to other Bank NetBank, Dan car"
+    assert transfer_payee(real) == "Other Bank (Dan Car)"
+    assert normalise_merchant(real) == "to other bank dan car"
+    assert normalise_merchant("Transfer to other Bank NetBank, Rent") != normalise_merchant(real)
+    assert transfer_payee("Transfer to other Bank NetBank") == "Other Bank"
+    rows = [make_txn((date(2026, 5, 1) + timedelta(days=14 * n)).isoformat(), 200, real) for n in range(8)]
+    found = {s["name"]: s for s in detect_recurring(rows)}
+    assert found["Transfer to Other Bank (Dan Car)"]["frequency"] == "fortnightly"

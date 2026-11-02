@@ -209,10 +209,18 @@ def transfer_payee(description: str) -> Optional[str]:
     if not match:
         return None
     payee = _TRANSFER_END.sub("", match.group(1)).strip(" -")
+    if payee.lower() == "other bank":
+        # CommBank words transfers to another bank as "Transfer to other Bank
+        # NetBank, <reference>", so the reference is what tells payees apart.
+        reference = match.group(1).split(",", 1)[1].strip() if "," in match.group(1) else ""
+        if reference:
+            payee = f"Other Bank ({' '.join(w.capitalize() for w in reference.split()[:4])})"
     lowered = payee.lower()
     if not payee or re.match(r"^(?:xx)?\d", lowered) or any(
             word in lowered for word in ("savings", "saver", "offset", "own account", "credit card")):
         return None
+    if payee.startswith("Other Bank ("):
+        return payee
     return " ".join(word.capitalize() for word in payee.split()[:4])
 
 
