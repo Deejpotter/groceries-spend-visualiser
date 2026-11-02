@@ -100,11 +100,8 @@ def spend_dashboard():
     unlinked = db.execute(
         "SELECT COUNT(DISTINCT product_name) FROM purchases WHERE ingredient_id IS NULL"
     ).fetchone()[0]
-    from services.bank_import import load_merchant_patterns, resolve_directions, restamp_grocery
     from services.bank_spending import bank_spending
-    bank_rows = restamp_grocery(resolve_directions([dict(r) for r in db.execute(
-        "SELECT source, txn_date, description, merchant_key, amount, direction, status"
-        " FROM bank_transactions ORDER BY txn_date")]), load_merchant_patterns(db))
+    bank_rows = _bank_rows(db)
     return render_template(
         "spend/dashboard.html",
         bank=bank_spending(bank_rows, RANGES[range_key]),
@@ -113,6 +110,30 @@ def spend_dashboard():
         ranges=[("3m", "3 months"), ("6m", "6 months"), ("12m", "12 months"), ("all", "All time")],
         unlinked_count=unlinked,
         budget=budget,
+    )
+
+
+def _bank_rows(db):
+    """Bank rows ready for the spend services: directions and grocery status resolved."""
+    from services.bank_import import load_merchant_patterns, resolve_directions, restamp_grocery
+    return restamp_grocery(resolve_directions([dict(r) for r in db.execute(
+        "SELECT source, txn_date, description, merchant_key, amount, direction, status"
+        " FROM bank_transactions ORDER BY txn_date")]), load_merchant_patterns(db))
+
+
+@spend_bp.route("/spend/category/<code>")
+@login_required
+def spend_category(code):
+    """Transactions in one spending category, grouped by merchant."""
+    from services.bank_spending import category_detail, category_label
+    range_key = request.args.get("range", "12m")
+    if range_key not in RANGES:
+        range_key = "12m"
+    detail = category_detail(_bank_rows(get_db()), code, RANGES[range_key])
+    return render_template(
+        "spend/category.html", detail=detail, code=code, label=category_label(code),
+        range_key=range_key,
+        ranges=[("3m", "3 months"), ("6m", "6 months"), ("12m", "12 months"), ("all", "All time")],
     )
 
 

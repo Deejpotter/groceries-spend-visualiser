@@ -40,6 +40,7 @@ SUBSCRIPTION_CATEGORIES = [
     ("software", "Software & Cloud"),
     ("memberships", "Memberships & Deliveries"),
     ("bills", "Council & Other Bills"),
+    ("transfers", "Transfers to people"),
     ("other", "Other"),
 ]
 

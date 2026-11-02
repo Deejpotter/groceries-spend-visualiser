@@ -194,6 +194,28 @@ def merge_similar_groups(groups: Dict[str, List[Dict]]) -> Dict[str, List[Dict]]
     return merged
 
 
+_TRANSFER_TO = re.compile(r"^(?:fast\s+|osko\s+|payid\s+)?transfer\s+to\s+(.+)$", re.IGNORECASE)
+_TRANSFER_END = re.compile(r"\s*(?:,|\bcommbank\b|\bnetbank\b|\bref\b|\bvia\b).*$", re.IGNORECASE)
+
+
+@lru_cache(maxsize=8192)
+def transfer_payee(description: str) -> Optional[str]:
+    """The person or business a "Transfer To ..." payment went to, or None.
+
+    Own-account transfers ("Transfer to xx9910") and moves to savings return
+    None, because they are moves, not payments.
+    """
+    match = _TRANSFER_TO.match((description or "").strip())
+    if not match:
+        return None
+    payee = _TRANSFER_END.sub("", match.group(1)).strip(" -")
+    lowered = payee.lower()
+    if not payee or re.match(r"^(?:xx)?\d", lowered) or any(
+            word in lowered for word in ("savings", "saver", "offset", "own account", "credit card")):
+        return None
+    return " ".join(word.capitalize() for word in payee.split()[:4])
+
+
 # Called for every transaction on every suggestions page load, with the same
 # few hundred descriptions each time.
 @lru_cache(maxsize=8192)
@@ -204,6 +226,9 @@ def normalise_merchant(description: str) -> str:
     keeps the first two meaningful words. ``PAYPAL *SPOTIFY`` and
     ``SPOTIFY PTE LTD`` both become ``spotify``.
     """
+    payee = transfer_payee(description)
+    if payee:
+        return "to " + re.sub(r"[^a-z0-9& ]+", "", payee.lower())
     text = strip_boilerplate(description).lower()
     for prefix in _NOISE_PREFIXES:
         if text.startswith(prefix):
@@ -247,7 +272,7 @@ def guess_category(description: str) -> str:
         if any(re.search(rf"\b{re.escape(keyword)}\b", text)
                for keyword in keywords):
             return category
-    return "other"
+    return "transfers" if transfer_payee(description) else "other"
 
 
 @lru_cache(maxsize=8192)
@@ -268,6 +293,9 @@ def _display_name(descriptions: List[str]) -> str:
     counts = Counter(d.strip() for d in descriptions if d and d.strip())
     if not counts:
         return "Unknown merchant"
+    payee = transfer_payee(counts.most_common(1)[0][0])
+    if payee:
+        return f"Transfer to {payee}"
     raw = strip_boilerplate(counts.most_common(1)[0][0])
     raw = re.sub(r"\.(com\.au|com|net|org)(\.au)?\b", "", raw, flags=re.IGNORECASE)
     raw = re.sub(r"[^a-zA-Z0-9&' ]+", " ", raw)
