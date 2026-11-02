@@ -35,6 +35,11 @@ def _detected_payday():
     return detect_payday(resolve_directions(rows))
 
 
+def _bank_accounts():
+    from services.suggestions import bank_accounts
+    return bank_accounts()["accounts"]
+
+
 def _settings_values():
     """Current settings as template values (overridable with submitted input)."""
     from services.bank_import import DEFAULT_MERCHANT_PATTERNS
@@ -61,6 +66,7 @@ def _settings_values():
         "savings_per_pay": get_setting("savings_per_pay", ""),
         "long_term_per_pay": get_setting("long_term_per_pay", ""),
         "savings_accounts": get_setting("savings_accounts", ""),
+        "bank_accounts": _bank_accounts(),
         "detected_payday": _detected_payday(),
         "api_keys": list_keys(get_db(), user_id) if user_id else [],
         "new_api_key": None,

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}{{ label }} — {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="mb-0">{{ label }}</h1>
+        <p class="page-sub">Where this money went, by merchant or person.</p>
+    </div>
+    <div class="d-flex flex-wrap">
+        <a href="{{ url_for('spend.spend_dashboard', range=range_key) }}" class="btn btn-outline-secondary mb-2">Back to Spend</a>
+    </div>
+</div>
+
+<ul class="nav nav-pills mb-3">
+    {% for key, name in ranges %}
+    <li class="nav-item"><a class="nav-link {{ 'active' if key == range_key }}" href="{{ url_for('spend.spend_category', code=code, range=key) }}">{{ name }}</a></li>
+    {% endfor %}
+</ul>
+
+{% if not detail %}
+<div class="alert alert-secondary">No bank transactions in this category for this range.</div>
+{% else %}
+<div class="kpi-row mb-4">
+    <div class="kpi-tile" data-tone="neutral">
+        <div class="kpi-label">Total</div>
+        <div class="kpi-value">{{ detail.total|money }}</div>
+        <div class="kpi-context">{{ detail.count }} payment{{ '' if detail.count == 1 else 's' }}, {{ detail.start|nice_date }} to {{ detail.end|nice_date }}</div>
+    </div>
+    <div class="kpi-tile" data-tone="neutral">
+        <div class="kpi-label">Merchants</div>
+        <div class="kpi-value">{{ detail.merchants|length }}</div>
+        <div class="kpi-context">biggest: {{ detail.merchants[0].name }}</div>
+    </div>
+</div>
+
+<div class="card mb-4 section-card">
+    <div class="card-header py-2"><strong>By merchant</strong>
+        <span class="small text-muted ml-2">open one to see its payments</span></div>
+    <div class="card-body">
+        {% for m in detail.merchants %}
+        <details class="mb-2">
+            <summary>
+                <strong>{{ m.name }}</strong>
+                <span class="text-muted small">{{ m.amount|money }} &middot; {{ m.share }}% &middot; {{ m.count }} payment{{ '' if m.count == 1 else 's' }}</span>
+            </summary>
+            <div class="table-responsive mt-2">
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>Date</th><th>Description</th><th class="text-right">Amount</th></tr></thead>
+                    <tbody>
+                        {% for r in m.rows %}
+                        <tr><td class="text-nowrap">{{ r.date|nice_date }}</td><td>{{ r.description }}</td><td class="text-right">{{ r.amount|money }}</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </details>
+        {% endfor %}
+        <p class="text-muted small mb-0 mt-3">
+            Categories are a best guess from the merchant name. Transfers to people are grouped by who they went to.
+        </p>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

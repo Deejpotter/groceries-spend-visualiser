@@ -153,10 +153,14 @@ def savings_suggestion() -> Optional[Dict]:
     """Suggested savings per payday from bank history and active bills, or None."""
     from services.bank_import import load_merchant_patterns, resolve_directions, restamp_grocery
     from services.pay_cycle import detect_payday
-    from services.savings_advice import cash_flow, parse_accounts, suggest_savings
+    from services.savings_advice import (
+        cash_flow, parse_accounts, savings_accounts, savings_progress, suggest_savings,
+    )
     from services.subscriptions import monthly_cost_total
 
     db = get_db()
+    accounts = bank_accounts()["accounts"]
+    savers = savings_accounts(accounts, parse_accounts(get_setting("savings_accounts")))
     rows = restamp_grocery(resolve_directions([dict(r) for r in db.execute(
         "SELECT source, txn_date, description, merchant_key, amount, direction, status"
         " FROM bank_transactions ORDER BY txn_date")]), load_merchant_patterns(db))
@@ -164,6 +168,20 @@ def savings_suggestion() -> Optional[Dict]:
     if not pay:
         return None
     subs = [dict(r) for r in db.execute("SELECT * FROM subscriptions WHERE active = 1")]
-    flow = cash_flow(rows, pay["merchant_key"], parse_accounts(get_setting("savings_accounts")))
+    endings = parse_accounts(get_setting("savings_accounts")) or [a["ending"] for a in savers if a.get("ending")]
+    flow = cash_flow(rows, pay["merchant_key"], endings)
     override = fortnightly_income() if pay["frequency"] == "fortnightly" else None
-    return suggest_savings(flow, pay, monthly_cost_total(subs), override)
+    advice = suggest_savings(flow, pay, monthly_cost_total(subs), override)
+    if advice:
+        advice["progress"] = savings_progress(savers, advice["emergency_target"], advice["long_term"])
+    return advice
+
+
+def bank_accounts() -> Dict:
+    """Bank accounts and balances from the last BankSync sync: {as_of, accounts}."""
+    import json
+    try:
+        data = json.loads(get_setting("banksync_accounts") or "{}")
+    except ValueError:
+        data = {}
+    return {"as_of": data.get("as_of"), "accounts": data.get("accounts") or []}

@@ -64,7 +64,7 @@
                 <thead><tr><th>Category</th><th class="text-right">Spent</th><th class="text-right">Share</th></tr></thead>
                 <tbody>
                     {% for c in bank.categories %}
-                    <tr><td>{{ c.label }}</td><td class="text-right">{{ c.amount|money }}</td><td class="text-right">{{ c.share }}%</td></tr>
+                    <tr><td><a href="{{ url_for('spend.spend_category', code=c.code, range=range_key) }}">{{ c.label }}</a></td><td class="text-right">{{ c.amount|money }}</td><td class="text-right">{{ c.share }}%</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
