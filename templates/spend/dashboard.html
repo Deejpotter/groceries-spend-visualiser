@@ -69,6 +69,22 @@
                 </tbody>
             </table>
         </div>
+        {% if changes %}
+        <div class="mb-3" id="spending-changes">
+            <h2 class="h6 mb-1">What changed</h2>
+            <p class="small text-muted mb-2">Last {{ changes.days }} days ({{ changes.start|nice_date }} to {{ changes.end|nice_date }}) against your usual {{ changes.days }} days since {{ changes.baseline_start|nice_date }}.</p>
+            <ul class="list-unstyled small mb-0">
+                {% for c in changes.up %}
+                <li class="mb-1"><span class="text-danger">&#9650;</span> <a href="{{ url_for('spend.spend_category', code=c.code, range='3m') }}">{{ c.label }}</a>
+                    up {{ c.delta|money }}{% if c.percent is not none %} ({{ c.percent }}%){% endif %}: {{ c.recent|money }} against a usual {{ c.usual|money }}{% if c.driver %}, mostly {{ c.driver }}{% endif %}.</li>
+                {% endfor %}
+                {% for c in changes.down %}
+                <li class="mb-1"><span class="text-success">&#9660;</span> <a href="{{ url_for('spend.spend_category', code=c.code, range='3m') }}">{{ c.label }}</a>
+                    down {{ (0 - c.delta)|money }} ({{ c.percent }}%): {{ c.recent|money }} against a usual {{ c.usual|money }}{% if c.driver %}, mostly {{ c.driver }}{% endif %}.</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
         <details class="mb-2">
             <summary class="small">Biggest places your money went</summary>
             <ul class="small mt-2 mb-0">
