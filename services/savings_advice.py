@@ -117,8 +117,23 @@ def cash_flow(transactions: Iterable[Dict], pay_key: Optional[str],
     }
 
 
+FREQUENCY_DAYS = {"weekly": 7, "fortnightly": 14, "monthly": 365.25 / 12,
+                  "quarterly": 365.25 / 4, "yearly": 365.25}
+
+
+def per_cycle(amount: float, frequency: str, cycle_days: float) -> float:
+    """What a payment costs over one pay cycle: $800 fortnightly is $800 a fortnight."""
+    return round(float(amount) * cycle_days / FREQUENCY_DAYS.get(frequency or "", 365.25 / 12), 2)
+
+
+def bills_per_cycle(bills: Iterable[Dict], cycle_days: float) -> float:
+    """Total of active bills over one pay cycle, each scaled from its own frequency."""
+    return round(sum(per_cycle(b.get("amount") or 0, b.get("frequency"), cycle_days) for b in bills), 2)
+
+
 def suggest_savings(flow: Optional[Dict], pay: Optional[Dict], monthly_bills: float = 0.0,
-                    income_override: Optional[float] = None) -> Optional[Dict]:
+                    income_override: Optional[float] = None,
+                    bills_per_pay: Optional[float] = None) -> Optional[Dict]:
     """Suggested savings and long term amounts for each payday, or None.
 
     flow is a cash_flow() result and pay a detect_payday() result. Costs are
@@ -133,7 +148,8 @@ def suggest_savings(flow: Optional[Dict], pay: Optional[Dict], monthly_bills: fl
     per_cycle = cycle / days
     income = round(income_override if income_override else pay["amount"], 2)
     groceries = round(flow["groceries"] * per_cycle, 2)
-    bills = round(monthly_bills * 12 / 365.25 * cycle, 2)
+    bills = (round(bills_per_pay, 2) if bills_per_pay is not None
+             else round(monthly_bills * 12 / 365.25 * cycle, 2))
     spending = round(flow["spending"] * per_cycle, 2)
     everyday = round(max(spending - bills, 0.0), 2)
     costs = round(groceries + max(spending, bills), 2)

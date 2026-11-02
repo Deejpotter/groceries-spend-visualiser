@@ -100,6 +100,20 @@
         </div>
         <a class="small" href="{{ url_for('subscriptions.subscription_fortnight') }}">Open budget →</a>
     </div>
+
+    {% if advice %}
+    <div class="kpi-tile" data-tone="{{ 'warn' if advice.overspending or regular_count else 'ok' }}">
+        <div class="kpi-label">{{ icon('chart-line') }} Save this pay</div>
+        <div class="kpi-value">{{ (advice.savings + advice.long_term)|money }}</div>
+        <div class="kpi-context">
+            {% if regular_count %}{{ regular_count }} regular payment{{ 's' if regular_count != 1 }} not counted as bills yet
+            {% elif advice.overspending %}costs are {{ (-advice.surplus)|money }} over your pay
+            {% elif advice.progress %}emergency fund {{ advice.progress.percent }}% of {{ advice.progress.target|money }}
+            {% else %}{{ advice.save_share }}% of your pay{% endif %}
+        </div>
+        <a class="small" href="{{ url_for('subscriptions.subscription_fortnight') }}{{ '#regular-payments' if regular_count }}">{{ 'Review payments' if regular_count else 'See the plan' }} →</a>
+    </div>
+    {% endif %}
 </div>
 
 <div class="row">

@@ -104,6 +104,42 @@
 </div>
 {% endif %}
 
+{% if regular %}
+<div class="card mb-4 section-card" id="regular-payments">
+    <div class="card-header">
+        <span class="section-title">Regular payments not counted as bills</span>
+        <span class="small text-muted ml-2">{{ regular|length }} found in your bank history</span>
+    </div>
+    <div class="card-body">
+        <p class="small mb-2">
+            These repeat on a schedule but aren't on your Bills list, so the savings suggestion treats them as
+            everyday spending. Count them as bills and the suggestion below updates straight away.
+        </p>
+        <form method="post" action="{{ url_for('subscriptions.subscription_track_regular') }}">
+            {{ csrf() }}
+            <div class="table-responsive">
+                <table class="table table-sm mb-2">
+                    <thead><tr><th scope="col"><span class="sr-only">Count</span></th><th scope="col">Payment</th><th scope="col">How often</th><th scope="col" class="text-right">Per pay</th></tr></thead>
+                    <tbody>
+                        {% for r in regular %}
+                        <tr>
+                            <td><input type="checkbox" name="stream_key" value="{{ r.stream_key }}" id="regular-{{ loop.index }}" checked></td>
+                            <td><label for="regular-{{ loop.index }}" class="mb-0">{{ r.name }}</label>
+                                <div class="small text-muted">{{ r.amount|money }} each, {{ r.occurrences }} payments</div></td>
+                            <td>{{ r.frequency|capitalize }}</td>
+                            <td class="text-right">{{ r.per_pay|money }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm">Count ticked as bills</button>
+            <a href="{{ url_for('subscriptions.subscription_suggest') }}" class="btn btn-link btn-sm">Review one by one</a>
+        </form>
+    </div>
+</div>
+{% endif %}
+
 <div class="card mb-4 section-card">
     <div class="card-header">
         <span class="section-title">Suggested savings</span>
