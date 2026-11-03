@@ -184,11 +184,16 @@ def savings_suggestion() -> Optional[Dict]:
             change["since"] = pay["last_payday"]
         advice["change"] = change
         from services.left_to_spend import left_to_spend
-        from services.bank_spending import savings_levers
-        from services.repository import load_merchant_categories
+        from services.bank_spending import limit_for_lever, limits_progress, savings_levers
+        from services.repository import load_merchant_categories, load_spending_limits
         advice["left"] = left_to_spend(pay, advice, rows, subs, date.today())
-        advice["levers"] = savings_levers(rows, CYCLE_DAYS.get(pay["frequency"], 14), load_merchant_categories(),
+        overrides, limits = load_merchant_categories(), load_spending_limits()
+        advice["levers"] = savings_levers(rows, CYCLE_DAYS.get(pay["frequency"], 14), overrides,
                                           gap=-advice["surplus"] if advice["overspending"] else 0.0)
+        for lever in (advice["levers"] or {}).get("levers", []):
+            lever["limit"] = limit_for_lever(lever)
+            lever["has_limit"] = lever["code"] in limits
+        advice["limits"] = limits_progress(rows, limits, pay["last_payday"], overrides)
     return advice
 
 

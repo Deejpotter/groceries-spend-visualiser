@@ -13,6 +13,7 @@ from typing import Dict, Iterable, List, Optional
 
 from functools import lru_cache
 
+from models import parse_ymd
 from services.recurring import (
     _display_name, guess_category, known_merchant, normalise_merchant, transfer_payee,
 )
@@ -348,3 +349,38 @@ def savings_levers(transactions: Iterable[Dict], cycle_days: float, overrides: O
     freed = round(sum(l["cut"] for l in levers), 2)
     return {"levers": levers, "freed": freed, "share": round(share * 100), "gap": round(max(gap, 0.0), 2),
             "covers_gap": freed >= gap if gap > 0 else None}
+
+
+def limit_for_lever(lever: Dict) -> float:
+    """The per-pay limit a lever suggests: usual spend less the cut, rounded to $5."""
+    return float(max(int((lever["per_pay"] - lever["cut"]) / 5) * 5, 0))
+
+
+def limits_progress(transactions: Iterable[Dict], limits: Dict[str, float], since: str,
+                    overrides: Optional[Dict[str, str]] = None) -> Optional[Dict]:
+    """Spending in each limited category since payday against its limit, or None.
+
+    `limits` maps a category code to its limit per pay. Each item says how much
+    was spent, what is left, the share used and whether it is over.
+    """
+    if not limits:
+        return None
+    try:
+        start = parse_ymd(since)
+    except (TypeError, ValueError):
+        return None
+    window = spend_items(transactions, overrides=overrides)
+    spent: Dict[str, float] = defaultdict(float)
+    for item in (window or {}).get("items", []):
+        if item["day"] >= start and item["category"] in limits:
+            spent[item["category"]] += item["amount"]
+    items = []
+    for code, limit in limits.items():
+        used = round(spent.get(code, 0.0), 2)
+        items.append({
+            "code": code, "label": category_label(code), "limit": round(limit, 2), "spent": used,
+            "left": round(limit - used, 2), "percent": min(100, round(used / limit * 100)) if limit else 100,
+            "over": used > limit,
+        })
+    items.sort(key=lambda i: (not i["over"], -i["spent"]))
+    return {"since": start.isoformat(), "items": items, "over": [i for i in items if i["over"]]}
