@@ -101,6 +101,27 @@
         <a class="small" href="{{ url_for('subscriptions.subscription_fortnight') }}">Open budget →</a>
     </div>
 
+    {% if advice and advice.left %}
+    {% set left = advice.left %}
+    <div class="kpi-tile" data-tone="{{ 'warn' if left.over else 'ok' }}" id="left-to-spend">
+        <div class="kpi-label">{{ icon('wallet') }} Left to spend</div>
+        <div class="kpi-value">{{ left.left|money }}</div>
+        <div class="kpi-context">
+            {% if left.over %}over this pay, with {{ left.days_left }} day{{ 's' if left.days_left != 1 }} to payday
+            {% else %}about {{ left.per_day|money }} a day for {{ left.days_left }} day{{ 's' if left.days_left != 1 }}, until {{ left.next_payday|nice_date }}{% endif %}
+        </div>
+        <details class="small mt-1">
+            <summary>How this is worked out</summary>
+            <ul class="list-unstyled mb-0 mt-1">
+                <li>Pay: {{ left.income|money }}</li>
+                <li>Less suggested savings: {{ left.saving|money }}</li>
+                <li>Less spent since {{ left.since|nice_date }}: {{ left.spent|money }}</li>
+                <li>Less bills still due: {{ left.bills_total|money }}{% if left.bills_due %} ({% for b in left.bills_due %}{{ b.name }} {{ b.amount|money }}{{ ', ' if not loop.last }}{% endfor %}){% endif %}</li>
+            </ul>
+        </details>
+    </div>
+    {% endif %}
+
     {% if advice %}
     <div class="kpi-tile" data-tone="{{ 'warn' if advice.overspending or regular_count else 'ok' }}">
         <div class="kpi-label">{{ icon('chart-line') }} Save this pay</div>
