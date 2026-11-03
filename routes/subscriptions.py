@@ -510,6 +510,38 @@ def subscription_apply_savings():
     return redirect(url_for("subscriptions.subscription_fortnight"))
 
 
+@subscriptions_bp.route("/subscriptions/fortnight/limit", methods=["POST"])
+@login_required
+def subscription_set_limit():
+    """Set (or, with an empty amount, remove) a spending limit per pay for a category."""
+    from services.bank_spending import category_choices, category_label
+    code = request.form.get("category") or ""
+    if code not in {c for c, _ in category_choices()}:
+        flash("Choose a category for the limit.", "warning")
+        return redirect(url_for("subscriptions.subscription_fortnight"))
+    raw = (request.form.get("per_pay") or "").replace("$", "").replace(",", "").strip()
+    db = get_db()
+    if request.form.get("remove") or not raw:
+        db.execute("DELETE FROM spending_limits WHERE category = ?", (code,))
+        db.commit()
+        flash(f"Removed the limit for {category_label(code)}.", "success")
+        return redirect(url_for("subscriptions.subscription_fortnight") + "#spending-limits")
+    try:
+        amount = round(float(raw), 2)
+    except ValueError:
+        amount = -1
+    if amount <= 0:
+        flash("Enter a limit above $0.", "warning")
+        return redirect(url_for("subscriptions.subscription_fortnight"))
+    db.execute(
+        "INSERT INTO spending_limits (category, per_pay) VALUES (?, ?)"
+        " ON CONFLICT(category) DO UPDATE SET per_pay = excluded.per_pay, updated_at = CURRENT_TIMESTAMP",
+        (code, amount))
+    db.commit()
+    flash(f"{category_label(code)} is limited to ${amount:,.2f} a pay.", "success")
+    return redirect(url_for("subscriptions.subscription_fortnight") + "#spending-limits")
+
+
 def _save_late_reviews(reviews):
     """Save verdicts from a batch that finished after the page responded.
 
