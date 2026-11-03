@@ -111,3 +111,35 @@ def test_health_problem_names_the_cause():
     assert "from before the staging check" in sc.health_problem(200, '{"status": "ok"}', "abc1234", 60)
     assert "Include Source Commit" in sc.health_problem(200, '{"status": "ok", "commit": null}', "abc1234", 60)
     assert "did not return JSON" in sc.health_problem(200, "<html>", "abc1234", 60)
+
+
+def test_settled_fetch_retries_gateway_errors_only():
+    answers = iter([(502, ""), (0, "refused"), (200, "ok")])
+    naps = []
+    assert sc.settled_fetch(lambda url: next(answers), "u", sleep=naps.append) == (200, "ok")
+    assert naps == [10, 10]
+    answers = iter([(500, "boom"), (200, "ok")])
+    assert sc.settled_fetch(lambda url: next(answers), "u", sleep=naps.append) == (500, "boom")
+
+
+def test_settled_fetch_gives_up_after_the_last_attempt():
+    naps = []
+    assert sc.settled_fetch(lambda url, key: (503, ""), "u", "k", attempts=3, sleep=naps.append) == (503, "")
+    assert naps == [10, 10]
+
+
+def test_run_rides_out_a_502_after_deploy(app):
+    _setup(app)
+    real = _fetcher(app.test_client())
+    first = {"/login": True}
+
+    def flaky(url, key=None):
+        path = url.replace("http://staging", "")
+        if first.get(path):
+            first[path] = False
+            return 502, "Bad Gateway"
+        return real(url, key) if key else real(url)
+
+    naps = []
+    assert sc.run("http://staging", None, KEY, fetcher=flaky, sleep=naps.append) == []
+    assert naps == [10]

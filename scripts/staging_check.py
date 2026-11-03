@@ -36,6 +36,26 @@ def fetch(url, key=None, timeout=20):
         return 0, str(exc)
 
 
+GATEWAY_ERRORS = (0, 502, 503, 504)
+
+
+def settled_fetch(fetcher, url, key=None, attempts=6, wait=10, sleep=time.sleep):
+    """fetcher(url) retried while the proxy answers with a gateway error.
+
+    Right after a deploy, /health can already answer from the new container
+    while the proxy still returns 502 for a moment as containers swap. Only
+    gateway errors and no answer are retried; any other status is returned.
+    """
+    status, body = 0, ""
+    for attempt in range(attempts):
+        status, body = fetcher(url, key) if key else fetcher(url)
+        if status not in GATEWAY_ERRORS:
+            break
+        if attempt < attempts - 1:
+            sleep(wait)
+    return status, body
+
+
 def deployed_commit(body):
     """The commit /health reports, or None."""
     try:
@@ -110,14 +130,14 @@ def run(base, expected, key, timeout=1200, interval=20, fetcher=fetch, sleep=tim
         ok, status, body = wait_for_commit(base, expected, timeout, interval, fetcher, sleep)
         if not ok:
             return [health_problem(status, body, expected, timeout)]
-    status, body = fetcher(base + "/login")
+    status, body = settled_fetch(fetcher, base + "/login", sleep=sleep)
     if status != 200 or "Larder" not in body:
         problems.append(f"/login returned {status}")
     if not key:
         problems.append("STAGING_API_KEY is not set, so the API checks did not run")
         return problems
     for path in API_PATHS:
-        status, body = fetcher(base + path, key)
+        status, body = settled_fetch(fetcher, base + path, key, sleep=sleep)
         if status != 200:
             problems.append(f"{path} returned {status}")
             continue
