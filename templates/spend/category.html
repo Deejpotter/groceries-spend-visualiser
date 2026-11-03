@@ -2,6 +2,8 @@
 
 {% block title %}{{ label }} — {{ app_name }}{% endblock %}
 
+{% from "_macros.html" import csrf %}
+
 {% block content %}
 <div class="page-head">
     <div>
@@ -45,6 +47,20 @@
                 <strong>{{ m.name }}</strong>
                 <span class="text-muted small">{{ m.amount|money }} &middot; {{ m.share }}% &middot; {{ m.count }} payment{{ '' if m.count == 1 else 's' }}</span>
             </summary>
+            <form method="post" action="{{ url_for('spend.set_merchant_category') }}" class="form-inline mt-2">
+                {{ csrf() }}
+                <input type="hidden" name="merchant_key" value="{{ m.key }}">
+                <input type="hidden" name="name" value="{{ m.name }}">
+                <input type="hidden" name="back" value="{{ code }}">
+                <input type="hidden" name="range" value="{{ range_key }}">
+                <label class="small mr-2" for="cat-{{ loop.index }}">Category</label>
+                <select name="category" id="cat-{{ loop.index }}" class="form-control form-control-sm mr-2 mb-1">
+                    {% for c, l in choices %}<option value="{{ c }}" {{ 'selected' if c == code }}>{{ l }}</option>{% endfor %}
+                    {% if m.chosen %}<option value="auto">Automatic (best guess)</option>{% endif %}
+                </select>
+                <button type="submit" class="btn btn-sm btn-outline-primary mb-1">Save</button>
+                {% if m.chosen %}<span class="small text-muted ml-2 mb-1">you chose this</span>{% endif %}
+            </form>
             <div class="table-responsive mt-2">
                 <table class="table table-sm mb-0">
                     <thead><tr><th>Date</th><th>Description</th><th class="text-right">Amount</th></tr></thead>
@@ -58,7 +74,7 @@
         </details>
         {% endfor %}
         <p class="text-muted small mb-0 mt-3">
-            Categories are a best guess from the merchant name. Transfers to people are grouped by who they went to.
+            Categories are a best guess from the merchant name until you choose one. Your choice applies to every payment to that merchant, past and future. Transfers to people are grouped by who they went to.
         </p>
     </div>
 </div>

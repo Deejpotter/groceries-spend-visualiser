@@ -210,6 +210,12 @@ CREATE TABLE IF NOT EXISTS bank_transactions (
 CREATE INDEX IF NOT EXISTS idx_bank_transactions_date ON bank_transactions(txn_date);
 CREATE INDEX IF NOT EXISTS idx_bank_transactions_merchant ON bank_transactions(merchant_key);
 
+CREATE TABLE IF NOT EXISTS merchant_categories (
+    merchant_key TEXT PRIMARY KEY,
+    category TEXT NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS merchant_decisions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     merchant_key TEXT NOT NULL UNIQUE,

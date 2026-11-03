@@ -6,6 +6,7 @@ moves, so they are left out, as are credits and rows whose direction is
 unknown.
 """
 
+import re
 from collections import defaultdict
 from datetime import timedelta
 from typing import Dict, Iterable, List, Optional
@@ -16,10 +17,43 @@ from services.recurring import (
     _display_name, guess_category, known_merchant, normalise_merchant, transfer_payee,
 )
 from services.savings_advice import _day, is_move
-from services.subscriptions import subscription_category_label
+from services.subscriptions import SUBSCRIPTION_CATEGORIES, subscription_category_label
 
 DAYS_PER_MONTH = 365.25 / 12
 TOP_MERCHANTS = 8
+
+# Everyday spending has no place in the Bills categories, so the Spend page
+# adds its own. They are only guessed when nothing more specific matched.
+SPEND_CATEGORIES = [
+    ("eating_out", "Eating out"),
+    ("fuel", "Fuel"),
+    ("shopping", "Shopping"),
+]
+_SPEND_KEYWORDS = [
+    ("eating_out", ("mcdonalds", "mcdonald's", "kfc", "hungry jack", "guzman", "dominos", "domino's",
+                    "pizza", "uber eats", "doordash", "menulog", "subway", "oporto", "red rooster",
+                    "nandos", "grill'd", "cafe", "coffee", "restaurant", "bakery", "sushi", "kebab")),
+    ("fuel", ("bp", "shell", "ampol", "caltex", "7-eleven", "united petroleum", "metro petroleum",
+              "liberty", "puma energy", "fuel", "petrol")),
+    ("shopping", ("kmart", "target", "big w", "bunnings", "jb hi-fi", "officeworks", "amazon",
+                  "ebay", "temu", "myer", "david jones", "harvey norman", "rebel", "spotlight")),
+]
+_SPEND_LOOKUP = dict(SPEND_CATEGORIES)
+
+
+def category_choices() -> List[tuple]:
+    """Every category a merchant can be put in, as (code, label)."""
+    bills = [c for c in SUBSCRIPTION_CATEGORIES if c[0] != "other"]
+    return [("groceries", "Groceries")] + SPEND_CATEGORIES + bills + [("other", "Other")]
+
+
+def guess_spend_category(description: str) -> Optional[str]:
+    """An everyday spending category from the description, or None."""
+    text = (description or "").lower()
+    for code, keywords in _SPEND_KEYWORDS:
+        if any(re.search(rf"(?<![\w-]){re.escape(k)}(?![\w-])", text) for k in keywords):
+            return code
+    return None
 
 
 @lru_cache(maxsize=4096)
@@ -36,20 +70,40 @@ def merchant_label(description: str) -> str:
     return " ".join(words[:4]) or "Unknown merchant"
 
 
-def category_for(row: Dict) -> str:
-    """Category code for one bank debit: 'groceries' or a Bills category."""
+def merchant_key_for(row: Dict) -> str:
+    """The key spending is grouped by, and that a category choice is saved against."""
+    description = row.get("description") or ""
+    return normalise_merchant(description) or row.get("merchant_key") or description
+
+
+def category_for(row: Dict, overrides: Optional[Dict[str, str]] = None) -> str:
+    """Category code for one bank debit.
+
+    A category the user chose for the merchant wins. Otherwise grocery rows are
+    groceries, then known merchants, the Bills guesses and the everyday guesses.
+    """
+    if overrides:
+        chosen = overrides.get(merchant_key_for(row))
+        if chosen:
+            return chosen
     if (row.get("status") or "") == "grocery":
         return "groceries"
     description = row.get("description") or ""
     known = known_merchant([description])
-    return (known or {}).get("category") or guess_category(description)
+    code = (known or {}).get("category") or guess_category(description)
+    if code == "other":
+        return guess_spend_category(description) or "other"
+    return code
 
 
 def category_label(code: str) -> str:
-    return "Groceries" if code == "groceries" else subscription_category_label(code)
+    if code == "groceries":
+        return "Groceries"
+    return _SPEND_LOOKUP.get(code) or subscription_category_label(code)
 
 
-def spend_items(transactions: Iterable[Dict], days: Optional[int] = None) -> Optional[Dict]:
+def spend_items(transactions: Iterable[Dict], days: Optional[int] = None,
+                overrides: Optional[Dict[str, str]] = None) -> Optional[Dict]:
     """Money-out rows in the window as {end, items, moved, unsure}, or None.
 
     Each item is {day, amount, description, category, key, name}. Credits are
@@ -77,26 +131,28 @@ def spend_items(transactions: Iterable[Dict], days: Optional[int] = None) -> Opt
         if is_move(description):
             moved += amount
             continue
-        key = normalise_merchant(description) or row.get("merchant_key") or description
         items.append({"day": day, "amount": amount, "description": description,
-                      "category": category_for(row), "key": key,
+                      "category": category_for(row, overrides), "key": merchant_key_for(row),
                       "name": merchant_label(description)})
     return {"end": end, "items": items, "moved": round(moved, 2), "unsure": round(unsure, 2)}
 
 
-def category_detail(transactions: Iterable[Dict], code: str, days: Optional[int] = None) -> Optional[Dict]:
+def category_detail(transactions: Iterable[Dict], code: str, days: Optional[int] = None,
+                    overrides: Optional[Dict[str, str]] = None) -> Optional[Dict]:
     """One category's transactions, grouped by merchant, or None when it has none.
 
     Merchants are the sub-categories: each has a total, a count and its rows,
     newest first.
     """
-    window = spend_items(transactions, days)
+    window = spend_items(transactions, days, overrides)
     items = [i for i in (window or {}).get("items", []) if i["category"] == code]
+    overrides = overrides or {}
     if not items:
         return None
     groups: Dict[str, Dict] = {}
     for item in items:
-        group = groups.setdefault(item["key"], {"name": item["name"], "amount": 0.0, "count": 0, "rows": []})
+        group = groups.setdefault(item["key"], {"key": item["key"], "name": item["name"], "amount": 0.0,
+                                                "count": 0, "rows": [], "chosen": item["key"] in overrides})
         group["amount"] += item["amount"]
         group["count"] += 1
         group["rows"].append({"date": item["day"].isoformat(), "description": item["description"],
@@ -118,13 +174,14 @@ def category_detail(transactions: Iterable[Dict], code: str, days: Optional[int]
     }
 
 
-def bank_spending(transactions: Iterable[Dict], days: Optional[int] = None) -> Optional[Dict]:
+def bank_spending(transactions: Iterable[Dict], days: Optional[int] = None,
+                  overrides: Optional[Dict[str, str]] = None) -> Optional[Dict]:
     """Money out over the last `days` days of bank history (all of it when None).
 
     Returns None when there are no bank debits in the window. The window ends
     on the latest bank row, so an old import still shows a full range.
     """
-    window = spend_items(transactions, days)
+    window = spend_items(transactions, days, overrides)
     if not window:
         return None
     end = window["end"]
@@ -180,7 +237,8 @@ MIN_SHARE = 0.25
 
 def spending_changes(transactions: Iterable[Dict], recent_days: int = RECENT_DAYS,
                      baseline_days: int = BASELINE_DAYS, min_change: float = MIN_CHANGE,
-                     min_share: float = MIN_SHARE) -> Optional[Dict]:
+                     min_share: float = MIN_SHARE,
+                     overrides: Optional[Dict[str, str]] = None) -> Optional[Dict]:
     """Categories that moved in the last `recent_days` against your usual, or None.
 
     The usual is the `baseline_days` before that, scaled to the same length.
@@ -189,7 +247,7 @@ def spending_changes(transactions: Iterable[Dict], recent_days: int = RECENT_DAY
     merchant that moved most in the same direction. None when there is less
     than one full recent period of earlier history, or nothing changed.
     """
-    window = spend_items(transactions)
+    window = spend_items(transactions, overrides=overrides)
     if not window or not window["items"]:
         return None
     end = window["end"]
