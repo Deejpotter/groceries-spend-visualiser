@@ -299,3 +299,52 @@ def spending_changes(transactions: Iterable[Dict], recent_days: int = RECENT_DAY
         "up": sorted(up, key=lambda e: -e["delta"])[:5],
         "down": sorted(down, key=lambda e: e["delta"])[:5],
     }
+
+
+FLEXIBLE = ("eating_out", "shopping", "entertainment", "streaming", "memberships", "software", "other")
+LEVER_SHARE = 0.2
+MIN_LEVER = 20.0
+
+
+def savings_levers(transactions: Iterable[Dict], cycle_days: float, overrides: Optional[Dict[str, str]] = None,
+                   days: int = 90, share: float = LEVER_SHARE, gap: float = 0.0, limit: int = 3) -> Optional[Dict]:
+    """The flexible spending categories that could free up money each pay, or None.
+
+    Bills, groceries, transfers to people and transport are left out: they are
+    harder to change from one pay to the next. Each lever is a category's
+    usual spend per pay, its biggest merchants and what cutting it by `share`
+    would free, rounded down to $5. `gap` is how far costs are over pay, so
+    the result can say whether the cuts would cover it.
+    """
+    window = spend_items(transactions, days, overrides)
+    if not window or not window["items"]:
+        return None
+    first = min(i["day"] for i in window["items"])
+    span = max((window["end"] - first).days + 1, 1)
+    scale = cycle_days / span
+    totals: Dict[str, float] = defaultdict(float)
+    merchants: Dict[str, Dict[str, Dict]] = defaultdict(dict)
+    for item in window["items"]:
+        if item["category"] not in FLEXIBLE:
+            continue
+        totals[item["category"]] += item["amount"]
+        entry = merchants[item["category"]].setdefault(item["key"], {"name": item["name"], "amount": 0.0})
+        entry["amount"] += item["amount"]
+    levers = []
+    for code, total in sorted(totals.items(), key=lambda kv: -kv[1]):
+        per_pay = round(total * scale, 2)
+        if per_pay < MIN_LEVER:
+            continue
+        top = sorted(merchants[code].values(), key=lambda m: -m["amount"])[:2]
+        levers.append({
+            "code": code, "label": category_label(code), "per_pay": per_pay,
+            "cut": float(int(per_pay * share / 5) * 5),
+            "merchants": [{"name": m["name"], "per_pay": round(m["amount"] * scale, 2)} for m in top],
+        })
+        if len(levers) == limit:
+            break
+    if not levers:
+        return None
+    freed = round(sum(l["cut"] for l in levers), 2)
+    return {"levers": levers, "freed": freed, "share": round(share * 100), "gap": round(max(gap, 0.0), 2),
+            "covers_gap": freed >= gap if gap > 0 else None}

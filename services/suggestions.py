@@ -184,7 +184,11 @@ def savings_suggestion() -> Optional[Dict]:
             change["since"] = pay["last_payday"]
         advice["change"] = change
         from services.left_to_spend import left_to_spend
+        from services.bank_spending import savings_levers
+        from services.repository import load_merchant_categories
         advice["left"] = left_to_spend(pay, advice, rows, subs, date.today())
+        advice["levers"] = savings_levers(rows, CYCLE_DAYS.get(pay["frequency"], 14), load_merchant_categories(),
+                                          gap=-advice["surplus"] if advice["overspending"] else 0.0)
     return advice
 
 

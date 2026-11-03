@@ -211,6 +211,18 @@
             That is {{ advice.benchmark_gap|money }} short of saving 20% of your pay ({{ advice.benchmark|money }}).
         </p>
         {% endif %}
+        {% if advice.levers %}
+        {% set lv = advice.levers %}
+        <div class="mt-3" id="savings-levers">
+            <p class="small font-weight-bold mb-1">Where you could free up money</p>
+            <p class="small text-muted mb-2">Your most flexible spending each pay. Cutting each by {{ lv.share }}% frees about {{ lv.freed|money }} a pay{% if lv.gap %}, {{ 'enough to cover' if lv.covers_gap else 'towards' }} the {{ lv.gap|money }} you are over{% endif %}.</p>
+            <ul class="list-unstyled small mb-0">
+                {% for l in lv.levers %}
+                <li class="mb-1"><a href="{{ url_for('spend.spend_category', code=l.code, range='3m') }}">{{ l.label }}</a>: {{ l.per_pay|money }} a pay, cut {{ l.cut|money }}{% if l.merchants %} <span class="text-muted">(mostly {% for m in l.merchants %}{{ m.name }} {{ m.per_pay|money }}{{ ', ' if not loop.last }}{% endfor %})</span>{% endif %}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
         {% if advice.from_savings %}
         <p class="text-danger small mt-2 mb-0">
             About {{ advice.from_savings|money }} each pay was moved back out of savings.
