@@ -36,7 +36,7 @@ def test_category_that_went_up_names_the_merchant():
   changes = spending_changes(rows)
   assert changes["down"] == []
   [item] = changes["up"]
-  assert item["code"] == "other"
+  assert item["code"] == "shopping"
   assert item["recent"] == 320
   assert item["usual"] == 0
   assert item["percent"] is None

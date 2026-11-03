@@ -101,11 +101,13 @@ def spend_dashboard():
         "SELECT COUNT(DISTINCT product_name) FROM purchases WHERE ingredient_id IS NULL"
     ).fetchone()[0]
     from services.bank_spending import bank_spending, spending_changes
+    from services.repository import load_merchant_categories
     bank_rows = _bank_rows(db)
+    overrides = load_merchant_categories()
     return render_template(
         "spend/dashboard.html",
-        bank=bank_spending(bank_rows, RANGES[range_key]),
-        changes=spending_changes(bank_rows),
+        bank=bank_spending(bank_rows, RANGES[range_key], overrides),
+        changes=spending_changes(bank_rows, overrides=overrides),
         stats=stats,
         range_key=range_key,
         ranges=[("3m", "3 months"), ("6m", "6 months"), ("12m", "12 months"), ("all", "All time")],
@@ -126,16 +128,45 @@ def _bank_rows(db):
 @login_required
 def spend_category(code):
     """Transactions in one spending category, grouped by merchant."""
-    from services.bank_spending import category_detail, category_label
+    from services.bank_spending import category_choices, category_detail, category_label
+    from services.repository import load_merchant_categories
     range_key = request.args.get("range", "12m")
     if range_key not in RANGES:
         range_key = "12m"
-    detail = category_detail(_bank_rows(get_db()), code, RANGES[range_key])
+    detail = category_detail(_bank_rows(get_db()), code, RANGES[range_key], load_merchant_categories())
     return render_template(
         "spend/category.html", detail=detail, code=code, label=category_label(code),
-        range_key=range_key,
+        range_key=range_key, choices=category_choices(),
         ranges=[("3m", "3 months"), ("6m", "6 months"), ("12m", "12 months"), ("all", "All time")],
     )
+
+
+@spend_bp.route("/spend/merchant-category", methods=["POST"])
+@login_required
+def set_merchant_category():
+    """Save (or clear, with 'auto') the spending category for one merchant."""
+    from services.bank_spending import category_choices, category_label
+    key = (request.form.get("merchant_key") or "").strip()
+    category = request.form.get("category") or ""
+    name = request.form.get("name") or key
+    back = request.form.get("back") or "other"
+    range_key = request.form.get("range") if request.form.get("range") in RANGES else "12m"
+    valid = {code for code, _ in category_choices()}
+    if not key or (category != "auto" and category not in valid):
+        flash("Choose a category for that merchant.", "warning")
+        return redirect(url_for("spend.spend_category", code=back, range=range_key))
+    db = get_db()
+    if category == "auto":
+        db.execute("DELETE FROM merchant_categories WHERE merchant_key = ?", (key,))
+        flash(f"{name} is back to the automatic category.", "success")
+    else:
+        db.execute(
+            "INSERT INTO merchant_categories (merchant_key, category) VALUES (?, ?)"
+            " ON CONFLICT(merchant_key) DO UPDATE SET category = excluded.category,"
+            " updated_at = CURRENT_TIMESTAMP", (key, category))
+        flash(f"{name} now counts as {category_label(category)}.", "success")
+    db.commit()
+    return redirect(url_for("spend.spend_category", code=back, range=range_key))
 
 
 @spend_bp.route("/spend/import", methods=["GET", "POST"])
