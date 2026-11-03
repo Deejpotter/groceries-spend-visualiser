@@ -21,7 +21,7 @@ def _rows():
 def test_category_for():
     assert category_for({"status": "grocery", "description": "WOOLWORTHS"}) == "groceries"
     assert category_for({"description": "AGL ENERGY BILL"}) == "utilities"
-    assert category_for({"description": "BUNNINGS 552"}) == "other"
+    assert category_for({"description": "BUNNINGS 552"}) == "shopping"
 
 
 def test_bank_spending_totals_and_groups():
@@ -33,7 +33,7 @@ def test_bank_spending_totals_and_groups():
     assert s["unsure"] == 40
     codes = [c["code"] for c in s["categories"]]
     assert codes[0] == "groceries"
-    assert set(codes) == {"groceries", "utilities", "streaming", "other"}
+    assert set(codes) == {"groceries", "utilities", "streaming", "shopping"}
     assert [m["month"] for m in s["months"]] == ["2026-09", "2026-10"]
     assert s["months"][1] == {"month": "2026-10", "groceries": 150, "other": 82.99, "total": 232.99}
     assert s["top_merchants"][0]["amount"] == 270

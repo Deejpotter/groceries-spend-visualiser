@@ -150,3 +150,9 @@ def load_recipe_links() -> Dict[int, List[Dict]]:
     for r in get_db().execute("SELECT recipe_id, ingredient_id, quantity, unit_override FROM recipe_ingredients"):
         links.setdefault(r["recipe_id"], []).append(dict(r))
     return links
+
+
+def load_merchant_categories() -> Dict[str, str]:
+    """Spending categories the user chose, by merchant key."""
+    return {r["merchant_key"]: r["category"] for r in get_db().execute(
+        "SELECT merchant_key, category FROM merchant_categories")}
