@@ -183,6 +183,8 @@ def savings_suggestion() -> Optional[Dict]:
         if change:
             change["since"] = pay["last_payday"]
         advice["change"] = change
+        from services.left_to_spend import left_to_spend
+        advice["left"] = left_to_spend(pay, advice, rows, subs, date.today())
     return advice
 
 
