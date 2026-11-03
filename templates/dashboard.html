@@ -110,6 +110,9 @@
             {% if left.over %}over this pay, with {{ left.days_left }} day{{ 's' if left.days_left != 1 }} to payday
             {% else %}about {{ left.per_day|money }} a day for {{ left.days_left }} day{{ 's' if left.days_left != 1 }}, until {{ left.next_payday|nice_date }}{% endif %}
         </div>
+        {% if advice.limits and advice.limits.over %}
+        <a class="small text-danger d-block" href="{{ url_for('subscriptions.subscription_fortnight') }}#spending-limits">Over your limit: {% for i in advice.limits.over %}{{ i.label }}{{ ', ' if not loop.last }}{% endfor %}</a>
+        {% endif %}
         <details class="small mt-1">
             <summary>How this is worked out</summary>
             <ul class="list-unstyled mb-0 mt-1">

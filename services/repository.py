@@ -156,3 +156,9 @@ def load_merchant_categories() -> Dict[str, str]:
     """Spending categories the user chose, by merchant key."""
     return {r["merchant_key"]: r["category"] for r in get_db().execute(
         "SELECT merchant_key, category FROM merchant_categories")}
+
+
+def load_spending_limits() -> Dict[str, float]:
+    """Spending limits per pay, by category code."""
+    return {r["category"]: float(r["per_pay"]) for r in get_db().execute(
+        "SELECT category, per_pay FROM spending_limits")}
