@@ -14,6 +14,7 @@ from services.subscriptions import (
     monthly_cost_by_category,
     monthly_cost_total,
     next_occurrence,
+    split_by_payday,
     subscription_category_label,
     subscriptions_due_in_range,
     suggest_from_purchases,
@@ -486,3 +487,28 @@ class TestUpcomingWeeks:
         subs = [make_subscription(amount=20, next_due="2026-10-07", active=0)]
         weeks = upcoming_weeks(subs, weeks=4, start=self.START)
         assert all(w["total"] == 0 for w in weeks)
+
+
+# ---------------------------------------------------------------------------
+# split_by_payday
+# ---------------------------------------------------------------------------
+
+class TestSplitByPayday:
+    def test_splits_on_payday_and_flags_overdue(self):
+        subs = [
+            make_subscription(id=1, name="Claude", amount=34.0, next_due="2026-11-06"),
+            make_subscription(id=2, name="PayPal", amount=27.84, next_due="2026-11-19"),
+            make_subscription(id=3, name="Coffee", amount=86.70, next_due="2026-02-05"),
+            make_subscription(id=4, name="Payday bill", amount=5.0, next_due="2026-11-09"),
+            {**make_subscription(id=5, name="Groceries", amount=150.0, next_due=None), "kind": "recurring"},
+        ]
+        result = split_by_payday(subs, date(2026, 11, 5), date(2026, 11, 9))
+        assert [s["id"] for s in result["due"]] == [3, 1, 5]
+        assert [s["id"] for s in result["later"]] == [2, 4]
+        assert result["due_total"] == 120.70
+        assert result["overdue_count"] == 1
+        assert [s["overdue"] for s in result["due"]] == [True, False, False]
+
+    def test_empty(self):
+        assert split_by_payday([], date(2026, 11, 5), date(2026, 11, 9)) == {
+            "due": [], "later": [], "due_total": 0, "overdue_count": 0}

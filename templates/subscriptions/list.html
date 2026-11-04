@@ -16,7 +16,7 @@
     </div>
 </div>
 
-{% if not by_category %}
+{% if not has_bills %}
 {% set message = "No bills yet. Add one to start tracking regular payments." %}
 {% set icon = "🧾" %}
 {% set cta_url = url_for('subscriptions.subscription_add') %}
@@ -26,7 +26,36 @@
 {% include "_empty_state.html" %}
 {% endif %}
 
-{% if by_category %}
+{% if payday and has_bills %}
+<div class="card mb-4 section-card payday-card">
+    <div class="card-header d-flex flex-wrap align-items-center">
+        <span class="section-title">{{ icon('calendar') }} Due before payday</span>
+        <span class="badge badge-pill badge-secondary ml-2">{{ payday.due|length }}</span>
+        <span class="small text-muted ml-auto">next pay {{ payday.date|nice_date }}</span>
+    </div>
+    <div class="card-body py-3">
+        <p class="mb-2">
+            {% if payday.due %}
+            <strong>{{ payday.due_total|money }}</strong> to pay across {{ payday.due|length }}
+            bill{{ 's' if payday.due|length != 1 }} before payday.
+            {% if payday.overdue_count %}
+            {{ payday.overdue_count }} {{ 'is' if payday.overdue_count == 1 else 'are' }} overdue:
+            use <strong>Mark paid</strong> if you've already paid {{ 'it' if payday.overdue_count == 1 else 'them' }}.
+            {% endif %}
+            {% else %}
+            Nothing is due before payday.
+            {% endif %}
+        </p>
+        {% if show_all %}
+        <a href="{{ url_for('subscriptions.subscription_list') }}" class="btn btn-sm btn-outline-primary">Show only what's due before payday</a>
+        {% elif payday.later %}
+        <a href="{{ url_for('subscriptions.subscription_list', show='all') }}" class="btn btn-sm btn-outline-secondary">Show all bills ({{ payday.later|length }} due after payday)</a>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+{% if has_bills %}
 <div class="kpi-row mb-4">
     <div class="kpi-tile" data-tone="neutral">
         <div class="kpi-label">{{ icon('credit-card') }} Bills per month</div>
@@ -203,7 +232,7 @@ document.body.addEventListener('htmx:afterRequest', function (event) {
     if (event.detail.successful) window.location.reload();
 });
 </script>
-{% if by_category %}
+{% if has_bills %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"
         integrity="sha384-NrKB+u6Ts6AtkIhwPixiKTzgSKNblyhlk0Sohlgar9UHUBzai/sgnNNWWd291xqt" crossorigin="anonymous"></script>
 <script>
