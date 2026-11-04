@@ -14,7 +14,8 @@ from services.spend_analysis import analyze_purchases, load_purchases, load_spen
 from services.spend_import import (
     commit_import_batch, create_import_batch, discard_import_batch, get_import_batch,
     import_csv_file, import_purchases, parse_purchase_csv,
-    parse_woolworths_invoice_pdf, save_staged_edits, staged_read_total,
+    parse_woolworths_invoice_pdf, price_refresh_messages, refresh_linked_prices,
+    save_staged_edits, staged_read_total,
 )
 
 spend_bp = Blueprint("spend", __name__)
@@ -194,10 +195,12 @@ def spend_import():
         if errors and not rows:
             flash(errors[0], "error")
             return redirect(url_for("spend.spend_import"))
-        added, skipped = import_purchases(get_db(), rows)
+        db = get_db()
+        added, skipped = import_purchases(db, rows)
         flash(f"Imported {added} purchase lines ({skipped} already imported).", "success")
         for err in errors[:3]:
             flash(err, "warning")
+        _flash_price_refresh(db, [r["product_name"] for r in rows])
         return redirect(url_for("spend.spend_dashboard", range="all"))
     return render_template(
         "spend/import.html",
@@ -506,6 +509,12 @@ def spend_products_ai_review():
     return redirect(url_for("spend.spend_products", suggest=1, unlinked=1))
 
 
+def _flash_price_refresh(db, product_names):
+    """Reprice ingredients linked to freshly imported products and say what changed."""
+    for level, message in price_refresh_messages(refresh_linked_prices(db, product_names)):
+        flash(message, level)
+
+
 def _import_invoice(raw: bytes):
     """Stage one Woolworths PDF tax invoice for review before importing.
 
@@ -575,6 +584,7 @@ def import_review(token):
                 flash(f"{label} was already imported — no new lines.", "info")
             else:
                 flash(f"Imported {label}: {added} items.", "success")
+                _flash_price_refresh(db, [line["product_name"] for line in lines if not line["excluded"]])
             return redirect(url_for("spend.spend_dashboard", range="all"))
         if not errors:
             flash("Review saved.", "success")
