@@ -298,6 +298,28 @@ def upcoming_weeks(subscriptions: List[Dict], weeks: int = 8,
     return result
 
 
+def split_by_payday(subscriptions: List[Dict], today: date, next_payday: date) -> Dict:
+    """Bills to pay before next payday vs. bills that can wait.
+
+    Due means the stored next_due is before payday, so overdue bills count too.
+    Recurring spending has no fixed date and always counts as due.
+    """
+    due, later = [], []
+    for sub in subscriptions:
+        day = _as_date(sub.get("next_due"))
+        if sub.get("kind") == "recurring" or (day and day < next_payday):
+            due.append({**sub, "overdue": bool(day and day < today and sub.get("kind") != "recurring")})
+        else:
+            later.append(sub)
+    due.sort(key=lambda s: (s.get("kind") == "recurring", s.get("next_due") or ""))
+    return {
+        "due": due,
+        "later": later,
+        "due_total": round(sum(float(s.get("amount") or 0) for s in due if s.get("kind") != "recurring"), 2),
+        "overdue_count": sum(1 for s in due if s["overdue"]),
+    }
+
+
 def mark_paid(subscription: Dict, today: Optional[date] = None) -> tuple:
     """Advance for the paid cycle, forgiving any earlier missed cycles.
 

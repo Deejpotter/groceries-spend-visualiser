@@ -13,6 +13,7 @@ from services.subscriptions import (
     monthly_cost,
     monthly_cost_by_category,
     monthly_cost_total,
+    split_by_payday,
     subscription_category_label,
     SUBSCRIPTION_CATEGORY_LOOKUP,
     SUBSCRIPTION_CATEGORIES,
@@ -73,9 +74,20 @@ def subscription_list():
     ).fetchall()
     subscriptions = [_decorate_subscription(r, histories) for r in rows]
 
+    # Until payday (the default once payday is set) lists only what's due before it.
+    from models import today as local_today
+    from services.suggestions import current_pay_cycle
+    cycle = current_pay_cycle(local_today())
+    show_all = request.args.get("show") == "all" or not cycle
+    payday = None
+    if cycle:
+        payday = split_by_payday(subscriptions, local_today(), date.fromisoformat(cycle["next_payday"]))
+        payday["date"] = cycle["next_payday"]
+    listed = subscriptions if show_all else payday["due"]
+
     # Group by category.
     by_category = {}
-    for s in subscriptions:
+    for s in listed:
         cat = s.get("category") or "other"
         by_category.setdefault(cat, []).append(s)
 
@@ -111,6 +123,9 @@ def subscription_list():
         biggest=biggest,
         biggest_monthly=biggest_monthly,
         ended=ended,
+        payday=payday,
+        show_all=show_all,
+        has_bills=bool(subscriptions),
     )
 
 
