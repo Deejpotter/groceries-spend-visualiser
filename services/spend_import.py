@@ -176,6 +176,13 @@ INVOICE_QTY_RE = re.compile(
     r"(?:\s+(?:kg|g|ml|l|lb|oz|each))?(?:\s+NET)?\s+\$([\d,]+\.\d{2})\s+\$([\d,]+\.\d{2})\s*$",
     re.I,
 )
+# Variable-weight meat: "13 beef chuck 380g - 800g 1 $19.50/Kg" then
+# "~ beef chuck 380g - 800g 1 @ 533g $19.49/Kg $10.39" carries the charge.
+INVOICE_WEIGHED_RE = re.compile(
+    r"^~\s*(.*?)\s+(\d+)\s+@\s+([\d.]+)\s*(kg|g)\s+\$([\d,]+\.\d{2})\s*/\s*kg\s+\$([\d,]+\.\d{2})\s*$",
+    re.I,
+)
+INVOICE_PER_KG_TAIL_RE = re.compile(r"\s+\d+\s+\$[\d,]+\.\d{2}\s*/\s*kg\s*$", re.I)
 INVOICE_MONEY_RE = re.compile(r"^\$[\d,]+\.\d{2}$")
 INVOICE_LEAD_RE = re.compile(r"^\d+\s+")
 INVOICE_SUB_RE = re.compile(r"\(\s*Sub\s*\)", re.I)
@@ -198,6 +205,34 @@ def _clean_invoice_name(text: str) -> str:
     text = re.sub(r"\s+", " ", text).strip()
     text = re.sub(r"^\*\s*", "", text)
     return text
+
+
+def _weighed_invoice_row(match, buffer: List[str], order_date: str, invoice_number: str,
+                         store: str) -> Optional[Dict]:
+    """Purchase dict for a '~ ... 1 @ 533g $19.49/Kg $10.39' variable-weight line."""
+    fallback, count, _, _, per_kg, amount = match.groups()
+    first_item = next((i for i, b in enumerate(buffer) if INVOICE_LEAD_RE.match(b)), None)
+    name = fallback
+    if first_item is not None:
+        head = INVOICE_PER_KG_TAIL_RE.sub("", " ".join(buffer[first_item:]))
+        name = INVOICE_LEAD_RE.sub("", head, count=1)
+    name = _clean_invoice_name(name)
+    total = float(amount.replace(",", ""))
+    if not name or total <= 0:
+        return None
+    quantity = float(count)
+    return {
+        "order_date": order_date,
+        "basket_id": invoice_number,
+        "store": store,
+        "channel": None,
+        "product_name": name,
+        "quantity": quantity,
+        "unit_price": round(total / quantity, 2),
+        "line_total": total,
+        "cup_price": f"${per_kg.replace(',', '')} / 1KG",
+        "stockcode": None,
+    }
 
 
 def parse_woolworths_invoice_text(text: str, store: str = "Woolworths") -> Tuple[Dict, List[Dict], List[str]]:
@@ -228,6 +263,13 @@ def parse_woolworths_invoice_text(text: str, store: str = "Woolworths") -> Tuple
     for raw in (text or "").splitlines():
         line = raw.replace(" ", " ").strip()
         if not line or INVOICE_MONEY_RE.match(line) or line.startswith(INVOICE_SKIP_PREFIXES):
+            continue
+        weighed = INVOICE_WEIGHED_RE.match(line)
+        if weighed:
+            row = _weighed_invoice_row(weighed, buffer, order_date, invoice_number, store)
+            buffer = []
+            if row:
+                rows.append(row)
             continue
         match = INVOICE_QTY_RE.match(line)
         if not match:

@@ -353,6 +353,42 @@ Date: 28 Sep 2026Date: 28 Sep 2026
     assert not any("subtotal is" in w for w in warnings)
 
 
+def test_invoice_variable_weight_meat_line():
+    """'~ ... 1 @ 533g $19.49/Kg $10.39' is its own row, not glued onto the next item."""
+    text = """Sub Total:Sub Total:
+Reusable bags: Reusable bags:
+Delivery Fee:Delivery Fee:
+Invoice Total:Invoice Total:
+Invoice total includes GST of:Invoice total includes GST of:
+Paid Amount:Paid Amount:
+3 Woolworths lentils pdm 420g 2 2 $0.95 $1.90
+Poultry, Meat & SeafoodPoultry, Meat & Seafood
+13 Woolworths beef chuck steak medium pdm 380g - 800g 1 $19.50/Kg
+   ~ Woolworths beef chuck steak medium pdm 380g - 800g 1 @ 533g $19.49/Kg $10.39
+Snacks & ConfectionerySnacks & Confectionery
+2 * Woolworths chocolate creme wafer biscuits 125g 2 2 $0.80 $1.60
+~ Indicate meat items of variable weight, sold within a weight range, where an item is supplied
+$13.89
+$0.00
+$0.00
+$13.89
+$1.26
+$13.89
+Invoice/Order Number: 331719186Invoice/Order Number: 331719186
+Date: 17 Oct 2026Date: 17 Oct 2026
+"""
+    meta, rows, warnings = parse_woolworths_invoice_text(text)
+    assert [r["product_name"] for r in rows] == [
+        "Woolworths lentils pdm 420g",
+        "Woolworths beef chuck steak medium pdm 380g - 800g",
+        "Woolworths chocolate creme wafer biscuits 125g",
+    ]
+    beef = rows[1]
+    assert beef["quantity"] == 1 and beef["unit_price"] == 10.39 and beef["line_total"] == 10.39
+    assert beef["cup_price"] == "$19.49 / 1KG"
+    assert not any("subtotal is" in w for w in warnings)
+
+
 def test_invoice_paper_bags_and_split_fees_map_totals():
     """Paper bags + separate collection/service fees still map all seven totals."""
     text = """Sub Total:Sub Total:
