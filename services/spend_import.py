@@ -60,19 +60,24 @@ def price_per_unit(cup_price: Optional[str], unit_price: Optional[float], target
     return None
 
 
+PRICE_JUMP_LIMIT = 3.0
+SIZE_RANGE_RE = re.compile(r"\d\s*(?:kg|g)\s*-\s*\d", re.I)
+
+
 def ingredient_unit_price(product_name: Optional[str], cup_price: Optional[str], unit_price: Optional[float],
                           unit: str, pack_size: Optional[float] = None) -> Optional[float]:
     """Price for one ingredient `unit` from a purchase of a linked product.
 
     Uses the cup price when it converts. Otherwise the product's size is read from its
-    name, then the ingredient's own pack_size: a 500g jar at $3 is $6/kg, and a 12-pack
+    name, then the ingredient's own pack_size (never for weighed lines named with a
+    range like "380g - 800g", whose weight is only on the cup price): a 500g jar at $3 is $6/kg, and a 12-pack
     of eggs at $6.70 is $0.56 each. None when no honest per-unit price can be found.
     """
     from services.shopping_list_generator import parse_pack_size
     parsed = parse_cup_price(cup_price)
     if parsed and (units_compatible(parsed[2], unit) or (parsed[2] == "each" and unit == "each")):
         return price_per_unit(cup_price, unit_price, unit)
-    if unit_price is None or unit_price <= 0:
+    if unit_price is None or unit_price <= 0 or SIZE_RANGE_RE.search(product_name or ""):
         return None
     size = parse_pack_size(product_name, unit) or pack_size
     if unit == "each":
@@ -81,8 +86,6 @@ def ingredient_unit_price(product_name: Optional[str], cup_price: Optional[str],
         return round(unit_price / size, 6) if size and size > 0 else None
     return round(unit_price, 6)
 
-
-PRICE_JUMP_LIMIT = 3.0
 
 
 def price_change(old: Optional[float], new: Optional[float]) -> Optional[str]:

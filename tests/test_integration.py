@@ -1884,6 +1884,32 @@ class TestSubscriptions:
         assert client.post(f"/subscriptions/{sub_id}/purge").status_code == 302
         assert db.execute("SELECT COUNT(*) FROM subscriptions").fetchone()[0] == 0
 
+    def test_list_shows_only_bills_due_before_payday(self, client, db):
+        from datetime import timedelta
+        from models import today as local_today
+        _login(client, "subuser", "test123")
+        today = local_today()
+        db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('payday_date', ?)",
+                   ((today + timedelta(days=3)).isoformat(),))
+        db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('pay_frequency', 'fortnightly')")
+        db.commit()
+        self._add(client, name="Soon Bill", next_due=(today + timedelta(days=1)).isoformat())
+        self._add(client, name="Late Bill", next_due=(today + timedelta(days=10)).isoformat())
+        self._add(client, name="Old Bill", next_due=(today - timedelta(days=20)).isoformat())
+        page = client.get("/subscriptions").get_data(as_text=True)
+        assert "Due before payday" in page and "Soon Bill" in page and "Old Bill" in page
+        assert 'class="bill-link">Late Bill</a>' not in page
+        assert "overdue</span>" in page
+        assert "Show all bills (1 due after payday)" in page
+        page = client.get("/subscriptions?show=all").get_data(as_text=True)
+        assert 'class="bill-link">Late Bill</a>' in page and "Show only what's due before payday" in page
+
+    def test_list_without_payday_shows_everything(self, client, db):
+        _login(client, "subuser", "test123")
+        self._add(client, name="Far Bill", next_due="2030-01-01")
+        page = client.get("/subscriptions").get_data(as_text=True)
+        assert "Far Bill" in page and "Due before payday" not in page
+
     def test_resume_missing_is_404_redirect(self, client, db):
         _login(client, "subuser", "test123")
         assert client.post("/subscriptions/9999/resume").status_code == 302
