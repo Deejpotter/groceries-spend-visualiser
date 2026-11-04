@@ -49,7 +49,7 @@ downloading and importing the invoices from the Woolworths account if needed.
 **Code (PR to `dev`, then `dev` → `main`):**
 `services/spend_import.py` now reads `~ ... N @ <weight> $x/Kg $amount` lines as
 their own row (name from the numbered line, `cup_price` = the per-kg rate).
-Regression test `test_invoice_variable_weight_meat_line`. Full suite: 953 passed.
+Regression test `test_invoice_variable_weight_meat_line`. Full suite: 952 passed.
 
 **Production data (through the app's own forms, logged-in session):**
 
