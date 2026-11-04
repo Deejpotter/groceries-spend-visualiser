@@ -111,6 +111,10 @@ tests/            Unit tests for services + integration tests via Flask test cli
 - **Suggestions and pay-cycle lists**: see `architecture.md` → "Suggestions and Pay-Cycle Lists". Every generated list line has a `source` and `reason`; list modes are filters over one generation, so don't build a separate generator per list type. Non-food product roles must stay out of meal matching. Meal swaps and list deletions are recorded in `suggestion_feedback`.
 - **Spend totals** (`services/spend_analysis.py`): one shop can exist as an invoice, a bank payment, an amended invoice or a pending bank row. `mark_counted()` decides which rows are money; inside a store's bank coverage that is the bank. Use `load_spend()` or `analyze_purchases()` for totals, never a raw `SUM` over `purchases`.
 
+- **Price refresh** (`refresh_linked_prices()` in `services/spend_import.py`): every import reprices the
+  ingredients linked to the imported products from their latest linked purchase. Jumps over 3x are held,
+  not saved. For `each` ingredients the price is per item, so a 12-pack is divided by 12.
+
 - **Spend import** (`services/spend_import.py`): de-duplicated by `UNIQUE(store, basket_id, product_name)`. Cup prices like `$1.51 / 100G` are parsed and converted to per-unit prices. Unpriced rows are skipped with a summary, not an error.
 
 ## Git and deployment

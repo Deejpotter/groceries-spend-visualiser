@@ -60,6 +60,90 @@ def price_per_unit(cup_price: Optional[str], unit_price: Optional[float], target
     return None
 
 
+def ingredient_unit_price(product_name: Optional[str], cup_price: Optional[str], unit_price: Optional[float],
+                          unit: str, pack_size: Optional[float] = None) -> Optional[float]:
+    """Price for one ingredient `unit` from a purchase of a linked product.
+
+    Uses the cup price when it converts. Otherwise the product's size is read from its
+    name, then the ingredient's own pack_size: a 500g jar at $3 is $6/kg, and a 12-pack
+    of eggs at $6.70 is $0.56 each. None when no honest per-unit price can be found.
+    """
+    from services.shopping_list_generator import parse_pack_size
+    parsed = parse_cup_price(cup_price)
+    if parsed and (units_compatible(parsed[2], unit) or (parsed[2] == "each" and unit == "each")):
+        return price_per_unit(cup_price, unit_price, unit)
+    if unit_price is None or unit_price <= 0:
+        return None
+    size = parse_pack_size(product_name, unit) or pack_size
+    if unit == "each":
+        return round(unit_price / size, 6) if size and size > 0 else round(unit_price, 6)
+    if units_compatible(unit, "kg") or units_compatible(unit, "L"):
+        return round(unit_price / size, 6) if size and size > 0 else None
+    return round(unit_price, 6)
+
+
+PRICE_JUMP_LIMIT = 3.0
+
+
+def price_change(old: Optional[float], new: Optional[float]) -> Optional[str]:
+    """'update', 'hold' (a jump too big to trust, likely a unit mismatch) or None (no change)."""
+    if new is None or new <= 0 or (old is not None and abs(old - new) < 0.005):
+        return None
+    if old and old > 0 and not (1 / PRICE_JUMP_LIMIT <= new / old <= PRICE_JUMP_LIMIT):
+        return "hold"
+    return "update"
+
+
+def refresh_linked_prices(db, product_names: Iterable[str]) -> Dict[str, List[Dict]]:
+    """Reprice ingredients linked to these products from their latest linked purchase.
+
+    Returns {"updated": [...], "held": [...]}, each item {name, unit, old, new}. Held
+    prices are left alone so a bad parse can't silently overwrite a good price.
+    """
+    names = sorted({n for n in product_names if n})
+    result: Dict[str, List[Dict]] = {"updated": [], "held": []}
+    if not names:
+        return result
+    ids = {r[0] for r in db.execute(
+        f"SELECT DISTINCT ingredient_id FROM purchases WHERE ingredient_id IS NOT NULL"
+        f" AND product_name IN ({','.join('?' * len(names))})", names)}
+    for ingredient_id in sorted(ids):
+        ing = db.execute("SELECT id, name, display_name, unit, price, pack_size FROM ingredients WHERE id = ?",
+                         (ingredient_id,)).fetchone()
+        latest = db.execute(
+            "SELECT product_name, unit_price, cup_price FROM purchases WHERE ingredient_id = ?"
+            " AND unit_price > 0 ORDER BY order_date DESC, id DESC LIMIT 1", (ingredient_id,)).fetchone()
+        if not ing or not latest:
+            continue
+        new = ingredient_unit_price(latest["product_name"], latest["cup_price"], latest["unit_price"],
+                                    ing["unit"], ing["pack_size"])
+        action = price_change(ing["price"], new)
+        if not action:
+            continue
+        item = {"name": ing["display_name"] or ing["name"], "unit": ing["unit"], "old": ing["price"], "new": new}
+        if action == "update":
+            db.execute("UPDATE ingredients SET price = ? WHERE id = ?", (new, ingredient_id))
+        result["updated" if action == "update" else "held"].append(item)
+    db.commit()
+    return result
+
+
+def price_refresh_messages(result: Dict[str, List[Dict]]) -> List[Tuple[str, str]]:
+    """Flash-ready (level, message) lines describing a refresh_linked_prices() result."""
+    messages = []
+    if result["updated"]:
+        changes = ", ".join(f"{i['name']} ${i['old'] or 0:.2f} → ${i['new']:.2f}/{i['unit']}"
+                            for i in result["updated"][:5])
+        more = len(result["updated"]) - 5
+        messages.append(("success", f"Updated {len(result['updated'])} ingredient price"
+                         f"{'s' if len(result['updated']) != 1 else ''}: {changes}"
+                         + (f" and {more} more." if more > 0 else ".")))
+    for item in result["held"][:3]:
+        messages.append(("warning", f"{item['name']}: latest purchase works out at ${item['new']:.2f}/{item['unit']}"
+                         f" vs ${item['old']:.2f} now. Not changed; check the ingredient's unit and pack size."))
+    return messages
+
+
 def _num(value, default=None):
     try:
         return float(str(value).replace("$", "").replace(",", "").strip())
@@ -501,11 +585,11 @@ def commit_import_batch(db, token: str) -> Tuple[int, int]:
             continue
         cur = db.execute(
             "INSERT OR IGNORE INTO purchases (order_date, basket_id, store, product_name,"
-            " quantity, unit_price, line_total, ingredient_id, origin)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ui')",
+            " quantity, unit_price, line_total, cup_price, stockcode, channel, ingredient_id, origin)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ui')",
             (batch["order_date"], batch["invoice_number"], batch["store"], line["product_name"],
-             line["quantity"], line["unit_price"], line["line_total"],
-             links.get(line["product_name"])),
+             line["quantity"], line["unit_price"], line["line_total"], line["cup_price"],
+             line["stockcode"], line["channel"], links.get(line["product_name"])),
         )
         if cur.rowcount:
             added += 1

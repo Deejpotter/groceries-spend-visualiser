@@ -539,10 +539,14 @@ def _import_one(db, filename: str, raw: bytes, store: str) -> dict:
         result.setdefault("error", "No priced lines could be imported from that file.")
         result["added"] = result["skipped"] = 0
         return result
+    from services.spend_import import refresh_linked_prices
     added, skipped = import_purchases(db, rows)
     result["rows"] = len(rows)
     result["added"] = added
     result["skipped"] = skipped
+    refreshed = refresh_linked_prices(db, [r["product_name"] for r in rows])
+    result["prices_updated"] = refreshed["updated"]
+    result["prices_held"] = refreshed["held"]
     return result
 
 
