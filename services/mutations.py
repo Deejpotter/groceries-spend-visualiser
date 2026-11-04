@@ -246,7 +246,7 @@ def set_ticks(db, item_ids: List[int], checked: bool, origin: str = "ui") -> Dic
 
 def _latest_purchase(db, product_name):
     return db.execute(
-        "SELECT unit_price, cup_price, store, stockcode FROM purchases"
+        "SELECT product_name, unit_price, cup_price, store, stockcode FROM purchases"
         " WHERE product_name = ? ORDER BY order_date DESC LIMIT 1",
         (product_name,),
     ).fetchone()
@@ -255,7 +255,7 @@ def _latest_purchase(db, product_name):
 def link_product(db, product_name: str, choice: str, update_price: bool = True,
                  new_category: str = "other", origin: str = "ui") -> Tuple[str, str, bool]:
     """Link one product to an ingredient. Returns (level, message, price_updated)."""
-    from services.spend_import import parse_cup_price, price_per_unit, product_url
+    from services.spend_import import ingredient_unit_price, parse_cup_price, price_per_unit, product_url
     latest = _latest_purchase(db, product_name)
     if latest is None:
         return "error", "No purchases found for that product.", False
@@ -274,13 +274,14 @@ def link_product(db, product_name: str, choice: str, update_price: bool = True,
         db.commit()
         return "success", f"Created ingredient “{product_name}” in {CATEGORY_LOOKUP.get(category, category)}.", False
     if choice:
-        ingredient = db.execute("SELECT id, unit, price FROM ingredients WHERE id = ?", (choice,)).fetchone()
+        ingredient = db.execute("SELECT id, unit, price, pack_size FROM ingredients WHERE id = ?", (choice,)).fetchone()
         if not ingredient:
             return "error", "Ingredient not found.", False
         ingredient_id = ingredient["id"]
         price_updated = False
         if update_price and latest:
-            price = price_per_unit(latest["cup_price"], latest["unit_price"], ingredient["unit"])
+            price = ingredient_unit_price(product_name, latest["cup_price"], latest["unit_price"],
+                                          ingredient["unit"], ingredient["pack_size"])
             if price is not None:
                 old_price = ingredient["price"]
                 db.execute("UPDATE ingredients SET price = ? WHERE id = ?", (price, ingredient_id))
