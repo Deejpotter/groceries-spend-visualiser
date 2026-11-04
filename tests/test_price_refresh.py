@@ -24,6 +24,8 @@ from services.spend_import import (
     ("Wraps 8 pack", "$1.10 / 100G", 5.6, "each", None, 0.7),
     ("Chicken Thigh", "$19.49 / 1KG", 10.39, "kg", None, 19.49),
     ("Bread", None, None, "each", None, None),
+    ("Woolworths beef chuck steak medium pdm 380g - 800g", None, 10.39, "kg", 0.5, None),
+    ("Woolworths beef chuck steak medium pdm 380g - 800g", "$19.49 / 1KG", 10.39, "kg", None, 19.49),
 ])
 def test_ingredient_unit_price(name, cup, unit_price, unit, pack, expected):
     result = ingredient_unit_price(name, cup, unit_price, unit, pack)
