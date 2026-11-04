@@ -31,12 +31,21 @@ Pick the most useful improvement (best of three), implement it, ship it through
 - `link_product()` priced `each` ingredients at the pack price: linking "Eggs 12 Pack"
   ($6.70) to an `each` ingredient with pack size 12 set the price per egg to $6.70.
 
+- Found while preparing the production test (before anything was written there):
+  weighed meat is named with a range ("Woolworths beef chuck steak medium pdm 380g -
+  800g"). The two weighed rows already in production were committed before this
+  change, so they have no cup price. The refresh read "800g" from the name and would
+  have repriced chuck steak at $10.39 / 0.8 = $12.99/kg instead of $19.49/kg (a 1.5x
+  drop, inside the 3x guard). Fixed in a follow-up PR: a name with a weight range
+  gives no price unless the cup price converts.
+
 ## 4. What was changed
 
 - `services/spend_import.py`
   - `ingredient_unit_price()`: per-unit price from a purchase. Uses the cup price when
     it converts; otherwise the size in the product name (`parse_pack_size`), then the
     ingredient's `pack_size`. `each` prices are per item.
+    Names with a weight range ("380g - 800g") never use the name or pack size.
   - `price_change()`: `update`, `hold` (more than 3x up or down) or no change.
   - `refresh_linked_prices()`: for each ingredient linked to the given products, reprice
     from its latest linked purchase. Held changes are reported, not saved.
@@ -46,7 +55,7 @@ Pick the most useful improvement (best of three), implement it, ship it through
 - `routes/spend.py`: CSV import and invoice confirm call the refresh and flash what
   changed. `routes/api.py`: `/api/v1/import` returns `prices_updated` / `prices_held`
   per file.
-- Tests: `tests/test_price_refresh.py` (24 tests). Docs: `architecture.md`, `AGENTS.md`.
+- Tests: `tests/test_price_refresh.py` (26 tests). Docs: `architecture.md`, `AGENTS.md`.
 
 ## 5. What was deliberately not changed
 
