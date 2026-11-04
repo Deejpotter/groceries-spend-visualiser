@@ -2,7 +2,7 @@
 
 - **Date:** 2026-11-05
 - **Investigator:** Claude Code (for Deej)
-- **Status:** In progress
+- **Status:** Done (shipped dev → main: #116, #117)
 
 ## 1. What was asked
 
@@ -48,11 +48,21 @@ due after that payday. They want to see only what needs paying before the next p
 
 ## 6. Verification
 
-- Full suite: 982 passed.
+- Full suite: 982 passed. CI and staging check green on `680836f`.
+- Staging pages weren't checked: Chrome isn't signed in there and no credentials were
+  entered.
+- Production (`066d539`): `payday_date` was empty, so the new view would have fallen
+  back to all bills. Set it to 2026-11-09 (Deej: "I get paid this monday"), frequency
+  left at fortnightly; budget and income values unchanged after saving. The Bills page
+  then showed the card: 20 bills due before Mon 9 Nov ($790.50), 15 overdue, and
+  "Show all bills (6 due after payday)". Screenshot checked.
 
 ## 7. Open items
 
-- None yet.
+- 15 of the 20 due bills are overdue only because `next_due` never advanced. Most are
+  bank auto-debits (Belong, Spotify, Microsoft) that have probably been paid, which
+  inflates the due total. Next step: auto-advance a bill when a matching bank payment
+  is seen on or after its due date.
 
 ## 8. Commands to reproduce
 

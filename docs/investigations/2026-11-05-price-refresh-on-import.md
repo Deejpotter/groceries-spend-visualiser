@@ -2,7 +2,7 @@
 
 - **Date:** 2026-11-05
 - **Investigator:** Claude Code (for Deej)
-- **Status:** In progress
+- **Status:** Done (shipped dev → main: #113, #114, #115, #117)
 
 ## 1. What was asked
 
@@ -30,7 +30,6 @@ Pick the most useful improvement (best of three), implement it, ship it through
   never reached `purchases`, so a kg ingredient could not be priced from an invoice.
 - `link_product()` priced `each` ingredients at the pack price: linking "Eggs 12 Pack"
   ($6.70) to an `each` ingredient with pack size 12 set the price per egg to $6.70.
-
 - Found while preparing the production test (before anything was written there):
   weighed meat is named with a range ("Woolworths beef chuck steak medium pdm 380g -
   800g"). The two weighed rows already in production were committed before this
@@ -67,11 +66,23 @@ Pick the most useful improvement (best of three), implement it, ship it through
 
 ## 6. Verification
 
-- Full suite: 976 passed.
+- Full suite: 978 passed after the range fix.
+- Staging (`4ee864c`): re-imported the latest linked row of all 9 linked ingredients
+  through `/api/v1/import`. 0 added, 9 skipped, total rows 3306 before and after, no
+  price changes, matching the prediction (eggs $4.90 / pack of 6 = $0.817 vs $0.82
+  stored, inside the 0.5c tolerance). CI and staging check green on `4ee864c`,
+  `0bb73ed` and `680836f`.
+- Production: `/health` reports `066d539`.
+- **Not run on production:** an import. There is no production API key and no way to
+  delete a purchase, so a re-import whose basket id didn't match exactly would add a
+  duplicate row. Preparing that test is what exposed the range bug.
 
 ## 7. Open items
 
-- None yet.
+- Production's two weighed rows (chicken thigh, chuck steak) have no cup price, so
+  those ingredients won't reprice from them; the next weighed purchase will carry it.
+- Coolify's webhook missed both production deploys and one staging deploy; they were
+  started with `POST /api/v1/deploy?uuid=...`.
 
 ## 8. Commands to reproduce
 
