@@ -129,6 +129,14 @@ CREATE TABLE IF NOT EXISTS meal_plan_entries (
     FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS plan_skips (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL,
+    meal_type TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (date, meal_type)
+);
+
 CREATE TABLE IF NOT EXISTS shopping_list_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ingredient_name TEXT NOT NULL,

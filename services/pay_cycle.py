@@ -43,8 +43,10 @@ def pay_cycle(anchor_text: Optional[str], frequency: Optional[str], today: date)
     """The pay cycle containing today, or None when payday isn't set.
 
     Returns {last_payday, next_payday, cycle_start, cycle_end, until_payday_start,
-    days_left, frequency}. ``cycle_end`` is the day before the next payday, and
-    ``until_payday_start`` is today: a shop now only needs to last until then.
+    days_left, frequency, next_cycle_start, next_cycle_end}. ``cycle_end`` is the
+    day before the next payday, and ``until_payday_start`` is today: a shop now
+    only needs to last until then. The next cycle runs from the next payday to the
+    day before the one after it, the fortnight a payday shop is planned for.
     """
     try:
         anchor = parse_ymd(anchor_text) if anchor_text else None
@@ -54,6 +56,7 @@ def pay_cycle(anchor_text: Optional[str], frequency: Optional[str], today: date)
         return None
     last, upcoming = paydays_around(anchor, frequency, today)
     end = upcoming - timedelta(days=1)
+    _, following = paydays_around(anchor, frequency, upcoming)
     return {
         "frequency": frequency,
         "last_payday": last.isoformat(),
@@ -62,6 +65,8 @@ def pay_cycle(anchor_text: Optional[str], frequency: Optional[str], today: date)
         "cycle_end": end.isoformat(),
         "until_payday_start": today.isoformat(),
         "days_left": (end - today).days + 1,
+        "next_cycle_start": upcoming.isoformat(),
+        "next_cycle_end": (following - timedelta(days=1)).isoformat(),
     }
 
 

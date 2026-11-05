@@ -348,8 +348,8 @@ class TestPlanGenerationWorkflow:
         by_date = {d["date"]: d["recipe_id"] for d in dinners}
         assert by_date == {"2026-10-05": 1, "2026-10-06": 1, "2026-10-07": 2}
 
-    def test_coverage_continuation_prevents_rule_on_occupied_slot(self):
-        """A continuation blocks independent generation in its occupied slot."""
+    def test_continuation_does_not_take_another_rules_night(self):
+        """Leftovers skip a night another rule plans (a Friday meal), landing on the next free night."""
         rules = [
             make_rule(id=1, day_of_week="mon", meal_type="dinner", tag_filter="pasta", sort_order=0),
             make_rule(id=2, day_of_week="tue", meal_type="dinner", tag_filter="fish", sort_order=0),
@@ -358,14 +358,11 @@ class TestPlanGenerationWorkflow:
             make_recipe(id=1, name="Bolognese", covers_days=2, tags="pasta"),
             make_recipe(id=2, name="Fish Tacos", tags="fish"),
         ]
-        # Mon-Tue: 2026-10-05 to 2026-10-06
-        entries, err = generate_plan_entries("2026-10-05", "2026-10-06", rules, recipes, [])
+        # Mon-Wed: 2026-10-05 to 2026-10-07
+        entries, err = generate_plan_entries("2026-10-05", "2026-10-07", rules, recipes, [])
         assert err is None
-        dinners = [e for e in entries if e["meal_type"] == "dinner"]
-        # Monday's Bolognese continuation occupies Tuesday before the fish rule runs.
-        assert len(dinners) == 2
-        assert dinners[0]["recipe_id"] == 1  # Bolognese on Monday
-        assert dinners[1]["recipe_id"] == 1  # Bolognese cascade on Tuesday
+        dinners = [(e["date"], e["recipe_id"], e["is_continuation"]) for e in entries if e["meal_type"] == "dinner"]
+        assert dinners == [("2026-10-05", 1, 0), ("2026-10-07", 1, 1), ("2026-10-06", 2, 0)]
 
 
 # ============================================================================
