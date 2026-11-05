@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from conftest import login
 from services.purchase_patterns import build_patterns, make_purchase
 from services.usage import (
-    daily_packs, make_count, merge_needs, on_hand, packs_needed, usage_needs, usage_rate,
+    daily_packs, make_count, merge_needs, on_hand, packs_needed, stock_rows, usage_needs, usage_rate,
 )
 
 TODAY = date(2026, 11, 8)
@@ -115,3 +115,13 @@ def test_stock_count_page_saves_counts_and_limits(client, db, monkeypatch):
     bad = client.post("/pantry/stock-count", data={"item_key": "ing:15", "count": "-1", "max_on_hand": "", "keep_days": ""},
                       follow_redirects=True)
     assert b"Not saved for: 15" in bad.data
+
+
+def test_bank_payments_are_not_products():
+    rows = [make_purchase(order_date=f"2026-10-{d:02d}", product_name="ALDI STORES CARRUM DOWNS", basket_id=f"csv:{d}")
+            for d in range(1, 29, 4)]
+    for row in rows:
+        row["origin"] = "banksync"
+    patterns = build_patterns(rows, TODAY)
+    assert daily_packs(rows) == {}
+    assert stock_rows(patterns, rows, {}, {}, TODAY) == []
