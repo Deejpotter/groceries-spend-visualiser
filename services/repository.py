@@ -34,7 +34,7 @@ def load_shopping_inputs(start: str, end: str) -> Tuple[List[Dict], Dict, Dict, 
     )]
     recipes = {r["id"]: dict(r) for r in db.execute("SELECT id, name, servings FROM recipes")}
     recipe_ingredients: Dict[int, List[Dict]] = {}
-    for r in db.execute("SELECT recipe_id, ingredient_id, quantity, unit_override FROM recipe_ingredients"):
+    for r in db.execute("SELECT recipe_id, ingredient_id, quantity, unit_override, option_group FROM recipe_ingredients"):
         recipe_ingredients.setdefault(r["recipe_id"], []).append(dict(r))
     ingredients = {r["id"]: dict(r) for r in db.execute(
         "SELECT id, name, unit, category, price FROM ingredients"
@@ -147,7 +147,7 @@ def load_meal_history(before: str) -> List[Dict]:
 
 def load_recipe_links() -> Dict[int, List[Dict]]:
     links: Dict[int, List[Dict]] = {}
-    for r in get_db().execute("SELECT recipe_id, ingredient_id, quantity, unit_override FROM recipe_ingredients"):
+    for r in get_db().execute("SELECT recipe_id, ingredient_id, quantity, unit_override, option_group FROM recipe_ingredients"):
         links.setdefault(r["recipe_id"], []).append(dict(r))
     return links
 

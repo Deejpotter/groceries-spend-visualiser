@@ -66,7 +66,7 @@ def get_recipe_with_ingredients(recipe_id):
         return None, []
 
     ingredients = db.execute(
-        """SELECT ri.id as ri_id, ri.quantity, ri.unit_override,
+        """SELECT ri.id as ri_id, ri.quantity, ri.unit_override, ri.option_group,
                   i.id as ingredient_id, i.name, i.display_name, i.unit, i.category
            FROM recipe_ingredients ri
            JOIN ingredients i ON ri.ingredient_id = i.id
@@ -87,15 +87,16 @@ def get_recipe_with_ingredients(recipe_id):
 
 
 def _read_ingredient_rows():
-    """Parse the parallel ingredient_ids/quantities/unit_overrides lists.
+    """Parse the parallel ingredient_ids/quantities/unit_overrides/option_groups lists.
 
-    Returns ([(ingredient_id, quantity, unit_override|None)], errors, skipped).
+    Returns ([(ingredient_id, quantity, unit_override|None, option_group|None)], errors, skipped).
     Blank rows are skipped; rows with an ingredient but no quantity count as
     skipped so the user is told instead of silently losing them.
     """
     ids = request.form.getlist("ingredient_ids")
     quantities = request.form.getlist("quantities")
     units = request.form.getlist("unit_overrides")
+    groups = request.form.getlist("option_groups")
     db = get_db()
     rows, errors, seen, skipped = [], [], set(), 0
     for i, raw_id in enumerate(ids):
@@ -122,7 +123,8 @@ def _read_ingredient_rows():
         if unit and unit not in UNIT_LOOKUP:
             errors.append(f"Unknown unit '{unit}'.")
             continue
-        rows.append((ing_id, qty, unit or None))
+        group = groups[i].strip() if i < len(groups) else ""
+        rows.append((ing_id, qty, unit or None, group or None))
     return rows, errors, skipped
 
 
@@ -131,6 +133,7 @@ def _submitted_rows():
     ids = request.form.getlist("ingredient_ids")
     quantities = request.form.getlist("quantities")
     units = request.form.getlist("unit_overrides")
+    groups = request.form.getlist("option_groups")
     names = {r["id"]: r for r in get_db().execute("SELECT id, name, unit FROM ingredients")}
     rows = []
     for i, raw_id in enumerate(ids):
@@ -141,6 +144,7 @@ def _submitted_rows():
             "ingredient_id": ing["id"], "ingredient_name": ing["name"], "unit": ing["unit"],
             "quantity": quantities[i] if i < len(quantities) else "",
             "unit_override": units[i] if i < len(units) else "",
+            "option_group": groups[i] if i < len(groups) else "",
         })
     return rows
 
@@ -260,8 +264,9 @@ def recipe_form(recipe_id=None):
 
         db.execute("DELETE FROM recipe_ingredients WHERE recipe_id = ?", (recipe_id,))
         db.executemany(
-            "INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit_override) VALUES (?, ?, ?, ?)",
-            [(recipe_id, ing_id, qty, unit) for ing_id, qty, unit in rows],
+            """INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit_override, option_group)
+               VALUES (?, ?, ?, ?, ?)""",
+            [(recipe_id, *row) for row in rows],
         )
         db.commit()
         if skipped_rows:

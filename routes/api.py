@@ -420,7 +420,7 @@ def recipes_create():
 @require_api_key
 @_handle
 def recipe_add_ingredient(recipe_ref):
-    """Link an ingredient to a recipe. Body: {ingredient, quantity, unit_override?}
+    """Link an ingredient to a recipe. Body: {ingredient, quantity, unit_override?, option_group?}
 
     Both the recipe and the ingredient accept an id or an exact name.
     """
@@ -437,13 +437,15 @@ def recipe_add_ingredient(recipe_ref):
     except (TypeError, ValueError):
         raise ApiError(400, "validation", "quantity must be a number.")
     unit_override = (body.get("unit_override") or "").strip() or None
+    option_group = (body.get("option_group") or "").strip() or None
     cur = db.execute(
-        """INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit_override)
-           VALUES (?, ?, ?, ?)""",
-        (recipe_id, ingredient_id, quantity, unit_override))
+        """INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit_override, option_group)
+           VALUES (?, ?, ?, ?, ?)""",
+        (recipe_id, ingredient_id, quantity, unit_override, option_group))
     db.commit()
     return jsonify({"recipe_id": recipe_id, "ingredient_id": ingredient_id,
-                    "quantity": quantity, "unit_override": unit_override}), 201
+                    "quantity": quantity, "unit_override": unit_override,
+                    "option_group": option_group}), 201
 
 
 @api_bp.route("/recipes/<ref>")
