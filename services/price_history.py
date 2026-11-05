@@ -46,6 +46,19 @@ def group_price_history(transactions: List[Dict]) -> Dict[str, List[Dict]]:
     return groups
 
 
+def stream_points(points: List[Dict], stream_amount) -> List[Dict]:
+    """Keep the payments near a bill's usual amount.
+
+    One merchant can carry several streams (a phone plan and a one-off
+    handset charge), so a bill with a known amount only owns the close ones.
+    """
+    if not stream_amount:
+        return points
+    tolerance = max(5.0, float(stream_amount) * 0.35)
+    return [point for point in points
+            if abs(point["amount"] - float(stream_amount)) <= tolerance]
+
+
 def payment_rows(points: List[Dict]) -> List[Dict]:
     """Each payment with its change from the previous one, oldest first."""
     rows = []

@@ -115,6 +115,11 @@ tests/            Unit tests for services + integration tests via Flask test cli
   ingredients linked to the imported products from their latest linked purchase. Jumps over 3x are held,
   not saved. For `each` ingredients the price is per item, so a 12-pack is divided by 12.
 
+- **Bills paid from the bank** (`advance_paid_bills()` in `services/bank_import.py`): after every
+  bank CSV import or BankSync sync, a bill whose linked payment (same `merchant_key`, near its
+  `stream_amount`) landed on or up to 3 days before `next_due` moves to one cycle after that
+  payment. Bills without a `merchant_key` are only moved by **Mark paid**.
+
 - **Spend import** (`services/spend_import.py`): de-duplicated by `UNIQUE(store, basket_id, product_name)`. Cup prices like `$1.51 / 100G` are parsed and converted to per-unit prices. Unpriced rows are skipped with a summary, not an error.
 
 ## Git and deployment

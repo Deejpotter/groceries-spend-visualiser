@@ -296,11 +296,12 @@ def sync_accounts(db, client, patterns, from_date_override: Optional[str] = None
             {"as_of": datetime.now(timezone.utc).isoformat(timespec="minutes"),
              "accounts": snapshots}))
     db.commit()
-    from services.bank_import import remember_unclassified
+    from services.bank_import import advance_paid_bills, remember_unclassified
     remember_unclassified(db, unclassified)
     return {"added": added, "transactions_added": stored,
             "duplicates": duplicates,
-            "unclassified": unclassified, "errors": errors}
+            "unclassified": unclassified, "errors": errors,
+            "bills_advanced": advance_paid_bills(db)}
 
 
 def run_sync(db) -> Dict:

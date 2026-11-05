@@ -342,6 +342,32 @@ def mark_paid(subscription: Dict, today: Optional[date] = None) -> tuple:
     return new_due.isoformat(), skipped
 
 
+PAID_EARLY_DAYS = 3
+
+
+def due_after_payment(subscription: Dict, payments: List[Dict]) -> Optional[str]:
+    """Next due date once a bank payment covers the stored one, else None.
+
+    A payment up to PAID_EARLY_DAYS before next_due counts as paying it. The
+    new date is one cycle after the latest payment, so an auto-debit nobody
+    marked paid lands back on its real schedule. Never moves a date back.
+    """
+    if subscription.get("kind") == "recurring" or not subscription.get("active", 1):
+        return None
+    freq = (subscription.get("frequency") or "").lower()
+    anchor = _as_date(subscription.get("next_due"))
+    if freq not in FREQUENCIES or anchor is None:
+        return None
+    paid = [d for d in (_as_date(p.get("date")) for p in payments) if d]
+    if not paid:
+        return None
+    last = max(paid)
+    if last < anchor - timedelta(days=PAID_EARLY_DAYS):
+        return None
+    new_due = _advance_by_frequency(last, freq)
+    return new_due.isoformat() if new_due > anchor else None
+
+
 def advance_next_due(subscription: Dict) -> str:
     """Advance next_due by one frequency, returning an ISO date string."""
     freq = (subscription.get("frequency") or "").lower()

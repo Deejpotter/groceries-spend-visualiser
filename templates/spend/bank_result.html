@@ -7,6 +7,17 @@
 <h1>Bank import result</h1>
 <p class="text-muted">{{ added }} purchase(s) imported from your bank CSV.</p>
 
+{% if bills_advanced %}
+<div class="alert alert-success">
+    <strong>{{ bills_advanced|length }} bill{{ '' if bills_advanced|length == 1 else 's' }} marked paid from your bank payments:</strong>
+    <ul class="mb-0">
+        {% for bill in bills_advanced %}
+        <li>{{ bill.name }}: next due {{ bill.new|nice_date }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
 {% if duplicates %}
 <div class="card mb-3">
     <div class="card-header">
