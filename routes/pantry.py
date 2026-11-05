@@ -54,6 +54,56 @@ def pantry_list():
     return render_template("pantry/list.html", items=result)
 
 
+@pantry_bp.route("/pantry/stock-count", methods=["GET", "POST"])
+@login_required
+def stock_count():
+    """Sunday count of the steady items, plus how many to keep and how long they keep."""
+    from services.suggestions import stock_count_rows
+    today = local_today()
+    if request.method == "POST":
+        db = get_db()
+        keys = request.form.getlist("item_key")
+        counted = request.form.getlist("count")
+        maxes = request.form.getlist("max_on_hand")
+        keeps = request.form.getlist("keep_days")
+        saved, problems = 0, []
+
+        def number(values, i, cast):
+            raw = values[i].strip() if i < len(values) else ""
+            if not raw:
+                return None
+            value = cast(raw)
+            if value < 0:
+                raise ValueError
+            return value
+
+        for i, key in enumerate(keys):
+            try:
+                count = number(counted, i, float)
+                max_on_hand = number(maxes, i, float)
+                keep_days = number(keeps, i, int)
+            except ValueError:
+                problems.append(key.split(":", 1)[-1])
+                continue
+            db.execute(
+                """INSERT INTO item_usage (item_key, max_on_hand, keep_days) VALUES (?, ?, ?)
+                   ON CONFLICT(item_key) DO UPDATE SET max_on_hand = excluded.max_on_hand,
+                   keep_days = excluded.keep_days, updated_at = CURRENT_TIMESTAMP""",
+                (key, max_on_hand, keep_days))
+            if count is not None:
+                db.execute(
+                    """INSERT INTO stock_counts (item_key, counted_on, quantity) VALUES (?, ?, ?)
+                       ON CONFLICT(item_key, counted_on) DO UPDATE SET quantity = excluded.quantity""",
+                    (key, today.isoformat(), count))
+                saved += 1
+        db.commit()
+        if problems:
+            flash("Counts and limits must be whole positive numbers. Not saved for: " + ", ".join(problems), "error")
+        flash(f"Saved {saved} count{'s' if saved != 1 else ''}. The next shopping list buys what runs short.", "success")
+        return redirect(url_for("pantry.stock_count"))
+    return render_template("pantry/stock_count.html", rows=stock_count_rows(today), today=today)
+
+
 @pantry_bp.route("/pantry/add", methods=["GET", "POST"])
 @pantry_bp.route("/pantry/edit/<int:item_id>", methods=["GET", "POST"])
 @login_required

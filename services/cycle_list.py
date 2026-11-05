@@ -73,7 +73,7 @@ def _staple_line(need: Dict) -> Dict:
         last = short_date(parse_ymd(need["last_bought"]))
     except (TypeError, ValueError):
         last = need["last_bought"]
-    reason = f"Usually bought {_cadence(need)}, last on {last}"
+    reason = need.get("usage_reason") or f"Usually bought {_cadence(need)}, last on {last}"
     if times > 1:
         reason += f"; due {times} times this cycle"
     if product != need["label"]:
