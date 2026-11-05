@@ -115,7 +115,7 @@ def load_linked_products() -> Dict[int, List[Dict]]:
 def load_purchase_rows(since: str = "0000-00-00") -> List[Dict]:
     """Purchase lines on or after ``since`` for pattern analysis."""
     return [dict(r) for r in get_db().execute(
-        "SELECT order_date, basket_id, store, product_name, quantity, unit_price, line_total, ingredient_id"
+        "SELECT order_date, basket_id, store, product_name, quantity, unit_price, line_total, ingredient_id, origin"
         " FROM purchases WHERE order_date >= ? ORDER BY order_date",
         (since,),
     )]

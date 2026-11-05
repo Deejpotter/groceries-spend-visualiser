@@ -13,6 +13,7 @@ from typing import Dict, Iterable, List, Optional
 
 from models import parse_ymd
 from services.purchase_patterns import group_key
+from services.spend_analysis import BANK_ORIGINS
 
 STEADY_MIN_BUYS = 6
 MIN_SPAN_DAYS = 28
@@ -31,10 +32,13 @@ def daily_packs(purchases: Iterable[Dict]) -> Dict[str, Dict[date, float]]:
     """Packs bought per item key per day.
 
     One shop can be imported twice (an order-history CSV and its invoice), so
-    each day keeps the largest basket rather than the sum of baskets.
+    each day keeps the largest basket rather than the sum of baskets. Bank
+    payments are whole shops, not products, so they are left out.
     """
     baskets: Dict[tuple, float] = {}
     for row in purchases:
+        if row.get("origin") in BANK_ORIGINS:
+            continue
         day = _as_date(row.get("order_date"))
         if not day or not row.get("product_name"):
             continue
@@ -187,7 +191,9 @@ def stock_rows(patterns: List[Dict], purchases: Iterable[Dict], settings: Dict[s
         if pattern.get("rhythm") == "one_off" or not is_tracked(pattern, item_settings, item_counts):
             continue
         rate = usage_rate(bought.get(key, {}), item_counts, today)
-        per_day = rate["per_day"] if rate else 0
+        if not rate:
+            continue  # nothing bought as products (e.g. only bank payments for a whole shop)
+        per_day = rate["per_day"]
         last = max(item_counts, key=lambda c: c["counted_on"]) if item_counts else None
         rows.append({
             "key": key,
