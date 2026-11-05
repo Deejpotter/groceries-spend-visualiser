@@ -113,6 +113,12 @@ tests/            Unit tests for services + integration tests via Flask test cli
   rule's later meals along one slot, and rolls the overflow into the next cycle with
   `origin = 'rollover'` (already bought, so the shopping list skips it). Before the cycle starts,
   nothing was bought, so the overflow is dropped instead.
+- **Usage and stock counts** (`services/usage.py`): steady items (six or more buys in six months),
+  plus anything counted or given limits, are predicted from packs used per day instead of the
+  purchase-gap rhythm. Counts (`stock_counts`) beat purchase rates. Limits (`item_usage`, keyed
+  by pattern key) cap what's kept (`max_on_hand`) and how long perishables are bought for
+  (`keep_days`). A shop imported twice (CSV and invoice) counts once per day.
+  Page: Pantry → **Stock count**.
 - **Shopping list** (`services/shopping_list_generator.py`): aggregates ingredients across the plan, scales by servings, merges compatible units (g + kg → one line), optionally subtracts pantry stock (keyed by **ingredient id**), and estimates cost per line.
 - **Suggestions and pay-cycle lists**: see `architecture.md` → "Suggestions and Pay-Cycle Lists". Every generated list line has a `source` and `reason`; list modes are filters over one generation, so don't build a separate generator per list type. Non-food product roles must stay out of meal matching. Meal swaps and list deletions are recorded in `suggestion_feedback`.
 - **Spend totals** (`services/spend_analysis.py`): one shop can exist as an invoice, a bank payment, an amended invoice or a pending bank row. `mark_counted()` decides which rows are money; inside a store's bank coverage that is the bank. Use `load_spend()` or `analyze_purchases()` for totals, never a raw `SUM` over `purchases`.

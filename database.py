@@ -129,6 +129,23 @@ CREATE TABLE IF NOT EXISTS meal_plan_entries (
     FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS item_usage (
+    item_key TEXT PRIMARY KEY,
+    max_on_hand REAL,
+    keep_days INTEGER,
+    track INTEGER NOT NULL DEFAULT 1,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS stock_counts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_key TEXT NOT NULL,
+    counted_on TEXT NOT NULL,
+    quantity REAL NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (item_key, counted_on)
+);
+
 CREATE TABLE IF NOT EXISTS plan_skips (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     date TEXT NOT NULL,

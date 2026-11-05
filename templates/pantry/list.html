@@ -8,9 +8,12 @@
 {% include "_undo_banner.html" %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1>Pantry</h1>
-    <a href="{{ url_for('pantry.pantry_form', item_id=None) }}" class="btn btn-primary">
+    <div>
+        <a href="{{ url_for('pantry.stock_count') }}" class="btn btn-outline-primary">Stock count</a>
+        <a href="{{ url_for('pantry.pantry_form', item_id=None) }}" class="btn btn-primary">
             {{ icon('plus') }} Add Item
         </a>
+    </div>
 </div>
 
 {% if items %}
