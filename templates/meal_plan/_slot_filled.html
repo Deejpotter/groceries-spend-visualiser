@@ -11,11 +11,16 @@
         Serves {{ entry.servings }}
         {% if entry.covers_days > 1 and not entry.is_continuation %}<span class="badge badge-warning">Covers {{ entry.covers_days }} days</span>{% endif %}
         {% if entry.is_continuation %}<span class="badge badge-light">Leftovers</span>{% endif %}
-        {% if not entry.is_auto_generated %}<span class="badge badge-info" title="Kept when you regenerate">Kept</span>{% endif %}
+        {% if entry.origin == 'rollover' %}<span class="badge badge-success" title="Rolled over from last pay cycle: its ingredients are already bought, so it isn't on the shopping list">Already bought</span>
+        {% elif not entry.is_auto_generated %}<span class="badge badge-info" title="Kept when you regenerate">Kept</span>{% endif %}
     </div>
     {% if entry.reasons %}<div class="slot-reasons small text-muted">{{ entry.reasons|join(' · ') }}</div>{% endif %}
     <details class="slot-edit">
         <summary>Change</summary>
+        <form method="post" action="{{ url_for('meal_plan.meal_plan_skip') }}" class="mb-1">
+            {{ csrf() }}<input type="hidden" name="date" value="{{ entry.date }}"><input type="hidden" name="meal_type" value="{{ entry.meal_type }}">
+            <button type="submit" class="btn btn-sm btn-link p-0 link-secondary" title="Skip this meal (ate out or takeaway) and push later meals along one slot">Ate out / takeaway</button>
+        </form>
         {% if not entry.is_continuation %}
         <div class="mb-1">
             {% if entry.is_auto_generated %}

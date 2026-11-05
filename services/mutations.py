@@ -303,3 +303,54 @@ def link_product(db, product_name: str, choice: str, update_price: bool = True,
     db.execute("UPDATE purchases SET ingredient_id = NULL, origin = ? WHERE product_name = ?", (origin, product_name,))
     db.commit()
     return "info", "Product unlinked.", False
+
+
+def skip_meal(db, date: str, meal_type: str, plan_start: str, plan_end: str, today: str) -> Dict:
+    """Mark a slot as eaten out and push the rest of that rule's meals along.
+
+    The meal that no longer fits before ``plan_end`` rolls into the next cycle
+    as an already-bought meal when the cycle's shop has happened (``today`` on or
+    after ``plan_start``); before that nothing was bought, so it is dropped.
+    Returns {"moved": n, "rolled": [(name, date)], "dropped": [name]}.
+    """
+    from services.plan_generator import rollover_dates, skip_and_shift
+    from services.shopping_list_generator import ROLLOVER
+    if not validate_date_format(date) or meal_type not in MEAL_TYPES:
+        raise AgentError("validation", "Choose a valid day and meal.")
+    entries = [dict(r) for r in db.execute(
+        """SELECT e.id, e.date, e.meal_type, e.source_rule_id, r.name AS recipe_name, mr.day_of_week
+           FROM meal_plan_entries e JOIN recipes r ON r.id = e.recipe_id
+           LEFT JOIN meal_rules mr ON mr.id = e.source_rule_id
+           WHERE e.meal_type = ? AND e.date BETWEEN ? AND ?""",
+        (meal_type, date, plan_end))]
+    result = skip_and_shift(entries, date, meal_type)
+    for entry_id, new_date in result["moves"]:
+        db.execute("UPDATE meal_plan_entries SET date = ?, is_auto_generated = 0 WHERE id = ?",
+                   (new_date, entry_id))
+    summary = {"moved": len(result["moves"]), "rolled": [], "dropped": []}
+    by_id = {e["id"]: e for e in entries}
+    taken = {(r["date"], r["meal_type"]) for r in db.execute(
+        "SELECT date, meal_type FROM meal_plan_entries WHERE date > ? "
+        "UNION SELECT date, meal_type FROM plan_skips WHERE date > ?", (plan_end, plan_end))}
+    for entry_id in result["overflow"]:
+        entry = by_id[entry_id]
+        if today < plan_start:
+            db.execute("DELETE FROM meal_plan_entries WHERE id = ?", (entry_id,))
+            summary["dropped"].append(entry["recipe_name"])
+            continue
+        new_date = (rollover_dates(1, plan_end, entry.get("day_of_week"), meal_type, taken) or [None])[0]
+        if new_date is None:
+            continue
+        taken.add((new_date, meal_type))
+        db.execute("UPDATE meal_plan_entries SET date = ?, is_auto_generated = 0, origin = ? WHERE id = ?",
+                   (new_date, ROLLOVER, entry_id))
+        summary["rolled"].append((entry["recipe_name"], new_date))
+    db.execute("INSERT OR IGNORE INTO plan_skips (date, meal_type) VALUES (?, ?)", (date, meal_type))
+    db.commit()
+    return summary
+
+
+def unskip_meal(db, date: str, meal_type: str) -> None:
+    """Open a skipped slot again; the next regeneration may fill it."""
+    db.execute("DELETE FROM plan_skips WHERE date = ? AND meal_type = ?", (date, meal_type))
+    db.commit()

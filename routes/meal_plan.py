@@ -238,7 +238,7 @@ def generate_plan(start_date_str, end_date_str, chooser=random.choice, suggest=F
     return len(entries), None
 
 
-def _build_days(start, end, entries):
+def _build_days(start, end, entries, skips=frozenset()):
     """One row per date in the plan with a slot for each meal type."""
     by_slot = {(e["date"], e["meal_type"]): e for e in entries}
     days = []
@@ -259,6 +259,7 @@ def _build_days(start, end, entries):
             "day_month": day.strftime("%d %b").lstrip("0"),
             "is_today": day.date() == today,
             "meals": day_entries,
+            "skipped": {mt for mt in MEAL_TYPES if (key, mt) in skips},
         })
     return days
 
@@ -294,7 +295,9 @@ def _plan_context(editing_rule=None):
                WHERE mpe.date BETWEEN ? AND ? ORDER BY mpe.date""",
             (start_str, end_str),
         )]
-        days = _build_days(start_str, end_str, entries)
+        skips = {(r["date"], r["meal_type"]) for r in db.execute(
+            "SELECT date, meal_type FROM plan_skips WHERE date BETWEEN ? AND ?", (start_str, end_str))}
+        days = _build_days(start_str, end_str, entries, skips)
     used_types = {r["meal_type"] for r in db.execute("SELECT meal_type FROM meal_rules WHERE is_active = 1")}
     used_types |= {mt for d in days for mt, e in d["meals"].items() if e}
     shown_types = [mt for mt in MEAL_TYPES if mt in used_types] or ["dinner"]
@@ -354,12 +357,15 @@ def meal_plan_generate():
     stored_start, stored_end = get_plan_dates()
     plan_start = request.form.get("plan_start", "").strip() or stored_start
     plan_end = request.form.get("plan_end", "").strip() or stored_end
-    if request.form.get("range") == "payday":
+    if request.form.get("range") in ("payday", "next"):
         cycle = current_pay_cycle(local_today())
         if not cycle:
             flash("Set your payday in Settings → Budget first.", "error")
             return _back_to_plan()
-        plan_start, plan_end = cycle["until_payday_start"], cycle["cycle_end"]
+        if request.form.get("range") == "next":
+            plan_start, plan_end = cycle["next_cycle_start"], cycle["next_cycle_end"]
+        else:
+            plan_start, plan_end = cycle["until_payday_start"], cycle["cycle_end"]
 
     if not (validate_date_format(plan_start) and validate_date_format(plan_end)):
         flash("Please set valid plan start and end dates first.", "error")
@@ -500,6 +506,43 @@ def meal_plan_edit_servings(entry_id):
             return render_template("meal_plan/_slot_filled.html", entry=entry, recipes=recipes)
         return "", 204
     flash("Servings updated.", "success")
+    return _back_to_plan()
+
+
+@meal_bp.route("/meal-plan/skip", methods=["POST"])
+@login_required
+def meal_plan_skip():
+    """Ate out or got takeaway: skip the slot and push later meals along."""
+    from services.mutations import skip_meal
+    plan_start, plan_end = get_plan_dates()
+    if not (plan_start and plan_end):
+        flash("Set plan dates first.", "error")
+        return _back_to_plan()
+    try:
+        result = skip_meal(get_db(), request.form.get("date", "").strip(),
+                           request.form.get("meal_type", "").strip(),
+                           plan_start, plan_end, local_today().isoformat())
+    except ValueError as exc:
+        flash(str(exc), "error")
+        return _back_to_plan()
+    parts = ["Marked as eaten out."]
+    if result["moved"]:
+        parts.append(f"{result['moved']} later meal{'s' if result['moved'] != 1 else ''} moved along one slot.")
+    for name, day in result["rolled"]:
+        parts.append(f"{name} rolls over to {parse_date(day).strftime('%a %d %b')}, already bought.")
+    if result["dropped"]:
+        parts.append(f"{', '.join(result['dropped'])} no longer fits and was removed (nothing bought yet).")
+    flash(" ".join(parts), "success")
+    return _back_to_plan()
+
+
+@meal_bp.route("/meal-plan/unskip", methods=["POST"])
+@login_required
+def meal_plan_unskip():
+    """Open a skipped slot again."""
+    from services.mutations import unskip_meal
+    unskip_meal(get_db(), request.form.get("date", "").strip(), request.form.get("meal_type", "").strip())
+    flash("Slot opened again. Add a meal or regenerate to fill it.", "success")
     return _back_to_plan()
 
 
