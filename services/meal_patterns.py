@@ -29,8 +29,9 @@ def _as_date(value) -> Optional[date]:
 
 def recipe_cost_per_serving(recipe: Dict, links: List[Dict], ingredients: Dict[int, Dict]) -> Optional[float]:
     """Estimated cost of one serving from ingredient prices; None if nothing is priced."""
+    from services.shopping_list_generator import choose_options
     total, priced = 0.0, False
-    for link in links:
+    for link in choose_options(links, ingredients):
         ingredient = ingredients.get(link["ingredient_id"]) or {}
         price, base = ingredient.get("price"), ingredient.get("unit")
         unit = link.get("unit_override") or base

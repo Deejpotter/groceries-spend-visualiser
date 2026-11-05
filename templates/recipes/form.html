@@ -106,7 +106,7 @@
                         <div id="ingredients-container">
                             {% for ri in (recipe_ingredients or []) + [None] %}
                             <div class="ingredient-row form-row mb-2">
-                                <div class="col-md-6">
+                                <div class="col-md-5">
                                     <select class="form-control ingredient-select" name="ingredient_ids" aria-label="Ingredient">
                                         <option value="">Select ingredient...</option>
                                         {% for ing in form_ingredients %}
@@ -118,11 +118,16 @@
                                     <input type="number" class="form-control" name="quantities"
                                            step="any" min="0" value="{{ ri.quantity if ri else '' }}" placeholder="Qty" aria-label="Quantity">
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-2">
                                     <select class="form-control" name="unit_overrides" aria-label="Unit">
                                         <option value="">Ingredient's unit</option>
                                         {% for code, label in units %}<option value="{{ code }}" {% if ri and ri.unit_override == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
                                     </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <input type="text" class="form-control" name="option_groups" maxlength="20"
+                                           value="{{ ri.option_group or '' if ri else '' }}" placeholder="Option" aria-label="Option group"
+                                           title="Rows with the same option are alternatives: the list buys one, the cheapest">
                                 </div>
                                 <div class="col-md-1">
                                     <button type="button" class="btn btn-outline-danger remove-ingredient" title="Remove ingredient" aria-label="Remove ingredient row">
@@ -160,6 +165,7 @@
                     <li>Use <strong>standard</strong> for regular meals, <strong>friday-special</strong> for treats</li>
                     <li>Set <strong>Covers N days</strong> for batch recipes; servings carry over to the next free meal slots</li>
                     <li>Ingredient quantities are for the default servings above</li>
+                    <li>Give alternatives the same <strong>Option</strong> (e.g. "protein" on chicken thigh and tofu). The shopping list buys one: what's in the pantry, else the cheapest</li>
                     <li>You can override servings per meal plan entry</li>
                 </ul>
             </div>
@@ -181,7 +187,7 @@
 {% block scripts %}
 <template id="ingredient-row-template">
     <div class="ingredient-row form-row mb-2">
-        <div class="col-md-6">
+        <div class="col-md-5">
             <select class="form-control ingredient-select" name="ingredient_ids" aria-label="Ingredient">
                 <option value="">Select ingredient...</option>
             </select>
@@ -189,11 +195,15 @@
         <div class="col-md-2">
             <input type="number" class="form-control" name="quantities" step="any" min="0" placeholder="Qty" aria-label="Quantity">
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2">
             <select class="form-control" name="unit_overrides" aria-label="Unit">
                 <option value="">Ingredient's unit</option>
                 {% for code, label in units %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
             </select>
+        </div>
+        <div class="col-md-2">
+            <input type="text" class="form-control" name="option_groups" maxlength="20" placeholder="Option" aria-label="Option group"
+                   title="Rows with the same option are alternatives: the list buys one, the cheapest">
         </div>
         <div class="col-md-1">
             <button type="button" class="btn btn-outline-danger remove-ingredient" title="Remove ingredient">

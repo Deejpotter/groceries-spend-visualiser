@@ -100,6 +100,7 @@ CREATE TABLE IF NOT EXISTS recipe_ingredients (
     ingredient_id INTEGER NOT NULL,
     quantity REAL NOT NULL,
     unit_override TEXT,
+    option_group TEXT,
     FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE,
     FOREIGN KEY (ingredient_id) REFERENCES ingredients(id) ON DELETE CASCADE
 );
@@ -334,6 +335,7 @@ MIGRATIONS = [
     ("ai_reviews", "user_override", "TEXT"),
     ("subscriptions", "kind", "TEXT"),
     ("shopping_list_items", "reason", "TEXT"),
+    ("recipe_ingredients", "option_group", "TEXT"),
 ]
 
 

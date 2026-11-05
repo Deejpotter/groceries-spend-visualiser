@@ -51,6 +51,35 @@ def _line_cost(quantity: float, unit: str, ingredient: Dict) -> Optional[float]:
     return round(convert_unit(quantity, unit, base_unit) * price, 2)
 
 
+def choose_options(links: List[Dict], ingredients: Dict[int, Dict],
+                   pantry_items: Optional[PantryStock] = None) -> List[Dict]:
+    """Keep one ingredient from each option group of a recipe.
+
+    Links sharing an ``option_group`` are alternatives ("chicken thigh or tofu").
+    One the pantry already covers wins; otherwise the cheapest priced one, then
+    the first listed. Links without a group are always kept.
+    """
+    groups: Dict[str, List[Dict]] = {}
+    for link in links:
+        group = (link.get("option_group") or "").strip().lower()
+        if group:
+            groups.setdefault(group, []).append(link)
+    chosen = {}
+    for group, options in groups.items():
+        def rank(pair):
+            index, link = pair
+            ingredient = ingredients.get(link["ingredient_id"]) or {}
+            unit = link.get("unit_override") or ingredient.get("unit") or ""
+            stock = (pantry_items or {}).get(link["ingredient_id"])
+            in_pantry = stock is not None and _pantry_amount(stock, unit) >= link["quantity"]
+            cost = _line_cost(link["quantity"], unit, ingredient) if ingredient else None
+            return (not in_pantry, cost is None, cost or 0, index)
+        chosen[group] = min(enumerate(options), key=rank)[1]
+    return [link for link in links
+            if not (link.get("option_group") or "").strip()
+            or chosen[(link["option_group"]).strip().lower()] is link]
+
+
 def generate_shopping_list(
     plan_entries: List[Dict],                   # [{date, meal_type, recipe_id, servings}]
     recipes: Dict[int, Dict],                   # {id: {name, servings, ...}}
@@ -78,7 +107,9 @@ def generate_shopping_list(
             continue
         scale_factor = entry["servings"] / (recipe.get("servings") or 1)
 
-        for ri in recipe_ingredients.get(entry["recipe_id"], []):
+        links = choose_options(recipe_ingredients.get(entry["recipe_id"], []), ingredients,
+                               pantry_items if subtract_pantry else None)
+        for ri in links:
             ingredient = ingredients.get(ri["ingredient_id"])
             if not ingredient:
                 continue
@@ -338,9 +369,11 @@ def make_recipe_ingredient(
     ingredient_id: int = 1,
     quantity: float = 1.0,
     unit_override: Optional[str] = None,
+    option_group: Optional[str] = None,
 ) -> Dict:
     """Create a recipe ingredient link dict for testing."""
-    return {"ingredient_id": ingredient_id, "quantity": quantity, "unit_override": unit_override}
+    return {"ingredient_id": ingredient_id, "quantity": quantity, "unit_override": unit_override,
+            "option_group": option_group}
 
 
 def make_ingredient(
