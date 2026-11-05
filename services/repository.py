@@ -121,6 +121,17 @@ def load_purchase_rows(since: str = "0000-00-00") -> List[Dict]:
     )]
 
 
+def load_usage_settings() -> Dict[str, Dict]:
+    """Per-item limits keyed by pattern key ('ing:<id>' or 'prod:<name>')."""
+    return {r["item_key"]: dict(r) for r in get_db().execute("SELECT * FROM item_usage")}
+
+
+def load_stock_counts() -> Dict[str, List[Dict]]:
+    from services.usage import counts_by_key
+    return counts_by_key(get_db().execute(
+        "SELECT item_key, counted_on, quantity FROM stock_counts ORDER BY counted_on"))
+
+
 def load_product_decisions() -> Dict[str, Dict]:
     return {r["product_name"]: dict(r) for r in get_db().execute("SELECT * FROM product_decisions")}
 

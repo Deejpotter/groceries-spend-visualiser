@@ -18,9 +18,11 @@ from services.plan_generator import MealScorer
 from services.purchase_patterns import HISTORY_DAYS, build_patterns, predict_needs, prediction_accuracy
 from services.repository import (
     load_feedback, load_ingredient_map, load_meal_history, load_pantry_stock, load_product_decisions,
-    load_purchase_rows, load_recipe_links, load_recipes, load_shopping_inputs, shopping_preferences,
+    load_purchase_rows, load_recipe_links, load_recipes, load_shopping_inputs, load_stock_counts,
+    load_usage_settings, shopping_preferences,
 )
 from services.shopping_list_generator import generate_shopping_list
+from services.usage import merge_needs, stock_rows, usage_needs
 
 
 def current_pay_cycle(today: date) -> Optional[Dict]:
@@ -64,11 +66,20 @@ def meal_lines(start: str, end: str) -> Dict[str, List[Dict]]:
                                   pantry_items=load_pantry_stock() if subtract else None)
 
 
+def stock_count_rows(today: date) -> List[Dict]:
+    """Rows for the stock count page."""
+    since = (today - timedelta(days=HISTORY_DAYS)).isoformat()
+    return stock_rows(patterns_for(today), load_purchase_rows(since), load_usage_settings(),
+                      load_stock_counts(), today)
+
+
 def build_cycle_list(start: str, end: str, mode: str, today: date, topup_days: int = 4) -> Dict:
     """Lines and totals for a list covering ``start``..``end`` in the given mode."""
     patterns = patterns_for(today)
     first, last = parse_ymd(start), parse_ymd(end)
-    needs = predict_needs(patterns, first, last)
+    since = (today - timedelta(days=HISTORY_DAYS)).isoformat()
+    needs = merge_needs(predict_needs(patterns, first, last), usage_needs(
+        patterns, load_purchase_rows(since), load_usage_settings(), load_stock_counts(), first, last, today))
     in_stock = {iid for iid, (qty, _) in load_pantry_stock(today).items() if qty > 0}
     due_by = first + timedelta(days=topup_days) if mode == "topup" else None
     lines = generate_cycle_list(meal_lines(start, end), needs, mode, in_stock,
