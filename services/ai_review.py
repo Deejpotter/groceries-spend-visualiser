@@ -538,19 +538,24 @@ def _review_batch(candidates: List[Dict], api_key: str, model: str,
     raise AIReviewError(last_error or "The AI review failed.")
 
 
-def request_chat_json(system_prompt: str, user_prompt: str, api_key: str, model: str,
-                      timeout: int = 60, deadline: Optional[float] = None) -> Dict:
+def request_chat_json(system_prompt: str, user_prompt, api_key: str, model: str,
+                      timeout: int = 60, deadline: Optional[float] = None,
+                      temperature: Optional[float] = 0.1) -> Dict:
     """One OpenRouter chat request that must answer with a JSON object, retried on bad replies.
 
-    Shared by reviews other than the merchant one (e.g. product links).
+    Shared by reviews other than the merchant one (e.g. product links, photo
+    counts). ``user_prompt`` is text or a list of content parts (text and
+    images). Pass ``temperature=None`` for models that reject sampling settings.
     """
-    body = json.dumps({
+    request_body = {
         "model": model,
-        "temperature": 0.1,
         "max_tokens": 6000,
         "messages": [{"role": "system", "content": system_prompt},
                      {"role": "user", "content": user_prompt}],
-    }).encode("utf-8")
+    }
+    if temperature is not None:
+        request_body["temperature"] = temperature
+    body = json.dumps(request_body).encode("utf-8")
     deadline = deadline or (time.monotonic() + REVIEW_BUDGET_SECONDS)
     last_error = None
     for _ in range(MAX_RETRIES):

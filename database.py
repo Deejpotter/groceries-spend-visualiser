@@ -146,6 +146,18 @@ CREATE TABLE IF NOT EXISTS stock_counts (
     UNIQUE (item_key, counted_on)
 );
 
+CREATE TABLE IF NOT EXISTS photo_counts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_key TEXT NOT NULL,
+    counted_on TEXT NOT NULL,
+    quantity REAL NOT NULL,
+    confidence TEXT,
+    seen_as TEXT,
+    model TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (item_key, counted_on)
+);
+
 CREATE TABLE IF NOT EXISTS plan_skips (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     date TEXT NOT NULL,

@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from flask import Blueprint, render_template, request, redirect, url_for, flash
-from database import get_db
+from database import get_db, get_setting
 from auth import login_required
 from models import category_label, today as local_today
 from services.mutations import AgentError
@@ -101,7 +101,72 @@ def stock_count():
             flash("Counts and limits must be whole positive numbers. Not saved for: " + ", ".join(problems), "error")
         flash(f"Saved {saved} count{'s' if saved != 1 else ''}. The next shopping list buys what runs short.", "success")
         return redirect(url_for("pantry.stock_count"))
-    return render_template("pantry/stock_count.html", rows=stock_count_rows(today), today=today)
+    from services.ai_review import resolve_config
+    from services.photo_count import accuracy
+    db = get_db()
+    photos = {r["item_key"]: dict(r) for r in db.execute(
+        "SELECT item_key, quantity, confidence, seen_as FROM photo_counts WHERE counted_on = ?",
+        (today.isoformat(),))}
+    pairs = [dict(r) for r in db.execute(
+        """SELECT p.item_key AS label, p.counted_on, p.quantity AS photo, s.quantity AS counted
+           FROM photo_counts p JOIN stock_counts s
+             ON s.item_key = p.item_key AND s.counted_on = p.counted_on""")]
+    rows = stock_count_rows(today)
+    labels = {r["key"]: r["label"] for r in rows}
+    for pair in pairs:
+        pair["label"] = labels.get(pair["label"], pair["label"].split(":", 1)[-1])
+    return render_template("pantry/stock_count.html", rows=rows, today=today, photos=photos,
+                           photo_accuracy=accuracy(pairs),
+                           ai_configured=resolve_config(get_setting)["configured"])
+
+
+@pantry_bp.route("/pantry/stock-count/photo", methods=["POST"])
+@login_required
+def stock_count_photo():
+    """Experimental: guess today's counts from photos. Guesses are shown, never saved as counts."""
+    from services.ai_review import AIReviewError, resolve_config
+    from services.photo_count import (
+        MAX_PHOTO_BYTES, MAX_PHOTOS, count_from_photos, image_type, resolve_model,
+    )
+    from services.suggestions import stock_count_rows
+    config = resolve_config(get_setting)
+    if not config["configured"]:
+        flash("Photo counts need an OpenRouter key in Settings.", "error")
+        return redirect(url_for("pantry.stock_count"))
+    photos = []
+    for upload in request.files.getlist("photos"):
+        if not upload or not upload.filename:
+            continue
+        data = upload.read(MAX_PHOTO_BYTES + 1)
+        media_type = image_type(data)
+        if len(data) > MAX_PHOTO_BYTES or not media_type:
+            flash(f"{upload.filename} was skipped: photos must be JPG, PNG or WEBP and 5 MB or smaller.", "error")
+            continue
+        photos.append((media_type, data))
+    if len(photos) > MAX_PHOTOS:
+        flash(f"Only the first {MAX_PHOTOS} photos were used.", "warning")
+        photos = photos[:MAX_PHOTOS]
+    today = local_today()
+    model = resolve_model(get_setting)
+    try:
+        guesses = count_from_photos(stock_count_rows(today), photos, config["key"], model)
+    except AIReviewError as exc:
+        flash(f"Photo count failed: {exc}", "error")
+        return redirect(url_for("pantry.stock_count"))
+    db = get_db()
+    for key, guess in guesses.items():
+        db.execute(
+            """INSERT INTO photo_counts (item_key, counted_on, quantity, confidence, seen_as, model)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(item_key, counted_on) DO UPDATE SET quantity = excluded.quantity,
+               confidence = excluded.confidence, seen_as = excluded.seen_as, model = excluded.model,
+               created_at = CURRENT_TIMESTAMP""",
+            (key, today.isoformat(), guess["count"], guess["confidence"], guess["seen_as"], model))
+    db.commit()
+    flash(f"The photos show {len(guesses)} tracked item{'s' if len(guesses) != 1 else ''}. "
+          "Their guesses are beside the count boxes: count by hand and save as usual, "
+          "and the page keeps score of how close the photos were.", "success")
+    return redirect(url_for("pantry.stock_count"))
 
 
 @pantry_bp.route("/pantry/add", methods=["GET", "POST"])

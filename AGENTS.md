@@ -132,6 +132,11 @@ tests/            Unit tests for services + integration tests via Flask test cli
   `stream_amount`) landed on or up to 3 days before `next_due` moves to one cycle after that
   payment. Bills without a `merchant_key` are only moved by **Mark paid**.
 
+- **Photo stock count** (`services/photo_count.py`, experimental): photos on the Stock count page go
+  to a vision model through the OpenRouter key (`PHOTO_COUNT_MODEL` / `photo_count_model` setting,
+  default `anthropic/claude-opus-5.5`). Guesses go to `photo_counts` and are only shown beside the count
+  boxes, never saved as counts, so the page can score them against the hand count. Photos aren't stored.
+
 - **Spend import** (`services/spend_import.py`): de-duplicated by `UNIQUE(store, basket_id, product_name)`. Cup prices like `$1.51 / 100G` are parsed and converted to per-unit prices. Unpriced rows are skipped with a summary, not an error.
 
 ## Git and deployment
