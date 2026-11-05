@@ -233,6 +233,38 @@ def store_bank_transactions(db, rows: List[Dict], source: str = "csv",
     return added
 
 
+def advance_paid_bills(db) -> List[Dict]:
+    """Move each bill's due date past the bank payment that paid it.
+
+    Bills whose linked payment has come out of the account no longer show as
+    overdue. Returns what moved: {name, old, new}.
+    """
+    from services.price_history import group_price_history, stream_points
+    from services.subscriptions import due_after_payment
+    bills = [dict(row) for row in db.execute(
+        """SELECT id, name, frequency, next_due, active, kind, merchant_key,
+                  stream_amount
+           FROM subscriptions
+           WHERE active = 1 AND merchant_key IS NOT NULL AND next_due IS NOT NULL"""
+    ).fetchall()]
+    if not bills:
+        return []
+    histories = group_price_history([dict(row) for row in db.execute(
+        "SELECT txn_date, amount, merchant_key, direction FROM bank_transactions"
+    ).fetchall()])
+    moved = []
+    for bill in bills:
+        payments = stream_points(histories.get(bill["merchant_key"], []),
+                                 bill.get("stream_amount"))
+        new_due = due_after_payment(bill, payments)
+        if new_due:
+            db.execute("UPDATE subscriptions SET next_due = ? WHERE id = ?",
+                       (new_due, bill["id"]))
+            moved.append({"name": bill["name"], "old": bill["next_due"], "new": new_due})
+    db.commit()
+    return moved
+
+
 def _basket_id(source: str, order_date: str, amount: float, description: str) -> str:
     """Stable id for a bank row: same file re-imports to the same id."""
     key = f"{order_date}|{amount:.2f}|{description}"

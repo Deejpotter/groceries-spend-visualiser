@@ -235,11 +235,12 @@ def import_bank_csv():
     store_bank_transactions(db, rows, "csv", patterns)
     purchases, unclassified = to_purchases(rows, patterns)
     added, duplicates = import_bank_transactions(db, purchases)
-    from services.bank_import import remember_unclassified
+    from services.bank_import import advance_paid_bills, remember_unclassified
     remember_unclassified(db, unclassified)
     return render_template(
         "spend/bank_result.html", added=added, duplicates=duplicates,
         unclassified=unclassified, errors=errors,
+        bills_advanced=advance_paid_bills(db),
     )
 
 
@@ -262,6 +263,7 @@ def banksync_sync():
         duplicates=result["duplicates"],
         unclassified=result["unclassified"],
         errors=result["errors"],
+        bills_advanced=result.get("bills_advanced", []),
     )
 
 
@@ -291,6 +293,7 @@ def banksync_backfill():
         duplicates=result["duplicates"],
         unclassified=result["unclassified"],
         errors=result["errors"],
+        bills_advanced=result.get("bills_advanced", []),
     )
 
 

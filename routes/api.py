@@ -866,5 +866,6 @@ def banksync_sync():
         "duplicates": len(result["duplicates"]),
         "unclassified": len(result["unclassified"]),
         "errors": result["errors"],
+        "bills_advanced": result.get("bills_advanced", []),
         "status": _banksync_status_payload(),
     })

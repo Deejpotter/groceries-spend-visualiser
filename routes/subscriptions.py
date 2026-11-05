@@ -22,7 +22,9 @@ from services.subscriptions import (
 )
 from services.spend_analysis import load_purchases
 from services.recurring import build_streams
-from services.price_history import group_price_history, payment_rows, summarise
+from services.price_history import (
+    group_price_history, payment_rows, stream_points, summarise,
+)
 from services.subscription_health import ended_subscriptions
 from services.dashboard import sparkline
 from services.ai_review import (
@@ -50,12 +52,8 @@ def _all_histories(db):
 def _decorate_subscription(sub, histories):
     """Attach price history and a sparkline to a subscription row."""
     sub = dict(sub)
-    points = histories.get(sub.get("merchant_key") or "", [])
-    stream_amount = sub.get("stream_amount")
-    if stream_amount:
-        tolerance = max(5.0, float(stream_amount) * 0.35)
-        points = [point for point in points
-                  if abs(point["amount"] - float(stream_amount)) <= tolerance]
+    points = stream_points(histories.get(sub.get("merchant_key") or "", []),
+                           sub.get("stream_amount"))
     sub["price_points"] = points
     sub["price_summary"] = summarise(points)
     sub["price_spark"] = (sparkline([p["amount"] for p in points], 64, 18)
