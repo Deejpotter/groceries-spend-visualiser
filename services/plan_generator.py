@@ -194,6 +194,14 @@ class MealScorer:
 # Plan generation (pure function — no DB)
 # ---------------------------------------------------------------------------
 
+def _claimed_by_other_rule(rules: List[Dict], rule: Dict, meal_type: str, day) -> bool:
+    """True when another active rule for this meal plans ``day`` and ``rule`` itself doesn't."""
+    if rule.get("day_of_week") and rule_matches_day(rule["day_of_week"], day):
+        return False
+    return any(r is not rule and r["meal_type"] == meal_type and r.get("is_active", 1)
+               and rule_matches_day(r["day_of_week"], day) for r in rules)
+
+
 def generate_plan_entries(
     start_date_str: str,
     end_date_str: str,
@@ -294,6 +302,8 @@ def generate_plan_entries(
                     continuation_key = (continuation_date.strftime("%Y-%m-%d"), meal_type)
                     if continuation_key in existing_set:
                         continue
+                    if _claimed_by_other_rule(rules, rule, meal_type, continuation_date):
+                        continue  # leftovers never take a night another rule plans (a Friday meal)
                     entries.append({
                         "date": continuation_key[0],
                         "meal_type": meal_type,
@@ -310,6 +320,49 @@ def generate_plan_entries(
                 break  # First matching rule wins
 
     return entries, None
+
+
+def skip_and_shift(entries: List[Dict], skip_date: str, meal_type: str) -> Dict:
+    """Skip one planned meal (ate out, takeaway) and push the rest along.
+
+    The meals after the skipped slot that came from the same rule move one of
+    that rule's slots later, so a Friday meal never lands on a batch night. The
+    last one has no slot left in the plan and is returned as overflow, for the
+    next pay cycle. Entries need id, date, meal_type and source_rule_id.
+    Returns {"moves": [(entry_id, new_date)], "overflow": [entry_id]}.
+    """
+    skipped = next((e for e in entries if e["date"] == skip_date and e["meal_type"] == meal_type), None)
+    if skipped is None:
+        return {"moves": [], "overflow": []}
+    group = sorted(
+        (e for e in entries
+         if e["meal_type"] == meal_type and e["date"] >= skip_date
+         and e.get("source_rule_id") == skipped.get("source_rule_id")),
+        key=lambda e: e["date"],
+    )
+    slots = [e["date"] for e in group]
+    moves = [(e["id"], slots[i + 1]) for i, e in enumerate(group[:-1])]
+    return {"moves": moves, "overflow": [group[-1]["id"]]}
+
+
+def rollover_dates(count: int, after: str, day_of_week: Optional[str], meal_type: str,
+                   taken: Set[tuple], horizon_days: int = 62) -> List[str]:
+    """The first ``count`` free slots after ``after`` on the rule's days (any day without a rule)."""
+    found: List[str] = []
+    day = parse_date(after)
+    if day is None:
+        return found
+    for _ in range(horizon_days):
+        if len(found) == count:
+            break
+        day += timedelta(days=1)
+        key = day.strftime("%Y-%m-%d")
+        if (key, meal_type) in taken:
+            continue
+        if day_of_week and not rule_matches_day(day_of_week, day):
+            continue
+        found.append(key)
+    return found
 
 
 def plan_summary(days: List[Dict], meal_types: List[str]) -> Dict:

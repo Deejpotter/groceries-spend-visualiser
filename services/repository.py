@@ -18,18 +18,24 @@ def load_recipes() -> List[Dict]:
 
 
 def load_manual_entries(start: str, end: str) -> List[Dict]:
-    return [dict(r) for r in get_db().execute(
+    """Slots regeneration must leave alone: manual meals and skipped (ate out) slots."""
+    db = get_db()
+    kept = [dict(r) for r in db.execute(
         "SELECT date, meal_type, recipe_id FROM meal_plan_entries "
         "WHERE date BETWEEN ? AND ? AND is_auto_generated = 0",
         (start, end),
     )]
+    kept += [dict(r) for r in db.execute(
+        "SELECT date, meal_type FROM plan_skips WHERE date BETWEEN ? AND ?", (start, end))]
+    return kept
 
 
 def load_shopping_inputs(start: str, end: str) -> Tuple[List[Dict], Dict, Dict, Dict]:
     """Return (plan_entries, recipes, recipe_ingredients, ingredients) for a date range."""
     db = get_db()
     entries = [dict(r) for r in db.execute(
-        "SELECT date, meal_type, recipe_id, servings, is_continuation FROM meal_plan_entries WHERE date BETWEEN ? AND ?",
+        "SELECT date, meal_type, recipe_id, servings, is_continuation, origin"
+        " FROM meal_plan_entries WHERE date BETWEEN ? AND ?",
         (start, end),
     )]
     recipes = {r["id"]: dict(r) for r in db.execute("SELECT id, name, servings FROM recipes")}

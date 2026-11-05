@@ -107,6 +107,12 @@ tests/            Unit tests for services + integration tests via Flask test cli
 ## Feature notes worth knowing
 
 - **Meal plan generation** (`services/plan_generator.py`): rules are tried in `sort_order`, first match wins. `day_of_week` is comma-separated (`mon,wed,fri`) and also supports `weekday`, `weekend`, `all`. Manual entries are preserved across regeneration. Recipes can cover N days; continuations use the next free slot of the same meal type and link to the original entry so ingredients aren't bought twice. Removing or replacing an original meal promotes its continuations to standalone meals.
+- **Pay-cycle plans and ate-out skips**: **Next pay cycle** plans payday to the day before the next
+  one. A multi-day meal's leftovers never take a night another rule plans (e.g. a Friday rule).
+  **Ate out** (`skip_meal()` in `services/mutations.py`) records a `plan_skips` slot, moves that
+  rule's later meals along one slot, and rolls the overflow into the next cycle with
+  `origin = 'rollover'` (already bought, so the shopping list skips it). Before the cycle starts,
+  nothing was bought, so the overflow is dropped instead.
 - **Shopping list** (`services/shopping_list_generator.py`): aggregates ingredients across the plan, scales by servings, merges compatible units (g + kg → one line), optionally subtracts pantry stock (keyed by **ingredient id**), and estimates cost per line.
 - **Suggestions and pay-cycle lists**: see `architecture.md` → "Suggestions and Pay-Cycle Lists". Every generated list line has a `source` and `reason`; list modes are filters over one generation, so don't build a separate generator per list type. Non-food product roles must stay out of meal matching. Meal swaps and list deletions are recorded in `suggestion_feedback`.
 - **Spend totals** (`services/spend_analysis.py`): one shop can exist as an invoice, a bank payment, an amended invoice or a pending bank row. `mark_counted()` decides which rows are money; inside a store's bank coverage that is the bank. Use `load_spend()` or `analyze_purchases()` for totals, never a raw `SUM` over `purchases`.

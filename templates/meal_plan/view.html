@@ -40,6 +40,8 @@
             {% if pay_cycle %}
             <button type="submit" name="range" value="payday" class="btn btn-outline-primary btn-sm mb-1 ml-1"
                     title="Plan from today to {{ pay_cycle.cycle_end }}, the day before payday">Until payday</button>
+            <button type="submit" name="range" value="next" class="btn btn-outline-primary btn-sm mb-1 ml-1"
+                    title="Plan the pay cycle from {{ pay_cycle.next_cycle_start }} to {{ pay_cycle.next_cycle_end }}">Next pay cycle</button>
             {% endif %}
         </form>
         {% endif %}
@@ -124,7 +126,16 @@
         <div class="day-slots">
             {% for mt in shown_types %}
             {% set entry = day.meals[mt] %}
-            {% if entry %}
+            {% if mt in day.skipped and not entry %}
+                <div class="slot slot-empty slot-skipped">
+                    <div class="slot-label">{{ meal_type_label(mt) }}</div>
+                    <div class="slot-meta">Ate out</div>
+                    <form method="post" action="{{ url_for('meal_plan.meal_plan_unskip') }}" class="d-print-none">
+                        {{ csrf() }}<input type="hidden" name="date" value="{{ day.date }}"><input type="hidden" name="meal_type" value="{{ mt }}">
+                        <button type="submit" class="btn btn-sm btn-link p-0 link-secondary">Undo</button>
+                    </form>
+                </div>
+            {% elif entry %}
                 {% include "meal_plan/_slot_filled.html" %}
             {% else %}
                 {% include "meal_plan/_slot_empty.html" %}
