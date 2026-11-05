@@ -17,6 +17,43 @@
     goes off, which is bought for that many days and topped up later.</p>
 
 {% if rows %}
+<details class="card mb-3" {% if photos %}open{% endif %}>
+    <summary class="card-header">Try counting from photos <span class="badge bg-secondary">experiment</span></summary>
+    <div class="card-body">
+        <p class="small text-muted mb-2">Take up to 4 photos of the cupboard, fridge and freezer with the labels facing out,
+            and upload them together. The photos are sent to the AI model in Settings to guess the counts, and aren't stored.
+            Each guess shows beside its count box. Still count by hand: the page compares the two so you can see whether
+            photo counts are good enough to trust.</p>
+        {% if ai_configured %}
+        <form method="post" action="{{ url_for('pantry.stock_count_photo') }}" enctype="multipart/form-data" id="photo-count-form">
+            {{ csrf() }}
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+                <input type="file" name="photos" accept="image/jpeg,image/png,image/webp" multiple required
+                       class="form-control" style="max-width: 24rem" aria-label="Photos to count from">
+                <button type="submit" class="btn btn-outline-primary">Count from photos</button>
+            </div>
+            <div class="small text-muted mt-1" id="photo-count-status" role="status"></div>
+        </form>
+        {% else %}
+        <div class="small">Needs an OpenRouter key: add one under <a href="{{ url_for('settings.settings') }}">Settings</a>.</div>
+        {% endif %}
+        {% if photo_accuracy %}
+        <div class="mt-3">
+            <strong>How the photos have done so far:</strong>
+            {{ photo_accuracy.exact }} of {{ photo_accuracy.compared }} counts exact ({{ photo_accuracy.exact_pct }}%),
+            {{ photo_accuracy.within_one }} within one, off by {{ photo_accuracy.mean_error }} on average.
+            {% if photo_accuracy.misses %}
+            <ul class="small mb-0">
+                {% for miss in photo_accuracy.misses %}
+                <li>{{ miss.label }} on {{ miss.counted_on|nice_date }}: photo said {{ miss.photo|round(1) }}, you counted {{ miss.counted|round(1) }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</details>
+
 <form method="post" action="{{ url_for('pantry.stock_count') }}">
     {{ csrf() }}
     <div class="table-responsive">
@@ -34,7 +71,9 @@
             <td class="num">{% if row.on_hand is not none %}{{ row.on_hand|round(1) }}{% else %}<span class="text-muted">not counted</span>{% endif %}
                 {% if row.last_count %}<div class="small text-muted">{{ row.last_count.quantity|round(1) }} on {{ row.last_count.counted_on|nice_date }}</div>{% endif %}</td>
             <td><input type="number" name="count" min="0" step="any" class="form-control form-control-sm" style="width: 6rem"
-                       aria-label="Count of {{ row.label }} today"></td>
+                       aria-label="Count of {{ row.label }} today">
+                {% set guess = photos.get(row.key) if photos else none %}
+                {% if guess %}<div class="small text-muted" title="{{ guess.seen_as }}">photo: {{ guess.quantity|round(1) }} ({{ guess.confidence }})</div>{% endif %}</td>
             <td><input type="number" name="max_on_hand" min="0" step="any" class="form-control form-control-sm" style="width: 6rem"
                        value="{{ row.max_on_hand|round(1) if row.max_on_hand is not none else '' }}" aria-label="Keep at most, {{ row.label }}"></td>
             <td><input type="number" name="keep_days" min="0" step="1" class="form-control form-control-sm" style="width: 6rem"
@@ -50,4 +89,52 @@
 <div class="alert alert-info">Nothing to count yet. Items you buy often (six or more times in six months) show up here once
     your shops are imported.</div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Phone photos are often over the 5 MB limit: shrink them in the browser before upload.
+(function () {
+    var form = document.getElementById("photo-count-form");
+    if (!form || !window.DataTransfer || !HTMLCanvasElement.prototype.toBlob) { return; }
+    var input = form.querySelector('input[type="file"]');
+    var status = document.getElementById("photo-count-status");
+    var LONG_SIDE = 2000;
+
+    function shrink(file) {
+        return new Promise(function (resolve) {
+            var url = URL.createObjectURL(file);
+            var img = new Image();
+            img.onload = function () {
+                var scale = Math.min(1, LONG_SIDE / Math.max(img.width, img.height));
+                var canvas = document.createElement("canvas");
+                canvas.width = Math.round(img.width * scale);
+                canvas.height = Math.round(img.height * scale);
+                canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+                URL.revokeObjectURL(url);
+                canvas.toBlob(function (blob) {
+                    resolve(blob ? new File([blob], file.name.replace(/\.\w+$/, "") + ".jpg", {type: "image/jpeg"}) : file);
+                }, "image/jpeg", 0.85);
+            };
+            img.onerror = function () { URL.revokeObjectURL(url); resolve(file); };
+            img.src = url;
+        });
+    }
+
+    form.addEventListener("submit", function (event) {
+        if (form.dataset.ready) { return; }
+        event.preventDefault();
+        status.textContent = "Preparing photos...";
+        Promise.all(Array.prototype.map.call(input.files, shrink)).then(function (files) {
+            var transfer = new DataTransfer();
+            files.forEach(function (f) { transfer.items.add(f); });
+            input.files = transfer.files;
+            form.dataset.ready = "1";
+            status.textContent = "Counting... this can take up to a minute.";
+            form.querySelector("button[type=submit]").disabled = true;
+            form.submit();
+        });
+    });
+})();
+</script>
 {% endblock %}
