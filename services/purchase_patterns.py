@@ -28,11 +28,18 @@ def _as_date(value) -> Optional[date]:
         return None
 
 
+def normalise_key(key: str) -> str:
+    """Product keys ignore case and spacing: the order CSV and the invoices spell names differently."""
+    if key and key.startswith("prod:"):
+        return "prod:" + " ".join(key[5:].lower().split())
+    return key
+
+
 def group_key(row: Dict) -> str:
-    """'ing:<id>' for products linked to an ingredient, else 'prod:<name>'."""
+    """'ing:<id>' for products linked to an ingredient, else 'prod:<name>' (case-insensitive)."""
     if row.get("ingredient_id"):
         return f"ing:{row['ingredient_id']}"
-    return f"prod:{row.get('product_name') or ''}"
+    return normalise_key(f"prod:{row.get('product_name') or ''}")
 
 
 def _spread(intervals: List[float]) -> float:
@@ -211,7 +218,7 @@ def feedback_suppressed(feedback: List[Dict], key: str, removals: int = 2) -> Tu
     """
     suppressed, forced, removed = False, False, 0
     for row in feedback:
-        if row.get("item_key") != key:
+        if normalise_key(str(row.get("item_key"))) != normalise_key(key):
             continue
         action = row.get("action")
         if action == "never":

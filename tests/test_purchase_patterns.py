@@ -116,3 +116,15 @@ class TestFeedback:
 
     def test_other_keys_are_ignored(self):
         assert feedback_suppressed([{"item_key": "x", "action": "never"}], "k") == (False, False)
+
+
+def test_product_names_group_regardless_of_case():
+    from services.purchase_patterns import build_patterns, feedback_suppressed, make_purchase
+    from datetime import date
+    rows = [make_purchase("2026-10-01", "Oreo mini cookies original"),
+            make_purchase("2026-10-15", "Oreo Mini Cookies  Original")]
+    patterns = build_patterns(rows, date(2026, 11, 1))
+    assert len(patterns) == 1 and patterns[0]["buys"] == 2
+    assert patterns[0]["key"] == "prod:oreo mini cookies original"
+    assert feedback_suppressed([{"item_key": "prod:Oreo mini cookies original", "action": "never"}],
+                               patterns[0]["key"]) == (True, False)
