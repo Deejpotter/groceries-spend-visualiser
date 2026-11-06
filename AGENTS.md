@@ -119,6 +119,11 @@ tests/            Unit tests for services + integration tests via Flask test cli
   by pattern key) cap what's kept (`max_on_hand`) and how long perishables are bought for
   (`keep_days`). A shop imported twice (CSV and invoice) counts once per day.
   Page: Pantry → **Stock count**.
+- **Product spellings** (`product_name_key()` in `services/purchase_patterns.py`): the order CSV and
+  the invoices spell one product differently (case, and invoices add "pdm"). Keys ignore both, and
+  linking a product links every spelling (`name_variants()` in `services/mutations.py`). Imports
+  inherit a link across spellings and then run `link_name_variants()`; `flask --app app
+  link-variants` runs it by hand.
 - **Shopping list** (`services/shopping_list_generator.py`): aggregates ingredients across the plan, scales by servings, merges compatible units (g + kg → one line), optionally subtracts pantry stock (keyed by **ingredient id**), and estimates cost per line.
 - **Suggestions and pay-cycle lists**: see `architecture.md` → "Suggestions and Pay-Cycle Lists". Every generated list line has a `source` and `reason`; list modes are filters over one generation, so don't build a separate generator per list type. Non-food product roles must stay out of meal matching. Meal swaps and list deletions are recorded in `suggestion_feedback`.
 - **Spend totals** (`services/spend_analysis.py`): one shop can exist as an invoice, a bank payment, an amended invoice or a pending bank row. `mark_counted()` decides which rows are money; inside a store's bank coverage that is the bank. Use `load_spend()` or `analyze_purchases()` for totals, never a raw `SUM` over `purchases`.

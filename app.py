@@ -368,6 +368,12 @@ def create_app(testing=False):
         get_db().commit()
         print(key)
 
+    @application.cli.command("link-variants")
+    def link_variants_command():
+        """Link unlinked spellings (case, "pdm") of products that are already linked."""
+        from services.spend_import import link_name_variants
+        print(f"Linked {link_name_variants(get_db())} purchase rows.")
+
     @application.cli.command("db-status")
     def db_status_command():
         """Show where the database lives and how much is in it."""

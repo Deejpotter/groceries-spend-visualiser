@@ -28,10 +28,19 @@ def _as_date(value) -> Optional[date]:
         return None
 
 
+# Woolworths invoices add this marker to some names the order CSV spells without it.
+NAME_NOISE = {"pdm"}
+
+
+def product_name_key(name: str) -> str:
+    """One spelling per product: lower case, single spaces, no invoice-only markers."""
+    return " ".join(w for w in (name or "").lower().split() if w not in NAME_NOISE)
+
+
 def normalise_key(key: str) -> str:
-    """Product keys ignore case and spacing: the order CSV and the invoices spell names differently."""
+    """Product keys ignore case, spacing and invoice markers: the order CSV and the invoices spell names differently."""
     if key and key.startswith("prod:"):
-        return "prod:" + " ".join(key[5:].lower().split())
+        return "prod:" + product_name_key(key[5:])
     return key
 
 
