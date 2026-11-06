@@ -123,7 +123,8 @@ def load_purchase_rows(since: str = "0000-00-00") -> List[Dict]:
 
 def load_usage_settings() -> Dict[str, Dict]:
     """Per-item limits keyed by pattern key ('ing:<id>' or 'prod:<name>')."""
-    return {r["item_key"]: dict(r) for r in get_db().execute("SELECT * FROM item_usage")}
+    from services.purchase_patterns import normalise_key
+    return {normalise_key(r["item_key"]): dict(r) for r in get_db().execute("SELECT * FROM item_usage")}
 
 
 def load_stock_counts() -> Dict[str, List[Dict]]:

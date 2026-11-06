@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from models import convert_unit, units_compatible
+from services.purchase_patterns import product_name_key
 
 REQUIRED_COLUMNS = {"date", "product_name", "quantity"}
 
@@ -228,13 +229,14 @@ def import_purchases(db, rows: Iterable[Dict]) -> Tuple[int, int]:
                 line_total, cup_price, stockcode, ingredient_id, origin)
                VALUES (:order_date, :basket_id, :store, :channel, :product_name, :quantity, :unit_price,
                        :line_total, :cup_price, :stockcode, :ingredient_id, 'ui')""",
-            {**row, "ingredient_id": links.get(row["product_name"])},
+            {**row, "ingredient_id": links.get(product_name_key(row["product_name"]))},
         )
         if cur.rowcount:
             added += 1
         else:
             skipped += 1
     db.commit()
+    link_name_variants(db)
     return added, skipped
 
 
@@ -474,11 +476,30 @@ STALE_BATCH_DAYS = 7
 
 
 def _linked_ingredients(db) -> Dict[str, int]:
-    """product_name -> ingredient_id for already-linked products."""
-    return {r["product_name"]: r["ingredient_id"] for r in db.execute(
-        "SELECT product_name, MAX(ingredient_id) AS ingredient_id FROM purchases "
-        "WHERE ingredient_id IS NOT NULL GROUP BY product_name"
-    )}
+    """product_name_key -> ingredient_id for already-linked products.
+
+    Keyed by the name key so an invoice spelling ("... pdm 4 pack") inherits the
+    link made on the order-CSV spelling. Keys whose spellings are linked to
+    different ingredients are left out rather than guessed.
+    """
+    found: Dict[str, set] = {}
+    for r in db.execute("SELECT DISTINCT product_name, ingredient_id FROM purchases WHERE ingredient_id IS NOT NULL"):
+        found.setdefault(product_name_key(r["product_name"]), set()).add(r["ingredient_id"])
+    return {key: ids.pop() for key, ids in found.items() if len(ids) == 1}
+
+
+def link_name_variants(db) -> int:
+    """Link unlinked spellings of products whose other spellings are already linked. Returns rows linked."""
+    links = _linked_ingredients(db)
+    linked = 0
+    for r in db.execute("SELECT DISTINCT product_name FROM purchases WHERE ingredient_id IS NULL").fetchall():
+        ingredient_id = links.get(product_name_key(r["product_name"]))
+        if ingredient_id:
+            linked += db.execute(
+                "UPDATE purchases SET ingredient_id = ? WHERE product_name = ? AND ingredient_id IS NULL",
+                (ingredient_id, r["product_name"])).rowcount
+    db.commit()
+    return linked
 
 
 def create_import_batch(db, meta: Dict, rows: List[Dict]) -> str:
@@ -592,7 +613,7 @@ def commit_import_batch(db, token: str) -> Tuple[int, int]:
             " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ui')",
             (batch["order_date"], batch["invoice_number"], batch["store"], line["product_name"],
              line["quantity"], line["unit_price"], line["line_total"], line["cup_price"],
-             line["stockcode"], line["channel"], links.get(line["product_name"])),
+             line["stockcode"], line["channel"], links.get(product_name_key(line["product_name"]))),
         )
         if cur.rowcount:
             added += 1
@@ -600,6 +621,7 @@ def commit_import_batch(db, token: str) -> Tuple[int, int]:
             skipped += 1
     db.execute("UPDATE import_batches SET status = 'committed' WHERE id = ?", (batch["id"],))
     db.commit()
+    link_name_variants(db)
     return added, skipped
 
 
