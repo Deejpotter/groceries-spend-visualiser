@@ -12,7 +12,7 @@ from datetime import date, timedelta
 from typing import Dict, Iterable, List, Optional
 
 from models import parse_ymd
-from services.purchase_patterns import group_key
+from services.purchase_patterns import group_key, normalise_key
 from services.spend_analysis import BANK_ORIGINS
 
 STEADY_MIN_BUYS = 6
@@ -213,7 +213,7 @@ def stock_rows(patterns: List[Dict], purchases: Iterable[Dict], settings: Dict[s
 def counts_by_key(rows: Iterable[Dict]) -> Dict[str, List[Dict]]:
     found: Dict[str, List[Dict]] = {}
     for row in rows:
-        found.setdefault(row["item_key"], []).append(dict(row))
+        found.setdefault(normalise_key(row["item_key"]), []).append(dict(row))
     return found
 
 

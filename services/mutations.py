@@ -252,6 +252,23 @@ def _latest_purchase(db, product_name):
     ).fetchone()
 
 
+def name_variants(db, product_name: str) -> List[str]:
+    """Every stored spelling of a product (case, spacing and invoice markers ignored)."""
+    from services.purchase_patterns import product_name_key
+    key = product_name_key(product_name)
+    names = [r["product_name"] for r in db.execute(
+        "SELECT DISTINCT product_name FROM purchases WHERE lower(product_name) LIKE ?",
+        (f"%{key.split()[0] if key else ''}%",))]
+    return [n for n in names if product_name_key(n) == key] or [product_name]
+
+
+def _set_link(db, product_name: str, ingredient_id, origin: str) -> None:
+    """Link (or unlink) a product and its other spellings together."""
+    for name in name_variants(db, product_name):
+        db.execute("UPDATE purchases SET ingredient_id = ?, origin = ? WHERE product_name = ?",
+                   (ingredient_id, origin, name))
+
+
 def link_product(db, product_name: str, choice: str, update_price: bool = True,
                  new_category: str = "other", origin: str = "ui") -> Tuple[str, str, bool]:
     """Link one product to an ingredient. Returns (level, message, price_updated)."""
@@ -270,7 +287,7 @@ def link_product(db, product_name: str, choice: str, update_price: bool = True,
             (product_name, short_name(product_name), category, unit, price, latest["store"] if latest else None,
              product_url(latest["store"], latest["stockcode"]) if latest else None, origin),
         )
-        db.execute("UPDATE purchases SET ingredient_id = ?, origin = ? WHERE product_name = ?", (cur.lastrowid, origin, product_name))
+        _set_link(db, product_name, cur.lastrowid, origin)
         db.commit()
         return "success", f"Created ingredient “{product_name}” in {CATEGORY_LOOKUP.get(category, category)}.", False
     if choice:
@@ -297,10 +314,10 @@ def link_product(db, product_name: str, choice: str, update_price: bool = True,
                 level = "warning"
         else:
             note, level = "Product linked.", "success"
-        db.execute("UPDATE purchases SET ingredient_id = ?, origin = ? WHERE product_name = ?", (ingredient_id, origin, product_name))
+        _set_link(db, product_name, ingredient_id, origin)
         db.commit()
         return level, note, price_updated
-    db.execute("UPDATE purchases SET ingredient_id = NULL, origin = ? WHERE product_name = ?", (origin, product_name,))
+    _set_link(db, product_name, None, origin)
     db.commit()
     return "info", "Product unlinked.", False
 
