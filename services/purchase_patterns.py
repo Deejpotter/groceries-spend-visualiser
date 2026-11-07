@@ -12,6 +12,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 from models import parse_ymd
 from services.product_matching import NON_FOOD_ROLES, ROLE_LOOKUP, product_role
+from services.spend_analysis import BANK_ORIGINS
 
 HISTORY_DAYS = 180
 REGULAR_MIN_BUYS = 3
@@ -80,7 +81,8 @@ def build_patterns(purchases: Iterable[Dict], today: date, ingredients: Optional
 
     Each pattern: key, label, ingredient_id, products, role, buys, interval_days,
     spread, rhythm, last_bought, next_due, days_since_last, typical_quantity,
-    typical_spend, last_price, category. Ignored products are left out.
+    typical_spend, last_price, category. Ignored products and bank payments
+    (whole shops, not products) are left out.
     Sorted with regular buys first, then by how often they are bought.
     """
     ingredients = ingredients or {}
@@ -88,6 +90,8 @@ def build_patterns(purchases: Iterable[Dict], today: date, ingredients: Optional
     since = today - timedelta(days=history_days)
     groups: Dict[str, Dict] = {}
     for row in purchases:
+        if row.get("origin") in BANK_ORIGINS:
+            continue
         day = _as_date(row.get("order_date"))
         name = row.get("product_name") or ""
         if not day or day < since or day > today or not name:
@@ -247,11 +251,12 @@ def feedback_suppressed(feedback: List[Dict], key: str, removals: int = 2) -> Tu
 
 def make_purchase(order_date: str = "2026-10-01", product_name: str = "Full Cream Milk 2L",
                   quantity: float = 1, line_total: float = 3.1, unit_price: Optional[float] = 3.1,
-                  ingredient_id: Optional[int] = None, basket_id: str = "b1") -> Dict:
+                  ingredient_id: Optional[int] = None, basket_id: str = "b1",
+                  origin: Optional[str] = None) -> Dict:
     """Create a purchase row dict for testing."""
     return {"order_date": order_date, "product_name": product_name, "quantity": quantity,
             "line_total": line_total, "unit_price": unit_price, "ingredient_id": ingredient_id,
-            "basket_id": basket_id}
+            "basket_id": basket_id, "origin": origin}
 
 
 def make_history(product_name: str, start: str, every_days: int, times: int, **kwargs) -> List[Dict]:
