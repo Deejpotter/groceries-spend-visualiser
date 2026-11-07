@@ -7,6 +7,10 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 APP_NAME = "Larder"
+APP_DESCRIPTION = "Meal plans, shopping lists and grocery spend for our household."
+THEME_LIGHT = "#ece6ff"
+THEME_DARK = "#0e0726"
+BRAND_COLOUR = "#d6005c"
 
 DEFAULT_TIMEZONE = "Australia/Sydney"
 

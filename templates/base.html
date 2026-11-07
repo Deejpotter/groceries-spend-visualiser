@@ -4,6 +4,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}{{ app_name }}{% endblock %}</title>
+    <meta name="description" content="{{ app_description }}">
+    <meta name="application-name" content="{{ app_name }}">
+    <meta name="apple-mobile-web-app-title" content="{{ app_name }}">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="theme-color" content="{{ theme_light }}" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="{{ theme_dark }}" media="(prefers-color-scheme: dark)">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="{{ app_name }}">
+    <meta property="og:title" content="{{ self.title() }}">
+    <meta property="og:description" content="{{ app_description }}">
+    <meta property="og:image" content="{{ public_url() }}{{ url_for('static', filename='icons/icon-512.png') }}">
+    <link rel="icon" href="{{ url_for('static', filename='icons/icon.svg') }}" type="image/svg+xml">
+    <link rel="icon" href="{{ url_for('favicon') }}" sizes="48x48">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
+    <link rel="manifest" href="{{ url_for('manifest') }}">
     <script>
     (function () {
         try {
