@@ -220,7 +220,7 @@ def test_api_prices_and_search(client, db, fake_client, monkeypatch):
     assert item["stores"]["coles"]["unit_price"] == 2.1 and item["cheapest"] == "coles"
     found = client.get("/api/v1/prices/search?store=coles&q=milk", headers=headers).get_json()
     assert found["results"][0]["code"] == "1913790"
-    assert client.get("/api/v1/prices/search?store=aldi&q=milk", headers=headers).status_code == 502
+    assert client.get("/api/v1/prices/search?store=aldi&q=milk", headers=headers).status_code == 424
     assert client.get("/api/v1/prices/search?store=iga&q=milk", headers=headers).status_code == 400
 
 
