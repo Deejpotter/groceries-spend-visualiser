@@ -1,7 +1,9 @@
 """Routes for shelf price tracking across Woolworths, Coles and Aldi."""
 
 import json
+import re
 import threading
+import urllib.parse
 
 import click
 from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, url_for
@@ -11,7 +13,8 @@ from database import get_db, get_setting, set_setting
 from models import today as local_today
 from services import store_prices as sp
 from services.price_tracking import (
-    check_messages, check_prices, ingredient_prices, load_watches, prices_overview, unwatch, watch_product,
+    capture_review, check_messages, check_prices, ingredient_prices, load_watches, prices_overview, save_capture,
+    unwatch, watch_product,
 )
 
 prices_bp = Blueprint("prices", __name__)
@@ -209,6 +212,62 @@ def prices_check_one(ingredient_id):
     if checked:
         flash(f"Checked {checked} store price{'s' if checked != 1 else ''}.", "success")
     return redirect(url_for("prices.prices_detail", ingredient_id=ingredient_id))
+
+
+def _app_url():
+    """This app's address for the bookmarklet. Behind the proxy the request says http, so force https."""
+    host = request.host
+    local = host.split(":")[0] in ("localhost", "127.0.0.1") or host.endswith((".localhost", ".test"))
+    return f"{'http' if local else 'https'}://{host}"
+
+
+def bookmarklet_href():
+    """The capture bookmarklet as a javascript: link, pointing at this app."""
+    code = render_template("prices/bookmarklet.js", app_url=_app_url())
+    code = re.sub(r"\s*\n\s*", " ", code).strip()
+    return "javascript:" + urllib.parse.quote(code, safe="(){};,=+'!*:.?/")
+
+
+@prices_bp.route("/prices/capture")
+@login_required
+def prices_capture():
+    return render_template("prices/capture.html", bookmarklet=bookmarklet_href())
+
+
+@prices_bp.route("/prices/capture/review", methods=["POST"])
+@login_required
+def prices_capture_review():
+    data = request.form.get("data", "")
+    captured = sp.parse_capture(data)
+    if not captured["store"]:
+        flash("That didn't come from a Woolworths, Coles or Aldi page. Open one and click the bookmark again.",
+              "warning")
+        return redirect(url_for("prices.prices_capture"))
+    review = capture_review(get_db(), captured)
+    return render_template("prices/capture_review.html", captured=captured, rows=review["rows"],
+                           ingredients=review["ingredients"], data=data, store=sp.STORES[captured["store"]])
+
+
+@prices_bp.route("/prices/capture/save", methods=["POST"])
+@login_required
+def prices_capture_save():
+    captured = sp.parse_capture(request.form.get("data", ""))
+    if not captured["store"]:
+        flash("Nothing to save.", "warning")
+        return redirect(url_for("prices.prices_capture"))
+    choices = {key[len("ingredient_"):]: int(value) for key, value in request.form.items()
+               if key.startswith("ingredient_") and value.isdigit()}
+    result = save_capture(get_db(), captured, choices, local_today().isoformat())
+    label = sp.store_label(captured["store"])
+    if result["saved"]:
+        flash(f"Saved {result['saved']} {label} price{'s' if result['saved'] != 1 else ''}.", "success")
+    elif not result["build"]:
+        flash("No prices saved: none of these products are tracked, and none were picked.", "info")
+    if result["build"]:
+        flash("Coles is connected again: the daily check can read Coles prices.", "success")
+    if len(set(result["watched"])) == 1:
+        return redirect(url_for("prices.prices_detail", ingredient_id=result["watched"][0]))
+    return redirect(url_for("prices.prices_list"))
 
 
 def register_prices_routes(app):

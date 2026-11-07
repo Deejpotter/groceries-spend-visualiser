@@ -151,6 +151,12 @@ tests/            Unit tests for services + integration tests via Flask test cli
   a `StoreError`, and the automatic check only fetches product pages (robots.txt disallows the search
   pages, so search runs only when the user clicks). Coles' HTML pages sometimes show a bot check; its JSON
   routes need a build id, which is cached in memory and in the `coles_build_id` setting.
+  **Capture bookmarklet** (`templates/prices/bookmarklet.js`, page **Prices → Capture from your
+  browser**): runs on a store page in the user's own browser, sends the page's product data in the URL
+  fragment to `/prices/capture`, which posts it to a review page; `parse_capture()` parses it with the
+  same parsers and `save_capture()` saves tracked or picked products. A Coles capture also saves the
+  build id, which reconnects the server's Coles checks. The fragment is untrusted input: nothing is
+  saved until the user clicks Save.
 
 - **Spend import** (`services/spend_import.py`): de-duplicated by `UNIQUE(store, basket_id, product_name)`. Cup prices like `$1.51 / 100G` are parsed and converted to per-unit prices. Unpriced rows are skipped with a summary, not an error.
 

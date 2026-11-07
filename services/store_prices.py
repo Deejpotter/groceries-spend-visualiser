@@ -160,8 +160,8 @@ def _aldi_price(fragment: str) -> Optional[float]:
     return _money(match.group(1)) if match else None
 
 
-def parse_aldi_search(page_html: str) -> List[Dict]:
-    """Product tiles on https://www.aldi.com.au/results?q=..."""
+def parse_aldi_search(page_html: str, limit: int = SEARCH_LIMIT) -> List[Dict]:
+    """Product tiles on https://www.aldi.com.au/results?q=... (or any category page)."""
     found = []
     for tile in (page_html or "").split('class="product-tile"')[1:]:
         link = _ALDI_CODE_RE.search(tile)
@@ -174,7 +174,7 @@ def parse_aldi_search(page_html: str) -> List[Dict]:
         found.append(_product("aldi", link.group(2).lstrip("0") or link.group(2), full, _aldi_price(tile), None,
                               _aldi_cup(cup.group(1)) if cup else None,
                               f"{STORES['aldi']['base']}/product/{link.group(1)}"))
-    return found[:SEARCH_LIMIT]
+    return found[:limit]
 
 
 def parse_aldi_product(page_html: str, url: str) -> Optional[Dict]:
@@ -223,6 +223,54 @@ def parse_product_link(link: Optional[str]) -> Optional[Dict]:
     code = _ALDI_CODE_RE.search(path)
     return {"store": store, "code": code.group(2).lstrip("0"),
             "url": f"{STORES[store]['base']}/product/{code.group(1)}"} if code else None
+
+
+# --- Captured in the user's browser -----------------------------------------
+
+CAPTURE_MAX_ITEMS = 200
+_BUILD_ID_RE = re.compile(r"^[A-Za-z0-9._-]{6,120}$")
+
+
+def parse_capture(payload) -> Dict:
+    """What the Prices bookmarklet sent from a store page -> {store, url, build_id, products}.
+
+    The bookmarklet runs in the user's own browser, so it sees what a person sees, including
+    Coles pages that answer the server with a bot check. It sends the store's own product data,
+    trimmed: Coles and Woolworths items as their pages hold them, Aldi as product tile or product
+    page HTML. It is parsed like any store reply; a URL off the store's site rejects the lot.
+    """
+    empty = {"store": None, "url": None, "build_id": None, "products": []}
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except ValueError:
+            return empty
+    if not isinstance(payload, dict):
+        return empty
+    store = store_key(payload.get("store"))
+    url = str(payload.get("url") or "")
+    if not store or not re.match(rf"https://(?:www\.)?{store}\.com\.au/", url):
+        return empty
+    items = payload.get("items") if isinstance(payload.get("items"), list) else []
+    items = items[:CAPTURE_MAX_ITEMS]
+    if store == "coles":
+        products = [_coles_item(i) for i in items]
+    elif store == "woolworths":
+        products = [_woolworths_item(i) if isinstance(i, dict) else None for i in items]
+    else:
+        page = str(payload.get("html") or "")
+        if 'class="product-tile"' in page:
+            products = parse_aldi_search(page, limit=CAPTURE_MAX_ITEMS)
+        else:
+            products = [parse_aldi_product(page, url)]
+    found, seen = [], set()
+    for product in products:
+        if product and product["price"] and product["code"] not in seen:
+            seen.add(product["code"])
+            found.append(product)
+    build = str(payload.get("build") or "")
+    return {"store": store, "url": url, "products": found,
+            "build_id": build if store == "coles" and _BUILD_ID_RE.match(build) else None}
 
 
 # --- History and summary ----------------------------------------------------

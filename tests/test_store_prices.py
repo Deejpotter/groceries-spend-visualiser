@@ -299,3 +299,111 @@ def test_check_remembers_the_coles_build_id(db, monkeypatch):
     store_clients._coles_build_cache["id"] = "newer"
     check_prices(db, TODAY, FakeStoreClient(), pause=0)
     assert db.execute("SELECT value FROM settings WHERE key = 'coles_build_id'").fetchone()[0] == "newer"
+
+
+# --- capture from the user's browser -----------------------------------------
+
+import json  # noqa: E402
+import urllib.parse  # noqa: E402
+
+from services.price_tracking import capture_review, save_capture  # noqa: E402
+
+COLES_PAGE = "https://www.coles.com.au/search/products?q=milk"
+BUILD = "20261030.5-50651305f32cfd01ae831eca71d307ffa6b1fefb"
+
+
+def _coles_capture(**extra):
+    page_item = {k: v for k, v in COLES_ITEM.items() if k != "_type"}  # product pages have no _type
+    unpriced = dict(COLES_ITEM, id=5, pricing={"now": None})
+    return dict({"v": 1, "store": "coles", "url": COLES_PAGE, "build": BUILD,
+                 "items": [COLES_ITEM, page_item, unpriced, "junk"]}, **extra)
+
+
+def test_capture_parses_each_store():
+    coles = sp.parse_capture(json.dumps(_coles_capture()))
+    assert coles["store"] == "coles" and coles["build_id"] == BUILD
+    assert [(p["code"], p["price"], p["was_price"]) for p in coles["products"]] == [("1913790", 4.2, 4.7)]
+
+    wool = sp.parse_capture({"store": "woolworths", "url": "https://www.woolworths.com.au/shop/productdetails/888137",
+                             "items": [WOOLWORTHS_ITEM], "build": BUILD})
+    assert wool["products"][0]["cup_price"] == "$1.70 / 1L" and wool["build_id"] is None
+
+    tiles = sp.parse_capture({"store": "aldi", "url": "https://www.aldi.com.au/results?q=milk",
+                              "html": "\n".join([ALDI_TILE] * 15)})
+    assert len(tiles["products"]) == 1 and tiles["products"][0]["name"] == "FARMDALE Full Cream Milk 2L"
+
+    page = sp.parse_capture({"store": "aldi", "url": ALDI_URL, "html": ALDI_PAGE})
+    assert page["products"][0]["price"] == 3.39 and page["products"][0]["cup_price"] == "$1.70 / 1L"
+
+
+@pytest.mark.parametrize("payload", [
+    "not json", None, [], {"store": "iga", "url": "https://www.iga.com.au/x"},
+    {"store": "coles", "url": "https://evil.example/www.coles.com.au/", "items": [COLES_ITEM]},
+    {"store": "coles", "url": "http://www.coles.com.au/x", "items": [COLES_ITEM]},
+])
+def test_capture_rejects_anything_not_from_a_store_page(payload):
+    assert sp.parse_capture(payload) == {"store": None, "url": None, "build_id": None, "products": []}
+
+
+def test_capture_ignores_a_malformed_build_id():
+    assert sp.parse_capture(_coles_capture(build="../../etc")).get("build_id") is None
+
+
+def test_capture_review_and_save(db, monkeypatch):
+    from services import store_clients
+    monkeypatch.setitem(store_clients._coles_build_cache, "id", None)
+    _milk(db, purchases=False)
+    db.execute("INSERT INTO ingredients (id, name, category, unit) VALUES (2, 'Butter', 'dairy', 'kg')")
+    db.commit()
+    captured = sp.parse_capture(_coles_capture())
+    review = capture_review(db, captured)
+    assert review["rows"][0]["suggested_id"] == 1 and not review["rows"][0]["tracked"]
+
+    two = dict(captured, products=captured["products"] + [dict(captured["products"][0], code="77", name="Butter 500g")])
+    assert all(r["suggested_id"] is None for r in capture_review(db, two)["rows"])  # lists pick nothing
+
+    result = save_capture(db, two, {"1913790": 1, "77": 999}, "2026-11-07")
+    assert result == {"saved": 1, "watched": [1], "build": True}
+    assert [(w["store"], w["store_code"]) for w in load_watches(db, 1)] == [("coles", "1913790")]
+    assert store_clients._coles_build_cache["id"] == BUILD
+    assert db.execute("SELECT value FROM settings WHERE key = 'coles_build_id'").fetchone()[0] == BUILD
+
+    again = save_capture(db, dict(captured, build_id=None), {}, "2026-11-08")
+    assert again["saved"] == 1  # tracked products are saved without asking
+    assert capture_review(db, captured)["rows"][0]["tracked"][0]["id"] == 1
+    assert db.execute("SELECT COUNT(*) FROM shelf_prices WHERE store_code = '1913790'").fetchone()[0] == 2
+
+
+def test_capture_pages(client, db, monkeypatch):
+    from services import store_clients
+    monkeypatch.setitem(store_clients._coles_build_cache, "id", None)
+    monkeypatch.setattr("routes.prices.local_today", lambda: TODAY)
+    login(client)
+    _milk(db, purchases=False)
+    page = client.get("/prices/capture").data.decode()
+    href = page.split('href="javascript:')[1].split('"')[0]
+    code = urllib.parse.unquote(href.replace("&#39;", "'").replace("&amp;", "&"))
+    assert '"http://localhost"' in code and "\n" not in code and "/prices/capture#" in code
+
+    data = json.dumps(_coles_capture())
+    review = client.post("/prices/capture/review", data={"data": data}).data
+    assert b"Devondale Full Cream Milk 2L" in review and b"reconnects the daily Coles check" in review
+    assert b'<option value="1" selected>' in review
+
+    resp = client.post("/prices/capture/save", data={"data": data, "ingredient_1913790": "1"},
+                       follow_redirects=True)
+    assert b"Saved 1 Coles price." in resp.data and b"Coles is connected again" in resp.data
+    assert b"Devondale Full Cream Milk 2L" in resp.data  # lands on the ingredient's price page
+
+    bad = client.post("/prices/capture/review", data={"data": "{}"}, follow_redirects=True)
+    assert b"didn&#39;t come from a Woolworths, Coles or Aldi page" in bad.data
+
+    empty = client.post("/prices/capture/review", data={"data": json.dumps(
+        {"store": "woolworths", "url": "https://www.woolworths.com.au/shop/search/products?searchTerm=milk"})}).data
+    assert b"Woolworths search pages" in empty and b"Save prices" not in empty
+
+
+def test_capture_link_uses_https_behind_the_proxy(app):
+    from routes.prices import bookmarklet_href
+    with app.test_request_context("/prices/capture", base_url="http://groceries.example.com"):
+        assert '"https://groceries.example.com"' in urllib.parse.unquote(bookmarklet_href())
