@@ -307,6 +307,26 @@ main.container {
     position: relative;
     height: 300px;
 }
+
+/* Shelf price trend lines (Prices page); colours match the history chart */
+.price-spark polyline {
+    fill: none;
+    stroke-width: 1.75;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+}
+.price-spark .spark-woolworths, .spark-key.spark-woolworths::before { stroke: #1f8a4c; background: #1f8a4c; }
+.price-spark .spark-coles, .spark-key.spark-coles::before { stroke: #d6262e; background: #d6262e; }
+.price-spark .spark-aldi, .spark-key.spark-aldi::before { stroke: #3b6fd4; background: #3b6fd4; }
+.spark-key::before {
+    content: "";
+    display: inline-block;
+    width: 12px;
+    height: 3px;
+    margin-right: 4px;
+    vertical-align: middle;
+    border-radius: 2px;
+}
 /* Focus styles for keyboard accessibility */
 *:focus-visible {
     outline: 2px solid var(--brand);

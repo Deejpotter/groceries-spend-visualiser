@@ -219,12 +219,17 @@ def _shelf_rows(db, ingredient_id: int, since: str) -> List[Dict]:
         (ingredient_id, since))]
 
 
+SPARKLINE_DAYS = 90
+CHANGES_DAYS = 14
+
+
 def ingredient_prices(db, ingredient: Dict, today: date, days: int = 365) -> Dict:
-    """History series and summary for one ingredient."""
+    """History series, summary and per-source stats for one ingredient over the last ``days``."""
     since = (today - timedelta(days=days)).isoformat()
     series = sp.price_history(ingredient, _paid_rows(db, ingredient["id"], since),
                               _shelf_rows(db, ingredient["id"], since))
-    return {"series": series, "summary": sp.price_summary(series, today)}
+    return {"series": series, "summary": sp.price_summary(series, today), "stats": sp.price_stats(series),
+            "changes": sp.price_changes(series, since)}
 
 
 def prices_overview(db, today: date) -> List[Dict]:
@@ -237,9 +242,18 @@ def prices_overview(db, today: date) -> List[Dict]:
         ingredient = dict(ing)
         data = ingredient_prices(db, ingredient, today, days=200)
         rows.append({"ingredient": ingredient, "summary": data["summary"],
-                     "stores": {s["store"]: s for s in data["summary"]["stores"]}})
+                     "stores": {s["store"]: s for s in data["summary"]["stores"]},
+                     "spark": sp.sparkline(data["series"], (today - timedelta(days=SPARKLINE_DAYS)).isoformat()),
+                     "changes": sp.price_changes(data["series"], (today - timedelta(days=CHANGES_DAYS)).isoformat())})
     rows.sort(key=lambda r: (-(r["summary"]["saving_per_unit"] or 0), r["ingredient"]["name"].lower()))
     return rows
+
+
+def recent_changes(rows: List[Dict], limit: int = 30) -> List[Dict]:
+    """Every tracked ingredient's recent shelf price moves, newest first, for the Prices page."""
+    feed = [dict(change, ingredient=row["ingredient"]) for row in rows for change in row["changes"]]
+    feed.sort(key=lambda c: c["date"], reverse=True)
+    return feed[:limit]
 
 
 class FakeStoreClient:

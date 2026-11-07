@@ -33,6 +33,7 @@
             <th class="text-right">Last paid</th>
             {% for key, store in stores.items() %}<th class="text-right">{{ store.label }}</th>{% endfor %}
             <th>Cheapest now</th>
+            <th class="d-none d-md-table-cell">Last 90 days</th>
         </tr>
     </thead>
     <tbody>
@@ -57,10 +58,42 @@
             <td>{% if s.cheapest %}<strong>{{ s.cheapest.label }}</strong>
                 {% if s.saving_per_unit %}<div class="small text-success">{{ s.saving_per_unit|unit_price }}/{{ ing.unit|replace('_', ' ') }} less than you paid</div>{% endif %}
                 {% else %}<span class="text-muted">No current price</span>{% endif %}</td>
+            <td class="d-none d-md-table-cell">{% set sp_ = row.spark %}{% if sp_.lines %}
+                <a href="{{ url_for('prices.prices_detail', ingredient_id=ing.id) }}" class="price-spark-link"
+                   title="{{ sp_.low|unit_price }} to {{ sp_.high|unit_price }} per {{ ing.unit|replace('_', ' ') }}">
+                <svg class="price-spark" viewBox="0 0 120 28" width="120" height="28" role="img"
+                     aria-label="Shelf price trend for {{ ing|label }}, {{ sp_.low|unit_price }} to {{ sp_.high|unit_price }}">
+                    {% for key, points in sp_.lines.items() %}<polyline class="spark-{{ key }}" points="{{ points }}"/>{% endfor %}
+                </svg></a>
+                {% else %}<span class="small text-muted">Building up</span>{% endif %}</td>
         </tr>
     {% endfor %}
     </tbody>
 </table>
+</div>
+<p class="small text-muted">Trend lines: <span class="spark-key spark-woolworths">Woolworths</span>
+    <span class="spark-key spark-coles">Coles</span> <span class="spark-key spark-aldi">Aldi</span>,
+    per ingredient unit, from the daily checks. Open an ingredient for its full history.</p>
+
+<div class="card mb-4">
+    <div class="card-header">Price changes in the last 14 days</div>
+    {% if changes %}
+    <ul class="list-group list-group-flush">
+        {% for c in changes %}
+        <li class="list-group-item d-flex flex-wrap justify-content-between">
+            <span><a href="{{ url_for('prices.prices_detail', ingredient_id=c.ingredient.id) }}">{{ c.ingredient|label }}</a>
+                at {{ c.label }}:
+                {% if c.kind == 'special' %}<span class="badge badge-success">special</span> {{ c.from|money }} → {{ c.to|money }}
+                {% elif c.kind == 'special_ended' %}special ended, {{ c.from|money }} → {{ c.to|money }}
+                {% else %}<span class="{{ 'text-danger' if c.kind == 'up' else 'text-success' }}">{{ 'up' if c.kind == 'up' else 'down' }}</span>
+                    {{ c.from|money }} → {{ c.to|money }}{% endif %}</span>
+            <span class="small text-muted">{{ c.date|nice_date }}</span>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="card-body text-muted">No shelf price has changed in the last 14 days{% if not last_check.date %}; changes show up once prices have been checked on two or more days{% endif %}.</div>
+    {% endif %}
 </div>
 {% else %}
 <div class="alert alert-info">
