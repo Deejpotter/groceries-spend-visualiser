@@ -89,8 +89,7 @@ merge it through `dev` into `main`.
   saves the build id; the JSON routes do the rest.
 - **13 ingredients** show Woolworths cheaper than last paid. Most are specials (salami, Nuttelex,
   coleslaw dressing).
-- **Optional:** a Coolify scheduled task running `flask --app app check-prices` daily, so prices are
-  checked without opening the page.
+- **Done (section 10):** a Coolify scheduled task runs `flask --app app check-prices` daily.
 
 ## 8. Commands to reproduce
 
@@ -139,3 +138,47 @@ server, database and test login were removed afterwards.
 `https://groceries.deejpotter.com`. A capture from the Coles home page in Deej's Chrome saved the build id
 (no products, so nothing else changed), and the production Coles search for lactose-free milk then
 returned 12 live results. The Day Planner task to retry Coles was closed.
+
+## 10. Follow-up: daily check, history and graphs
+
+**Asked:** set up the daily check and historical data tracking and graphs.
+
+**Daily check:** Coolify scheduled task "Daily shelf price check" on both apps, command
+`flask --app app check-prices`, frequency `0 19 * * *`, timeout 900 s. The Coolify servers run on UTC, so
+this is 06:00 Sydney in daylight saving and 05:00 outside it.
+- Staging app `rnn2vq0pgdw6xidwf3iaxppn`, task `vhnp3gq3zmad8enhmzfbix23`.
+- Production app `shzajzgrzju2eupzsks1zatm`, task `frrqjq6xh3tvjtwenhawwmfr`.
+- Coolify 4.5.3 has no "run now" in the API. Each task was set to every minute until one run
+  finished, then set back to `0 19 * * *`. Results:
+  - Staging: success, "Checked 10 shelf prices. 1 no longer listed."
+  - Production: success, "Checked 0 shelf prices." (every product had already been checked that day).
+
+**History and graphs (#151, released in #152):**
+- `price_stats()`: per source low, high, usual (non-special) price, share of checks on special, usual
+  special price.
+- `price_changes()`: each shelf price move, named up, down, special or special ended.
+- `sparkline()`: server-drawn SVG lines on one shared scale.
+- Prices list: a 90-day trend line per ingredient and the price changes in the last 14 days.
+- Ingredient page: range buttons, a stats table, a changes list and every saved price.
+- API: `GET /api/v1/prices/<id>/history?range=90|180|365|all`.
+
+**Evidence and fixes found while checking:** 1081 tests pass. The pages were checked in a browser against a
+local server seeded with 150 days of sample prices. That check found:
+- Chart axis labels showed float noise (`$1.8000000000000003`). Fixed.
+- Averages showed four decimals. They now round to the cent, except below $0.10, where per-gram prices
+  need more.
+- Daily points cluttered the lines. The lines are now stepped with no point markers once a store has 40+
+  points.
+
+An apparent 500 on the local check came from a stale test server left running from the previous round.
+`Get-NetTCPConnection` can't see the sandboxed listener, so stopping by port missed it. Stopping by
+command line (`app.py`) works. It was stopped, and its database had already been deleted.
+
+**Production (cacc3fc):**
+- The Prices page shows 52 tracked ingredients with "Building up" trend cells, because shelf history only
+  started on 7 Nov.
+- The lactose-free milk page with range "All" shows 87 paid prices from May 2023 to Oct 2026, plus today's
+  Woolworths and Aldi shelf prices.
+
+**Not changed:** no back-filling of past shelf prices (no free source exists); shopping-list estimates still
+use paid prices.
