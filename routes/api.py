@@ -286,7 +286,7 @@ def prices_search():
     try:
         results = factory().search(store, query)
     except StoreError as exc:
-        raise ApiError(502, "store_unavailable", str(exc))
+        raise ApiError(424, "store_unavailable", str(exc))  # a 5xx would be replaced by Cloudflare's own page
     return jsonify({"store": store, "query": query, "results": results})
 
 
