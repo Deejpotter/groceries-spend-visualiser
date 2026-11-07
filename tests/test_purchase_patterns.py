@@ -17,6 +17,14 @@ def _pattern(rows, **kwargs):
 
 
 class TestBuildPatterns:
+    def test_bank_payments_are_not_products(self):
+        bank = [make_purchase(f"2026-10-{d:02d}", "ALDI STORES CARRUM DOWNS VICAU", line_total=58.36,
+                              unit_price=58.36, basket_id=f"bank{d}", origin=origin)
+                for d, origin in ((6, "csv"), (13, "banksync"), (20, "csv"), (27, "banksync"))]
+        rows = bank + make_history("Full Cream Milk 2L", "2026-10-06", 7, 4)
+        patterns = build_patterns(rows, TODAY)
+        assert [p["label"] for p in patterns] == ["Full Cream Milk 2L"]
+
     def test_weekly_buy_is_regular(self):
         p = _pattern(make_history("Milk 2L", "2026-09-01", 7, 8))
         assert p["rhythm"] == "regular"
