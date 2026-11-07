@@ -272,6 +272,23 @@ def prices():
     return jsonify({"items": items, "last_check": get_setting("price_check_last")})
 
 
+@api_bp.route("/prices/<int:ingredient_id>/history")
+@require_api_key
+@_handle
+def price_history_api(ingredient_id):
+    """One ingredient's dated prices per source (per ingredient unit), stats and changes. ?range=90|180|365|all"""
+    from models import today
+    from services import store_prices as sp
+    from services.price_tracking import ingredient_prices
+    row = get_db().execute("SELECT * FROM ingredients WHERE id = ?", (ingredient_id,)).fetchone()
+    if not row:
+        raise AgentError("not_found", f"No ingredient {ingredient_id}.")
+    range_key, days = sp.history_days(request.args.get("range"))
+    data = ingredient_prices(get_db(), dict(row), today(), days=days)
+    return jsonify({"ingredient_id": ingredient_id, "unit": row["unit"], "range": range_key,
+                    "series": data["series"], "stats": data["stats"], "changes": data["changes"]})
+
+
 @api_bp.route("/prices/search")
 @require_api_key
 @_handle

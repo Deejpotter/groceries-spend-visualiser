@@ -407,3 +407,97 @@ def test_capture_link_uses_https_behind_the_proxy(app):
     from routes.prices import bookmarklet_href
     with app.test_request_context("/prices/capture", base_url="http://groceries.example.com"):
         assert '"https://groceries.example.com"' in urllib.parse.unquote(bookmarklet_href())
+
+
+# --- history: stats, changes, trend lines ------------------------------------
+
+def _point(day, price, was=None, unit=None):
+    return {"date": day, "price": price, "was_price": was, "unit_price": unit if unit is not None else price / 2,
+            "name": "milk 2L"}
+
+
+HISTORY = {
+    "paid": [_point("2026-09-01", 3.1)],
+    "coles": [_point("2026-10-01", 4.0), _point("2026-10-02", 4.0), _point("2026-10-03", 3.0, was=4.0),
+              _point("2026-10-04", 4.2)],
+    "aldi": [_point("2026-10-01", 3.39)],
+}
+
+
+def test_history_range_falls_back_to_a_year():
+    assert sp.history_days("90") == ("90", 90)
+    assert sp.history_days("all") == ("all", 3650)
+    assert sp.history_days("junk") == ("365", 365) == sp.history_days(None)
+
+
+def test_price_stats_per_source():
+    stats = {s["source"]: s for s in sp.price_stats(HISTORY)}
+    assert list(stats) == ["paid", "coles", "aldi"]
+    coles = stats["coles"]
+    assert coles["count"] == 4 and coles["low"]["date"] == "2026-10-03" and coles["high"]["unit_price"] == 2.1
+    assert coles["regular"] == 2.03 and coles["special_share"] == 0.25
+    assert sp.price_stats({"aldi": [_point("2026-10-01", 0.05, unit=0.0123)]})[0]["average"] == 0.0123
+    assert coles["special_average"] == 1.5 and coles["last_special"]["date"] == "2026-10-03"
+    assert stats["paid"]["special_share"] is None and stats["aldi"]["last_special"] is None
+
+
+def test_price_changes_name_specials_and_moves():
+    changes = sp.price_changes(HISTORY, "2026-10-01")
+    assert [(c["date"], c["kind"], c["from"], c["to"]) for c in changes] == [
+        ("2026-10-04", "special_ended", 3.0, 4.2), ("2026-10-03", "special", 4.0, 3.0)]
+    assert sp.price_changes(HISTORY, "2026-10-04")[0]["kind"] == "special_ended"
+    up = {"woolworths": [_point("2026-10-01", 2.0), _point("2026-10-08", 2.5)]}
+    assert sp.price_changes(up, "2026-10-01")[0]["kind"] == "up"
+
+
+def test_sparkline_shares_one_scale():
+    spark = sp.sparkline(HISTORY, "2026-09-01")
+    assert list(spark["lines"]) == ["coles"]  # Aldi has one point, paid isn't a shelf line
+    assert spark["low"] == 1.5 and spark["high"] == 2.1
+    first, *_, last = spark["lines"]["coles"].split()
+    assert first.startswith("2.0,") and last.startswith("118.0,")
+    flat = sp.sparkline({"aldi": [_point("2026-10-01", 3.0), _point("2026-10-02", 3.0)]}, "2026-10-01")
+    assert flat["lines"]["aldi"] == "2.0,14.0 118.0,14.0"
+    assert sp.sparkline({}, "2026-10-01") == {"lines": {}, "low": None, "high": None}
+
+
+def _shelf_history(db):
+    _milk(db, purchases=False)
+    watch_product(db, 1, _product("coles", "1913790", 4.2), "2026-10-20")
+    for day, price, was in (("2026-10-25", 4.2, None), ("2026-11-01", 3.5, 4.2), ("2026-11-05", 4.4, None)):
+        db.execute("INSERT INTO shelf_prices (store, store_code, checked_on, name, price, was_price, cup_price, available)"
+                   " VALUES ('coles', '1913790', ?, 'Devondale milk 2L', ?, ?, NULL, 1)", (day, price, was))
+    db.commit()
+
+
+def test_overview_has_trend_lines_and_recent_changes(db):
+    from services.price_tracking import recent_changes
+    _shelf_history(db)
+    rows = prices_overview(db, TODAY)
+    assert rows[0]["spark"]["lines"]["coles"]
+    feed = recent_changes(rows)
+    assert [(c["date"], c["kind"]) for c in feed] == [("2026-11-05", "special_ended"), ("2026-11-01", "special")]
+    assert feed[0]["ingredient"]["id"] == 1
+
+
+def test_history_pages_and_api(client, db, monkeypatch):
+    monkeypatch.setattr("routes.prices.local_today", lambda: TODAY)
+    monkeypatch.setattr("models.today", lambda: TODAY)
+    login(client)
+    _shelf_history(db)
+    overview = client.get("/prices").data
+    assert b'class="price-spark"' in overview and b"Price changes in the last 14 days" in overview
+    assert b"special ended" in overview
+
+    page = client.get("/prices/1?range=90").data
+    assert b'aria-current="true">3 months' in page and b"Every price in this range" in page
+    assert b"of checks" in page and b"special ended" in page
+
+    from database import set_setting
+    set_setting("mcp_api_key", "test-key")
+    db.commit()
+    headers = {"Authorization": "Bearer test-key"}
+    body = client.get("/api/v1/prices/1/history?range=all", headers=headers).get_json()
+    assert body["range"] == "all" and len(body["series"]["coles"]) == 4
+    assert {s["source"] for s in body["stats"]} == {"coles"} and body["changes"][0]["kind"] == "special_ended"
+    assert client.get("/api/v1/prices/999/history", headers=headers).status_code == 404
