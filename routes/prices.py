@@ -218,8 +218,8 @@ def prices_check_one(ingredient_id):
     return redirect(url_for("prices.prices_detail", ingredient_id=ingredient_id))
 
 
-def _app_url():
-    """This app's address for the bookmarklet. Behind the proxy the request says http, so force https."""
+def app_url():
+    """This app's public address. Behind the proxy the request says http, so force https."""
     host = request.host
     local = host.split(":")[0] in ("localhost", "127.0.0.1") or host.endswith((".localhost", ".test"))
     return f"{'http' if local else 'https'}://{host}"
@@ -227,7 +227,7 @@ def _app_url():
 
 def bookmarklet_href():
     """The capture bookmarklet as a javascript: link, pointing at this app."""
-    code = render_template("prices/bookmarklet.js", app_url=_app_url())
+    code = render_template("prices/bookmarklet.js", app_url=app_url())
     code = re.sub(r"\s*\n\s*", " ", code).strip()
     return "javascript:" + urllib.parse.quote(code, safe="(){};,=+'!*:.?/")
 
