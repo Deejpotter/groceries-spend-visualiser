@@ -2,7 +2,7 @@
 
 - **Date:** 2026-11-07
 - **Investigator:** Claude Code (for Deej)
-- **Status:** Done for Woolworths and Aldi. Coles is built but blocked from this network for now.
+- **Status:** Done. Coles was blocked from this network; the capture bookmarklet (section 9) reconnects it.
 - **Plan:** `docs/plans/2026-11-07-store-price-tracking.md`
 
 ## 1. What was asked
@@ -85,8 +85,8 @@ merge it through `dev` into `main`.
 
 ## 7. Open items
 
-- **Coles:** retry in a few days. Once one HTML request gets through, the build id is saved and the
-  JSON routes do the rest.
+- **Coles:** superseded by the capture bookmarklet (section 9). One capture on any Coles page
+  saves the build id; the JSON routes do the rest.
 - **13 ingredients** show Woolworths cheaper than last paid. Most are specials (salami, Nuttelex,
   coleslaw dressing).
 - **Optional:** a Coolify scheduled task running `flask --app app check-prices` daily, so prices are
@@ -99,3 +99,38 @@ python -m pytest tests/test_store_prices.py tests/test_price_refresh.py -q
 flask --app app check-prices
 curl -H "Authorization: Bearer $KEY" "https://groceries-staging.deejpotter.com/api/v1/prices/search?store=aldi&q=milk"
 ```
+
+## 9. Follow-up: where the data comes from, and the capture bookmarklet
+
+**Asked:** where does the data come from, find reliable sources, then implement a better option.
+
+**Sources checked (2026-11-07):**
+- No store publishes a price API or dataset. The ACCC supermarkets inquiry final report (21 Mar 2025)
+  recommended Coles and Woolworths provide price APIs to third parties; the government accepted the
+  recommendations in principle, but no law requiring an API was found. The 1 July 2026 excessive
+  pricing prohibition is about prices, not data access.
+- Open source: hotprices-au (MIT, a draft with no published Australian history) and Chook Check
+  (a Firefox extension that records prices as you browse). Paid: Apify scrapers and Actowiz data. All of
+  these scrape the same store pages this app reads.
+
+**Evidence:**
+- In a real browser on this network, Coles pages load normally (no bot check). `__NEXT_DATA__` holds the
+  product, search results and `buildId`; after in-site navigation the current page's data is in
+  `next.router.components[route]`, not `__NEXT_DATA__`.
+- With that build id set, the server's own Coles product and search requests worked from this network.
+  The bot check only blocks the HTML page the build id was read from.
+- Woolworths product pages hold the same item fields the API returns in `__NEXT_DATA__`; Woolworths
+  search pages don't hold prices in the page. Aldi tiles and product pages carry the data as HTML/JSON-LD.
+
+**Changed:** a "Capture prices" bookmarklet. It reads the page in the user's browser and opens
+`/prices/capture#<data>`. The page posts the data to a review screen (products, prices, already-tracked
+ingredients, a suggested ingredient for a single product). Save stores today's price for tracked and
+picked products and, for Coles, the build id.
+
+**Not changed:** no browser extension (a bookmarklet needs no install or store review); no paid feed;
+untracked products on a list page are not saved (they'd have no ingredient to show under).
+
+**Verified:** 1075 tests pass. End to end on a local server with a throwaway database: captured Coles
+salted butter in the built-in browser, the review suggested Butter, Save tracked it at $14.00/kg and
+saved the build id; the server's own "Check now" and a Coles search (12 results) then worked. The local
+server, database and test login were removed afterwards.

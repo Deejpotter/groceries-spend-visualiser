@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf %}
+
+{% block title %}Capture prices — {{ app_name }}{% endblock %}
+
+{% block content %}
+<form id="capture-form" method="post" action="{{ url_for('prices.prices_capture_review') }}" class="d-none">
+    {{ csrf() }}
+    <textarea name="data" id="capture-data"></textarea>
+</form>
+<div id="capture-reading" class="alert alert-info d-none">Reading the prices you captured…</div>
+
+<div id="capture-help">
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+    <h1 class="mb-2">Capture prices from your browser</h1>
+    <a href="{{ url_for('prices.prices_list') }}" class="btn btn-outline-primary mb-2">All prices</a>
+</div>
+
+<p>
+    The stores' websites sometimes block this app, and Coles currently does. A bookmark in your own browser
+    reads the price from the page you're looking at, so it works whenever the store's website works for you.
+    It also reconnects the daily Coles check.
+</p>
+
+<div class="card mb-4">
+    <div class="card-header">Set it up once</div>
+    <div class="card-body">
+        <ol class="mb-3">
+            <li>Show your bookmarks bar (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> in Chrome and Edge).</li>
+            <li>Drag this button onto the bookmarks bar:
+                <a class="btn btn-primary btn-sm ms-1" href="{{ bookmarklet }}" title="Drag me to your bookmarks bar"
+                   onclick="alert('Drag this button to your bookmarks bar, then click it on a store page.'); return false;">Capture prices</a></li>
+            <li>You should see <strong>Capture prices</strong> on the bar.</li>
+        </ol>
+        <details>
+            <summary class="small text-muted">Can't drag it? (phones and some browsers)</summary>
+            <p class="small mt-2 mb-1">Bookmark any page, edit the bookmark, and paste this as its address:</p>
+            <textarea class="form-control form-control-sm" rows="3" readonly onclick="this.select()">{{ bookmarklet }}</textarea>
+        </details>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">Use it</div>
+    <div class="card-body">
+        <ol class="mb-0">
+            <li>Open a product page, a search or a category on
+                <a href="https://www.coles.com.au" target="_blank" rel="noopener noreferrer">Coles</a>,
+                <a href="https://www.woolworths.com.au" target="_blank" rel="noopener noreferrer">Woolworths</a> or
+                <a href="https://www.aldi.com.au" target="_blank" rel="noopener noreferrer">Aldi</a>.</li>
+            <li>Click <strong>Capture prices</strong> on your bookmarks bar.</li>
+            <li>A tab opens here with the products it found. Pick the ingredient for any you want to track and
+                choose <strong>Save prices</strong>. Products you already track are saved without asking.</li>
+        </ol>
+        <p class="small text-muted mt-3 mb-0">Woolworths search pages don't hold their prices in the page, so
+            use a Woolworths product page. Nothing is read until you click the bookmark.</p>
+    </div>
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    var hash = location.hash.slice(1);
+    if (!hash) return;
+    var text;
+    try { text = decodeURIComponent(hash); } catch (e) { return; }
+    history.replaceState(null, '', location.pathname);
+    document.getElementById('capture-data').value = text;
+    document.getElementById('capture-help').classList.add('d-none');
+    document.getElementById('capture-reading').classList.remove('d-none');
+    document.getElementById('capture-form').submit();
+})();
+</script>
+{% endblock %}
