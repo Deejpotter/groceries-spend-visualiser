@@ -1,7 +1,7 @@
 # Plan: live and historical prices for Woolworths, Coles and Aldi
 
 - **Date:** 2026-11-07
-- **Status:** In progress
+- **Status:** Done (shipped 2026-11-07, see docs/investigations/2026-11-07-store-price-tracking.md)
 
 ## Where it stands
 
