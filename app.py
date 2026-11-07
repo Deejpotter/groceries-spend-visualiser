@@ -7,18 +7,19 @@ from datetime import date, datetime
 from urllib.parse import urlparse
 
 from dotenv import load_dotenv
-from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
+from flask import Flask, render_template, request, redirect, url_for, jsonify, flash, send_from_directory
 from flask_wtf.csrf import CSRFProtect
 
 from database import init_db, get_db, close_db, get_plan_dates, get_database_path, backup_database, database_stats, set_setting, get_setting
 from auth import login_user, logout_user, get_current_user, is_logged_in, login_required, hash_password, verify_password
 from models import (
-    APP_NAME, CATEGORIES, UNITS, MEAL_TYPES, DAYS_OF_WEEK,
+    APP_DESCRIPTION, APP_NAME, BRAND_COLOUR, CATEGORIES, THEME_DARK, THEME_LIGHT, UNITS, MEAL_TYPES, DAYS_OF_WEEK,
     CATEGORY_LOOKUP, DAY_LABELS, UNIT_LOOKUP, MEAL_TYPE_LABELS,
     category_label, is_http_url, parse_date, label_of,
 )
 from routes import register_all_routes
 from routes.api import api_bp
+from routes.prices import app_url as public_url
 
 log = logging.getLogger(__name__)
 csrf = CSRFProtect()
@@ -132,6 +133,10 @@ def create_app(testing=False):
     def inject_common():
         return {
             "app_name": APP_NAME,
+            "app_description": APP_DESCRIPTION,
+            "theme_light": THEME_LIGHT,
+            "theme_dark": THEME_DARK,
+            "public_url": public_url,
             "current_user": get_current_user(),
             "is_logged_in": is_logged_in(),
             "categories": CATEGORIES,
@@ -152,10 +157,35 @@ def create_app(testing=False):
     def health():
         return jsonify({"status": "ok", "commit": os.getenv("SOURCE_COMMIT") or None}), 200
 
+    @application.route("/favicon.ico")
+    def favicon():
+        return send_from_directory(os.path.join(application.static_folder, "icons"), "favicon.ico",
+                                   mimetype="image/vnd.microsoft.icon", max_age=86400)
+
+    @application.route("/manifest.webmanifest")
+    def manifest():
+        icon = lambda name, size, purpose="any": {
+            "src": url_for("static", filename=f"icons/{name}"), "sizes": size, "type": "image/png",
+            "purpose": purpose}
+        response = jsonify({
+            "name": APP_NAME,
+            "short_name": APP_NAME,
+            "description": APP_DESCRIPTION,
+            "start_url": url_for("dashboard"),
+            "scope": "/",
+            "display": "standalone",
+            "background_color": THEME_LIGHT,
+            "theme_color": BRAND_COLOUR,
+            "icons": [icon("icon-192.png", "192x192"), icon("icon-512.png", "512x512"),
+                      icon("icon-maskable-512.png", "512x512", "maskable")],
+        })
+        response.mimetype = "application/manifest+json"
+        return response
+
     @application.before_request
     def ensure_admin():
         """Create the env-configured admin on first request, or send users to /setup."""
-        if request.endpoint in (None, "static", "health", "setup"):
+        if request.endpoint in (None, "static", "health", "setup", "favicon", "manifest"):
             return None
         if request.blueprint == "api":
             # The API has its own bearer-key auth; never redirect it to /setup.

@@ -87,6 +87,9 @@ tests/            Unit tests for services + integration tests via Flask test cli
 - Jinja2 auto-escaping is on. Never use `|safe` on user input. Embed JSON with `|tojson`.
 - External links opening in a new tab need `rel="noopener noreferrer"`.
 - CDN resources carry `integrity` (SRI) and `crossorigin="anonymous"`.
+- Icon and metadata: `base.html` head tags, `static/icons/` (SVG source plus PNG and ICO renders),
+  `/favicon.ico` and `/manifest.webmanifest` in `app.py`. Both routes and the icons need no login. Name,
+  description and colours are constants in `models.py`.
 
 ### Security invariants — do not break these
 - `safe_next_url()` restricts post-login redirects to relative paths (no open redirect).
