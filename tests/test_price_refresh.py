@@ -26,6 +26,10 @@ from services.spend_import import (
     ("Bread", None, None, "each", None, None),
     ("Woolworths beef chuck steak medium pdm 380g - 800g", None, 10.39, "kg", 0.5, None),
     ("Woolworths beef chuck steak medium pdm 380g - 800g", "$19.49 / 1KG", 10.39, "kg", None, 19.49),
+    ("KRC Mild Hungarian Salami Shaved From The Deli per 100g", None, 36.0, "kg", None, None),
+    ("KRC Mild Hungarian Salami Shaved From The Deli per 100g", "$3.60 / 100G", 36.0, "kg", None, 36.0),
+    ("Apple Royal Gala each", None, 1.26, "kg", 1, None),
+    ("Apple Royal Gala each", None, 1.26, "each", None, 1.26),
 ])
 def test_ingredient_unit_price(name, cup, unit_price, unit, pack, expected):
     result = ingredient_unit_price(name, cup, unit_price, unit, pack)
