@@ -13,7 +13,8 @@ from database import get_db, get_setting, set_setting
 from models import today as local_today
 from services import store_prices as sp
 from services.price_tracking import (
-    capture_review, check_messages, check_prices, ingredient_prices, load_watches, prices_overview, save_capture,
+    capture_review, check_messages, check_prices, ingredient_prices, load_watches, prices_overview, recent_changes,
+    save_capture,
     unwatch, watch_product,
 )
 
@@ -85,8 +86,9 @@ def _last_check():
 def prices_list():
     _maybe_check_prices()
     db = get_db()
-    return render_template("prices/list.html", rows=prices_overview(db, local_today()), stores=sp.STORES,
-                           last_check=_last_check())
+    rows = prices_overview(db, local_today())
+    return render_template("prices/list.html", rows=rows, stores=sp.STORES, last_check=_last_check(),
+                           changes=recent_changes(rows))
 
 
 @prices_bp.route("/prices/check", methods=["POST"])
@@ -128,7 +130,8 @@ def _default_query(db, ingredient):
 def prices_detail(ingredient_id):
     db = get_db()
     ingredient = _ingredient(ingredient_id)
-    data = ingredient_prices(db, ingredient, local_today())
+    range_key, days = sp.history_days(request.args.get("range"))
+    data = ingredient_prices(db, ingredient, local_today(), days=days)
     watches = {w["store"]: w for w in load_watches(db, ingredient_id)}
     store = sp.store_key(request.args.get("store"))
     query = request.args.get("q", "").strip()
@@ -145,6 +148,7 @@ def prices_detail(ingredient_id):
                                                       ingredient["unit"], ingredient.get("pack_size"))
     return render_template(
         "prices/detail.html", ingredient=ingredient, series=data["series"], summary=data["summary"],
+        stats=data["stats"], changes=data["changes"], range_key=range_key, ranges=sp.HISTORY_RANGES,
         watches=watches, stores=sp.STORES, store=store, query=query or _default_query(db, ingredient),
         searched=bool(store and query), results=results, search_error=search_error,
     )

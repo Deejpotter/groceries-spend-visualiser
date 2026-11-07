@@ -346,6 +346,99 @@ def price_summary(series: Dict[str, List[Dict]], today: date) -> Dict:
     return {"stores": stores, "cheapest": cheapest, "last_paid": paid, "saving_per_unit": saving}
 
 
+HISTORY_RANGES = {"90": 90, "180": 180, "365": 365, "all": 3650}
+DEFAULT_RANGE = "365"
+
+
+def history_days(value: Optional[str]) -> tuple:
+    """A ?range= value -> (key, days). Unknown values fall back to a year."""
+    key = value if value in HISTORY_RANGES else DEFAULT_RANGE
+    return key, HISTORY_RANGES[key]
+
+
+def _mean(values: List[float]) -> Optional[float]:
+    """An average to the cent, or to 4 places for tiny per-gram prices."""
+    if not values:
+        return None
+    mean = sum(values) / len(values)
+    return round(mean, 2 if mean >= 0.1 else 4)
+
+
+def price_stats(series: Dict[str, List[Dict]]) -> List[Dict]:
+    """Per source over the series: checks, low, high, average, and how often and how low specials go.
+
+    Prices are per ingredient unit. A point is a special when it has a was price above the price.
+    """
+    stats = []
+    for key in ["paid"] + STORE_KEYS:
+        points = series.get(key) or []
+        if not points:
+            continue
+        values = [p["unit_price"] for p in points]
+        low = min(points, key=lambda p: (p["unit_price"], p["date"]))
+        high = max(points, key=lambda p: (p["unit_price"], p["date"]))
+        specials = [p for p in points if p.get("was_price")]
+        regular = [p["unit_price"] for p in points if not p.get("was_price")]
+        stats.append({
+            "source": key, "label": "You paid" if key == "paid" else STORES[key]["label"],
+            "count": len(points), "first": points[0]["date"], "last": points[-1]["date"],
+            "low": low, "high": high, "average": _mean(values), "regular": _mean(regular),
+            "special_share": round(len(specials) / len(points), 2) if key != "paid" else None,
+            "special_average": _mean([p["unit_price"] for p in specials]),
+            "last_special": specials[-1] if specials else None,
+        })
+    return stats
+
+
+def price_changes(series: Dict[str, List[Dict]], since: str) -> List[Dict]:
+    """Shelf price moves on or after ``since``: each time a store's price differs from its previous check.
+
+    Newest first. ``kind`` is 'special' (a was price appeared), 'special_ended', 'up' or 'down'.
+    """
+    changes = []
+    for key in STORE_KEYS:
+        points = series.get(key) or []
+        for before, after in zip(points, points[1:]):
+            if after["date"] < since or abs(after["price"] - before["price"]) < 0.005:
+                continue
+            if after.get("was_price") and not before.get("was_price"):
+                kind = "special"
+            elif before.get("was_price") and not after.get("was_price"):
+                kind = "special_ended"
+            else:
+                kind = "up" if after["price"] > before["price"] else "down"
+            changes.append({"store": key, "label": STORES[key]["label"], "date": after["date"], "kind": kind,
+                            "from": before["price"], "to": after["price"], "was_price": after.get("was_price"),
+                            "unit_change": round(after["unit_price"] - before["unit_price"], 4)})
+    changes.sort(key=lambda c: (c["date"], c["store"]), reverse=True)
+    return changes
+
+
+def sparkline(series: Dict[str, List[Dict]], since: str, width: int = 120, height: int = 28) -> Dict:
+    """SVG polyline points per store from ``since``, on one shared scale so the lines compare.
+
+    Returns {"lines": {store: "x,y x,y"}, "low", "high"}; lines need two or more points.
+    """
+    picked = {k: [p for p in (series.get(k) or []) if p["date"] >= since] for k in STORE_KEYS}
+    picked = {k: v for k, v in picked.items() if len(v) >= 2}
+    if not picked:
+        return {"lines": {}, "low": None, "high": None}
+    dates = sorted({p["date"] for v in picked.values() for p in v})
+    values = [p["unit_price"] for v in picked.values() for p in v]
+    low, high = min(values), max(values)
+    first, last = date.fromisoformat(dates[0]), date.fromisoformat(dates[-1])
+    span_days = max((last - first).days, 1)
+    span_price = (high - low) or 1
+    pad = 2
+
+    def xy(point):
+        x = pad + (date.fromisoformat(point["date"]) - first).days / span_days * (width - 2 * pad)
+        y = height / 2 if high == low else height - pad - (point["unit_price"] - low) / span_price * (height - 2 * pad)
+        return f"{x:.1f},{y:.1f}"
+
+    return {"lines": {k: " ".join(xy(p) for p in v) for k, v in picked.items()}, "low": low, "high": high}
+
+
 def make_shelf_row(store: str = "coles", checked_on: str = "2026-11-07", price: float = 4.95,
                    cup_price: Optional[str] = "$1.65 / 1L", was_price: Optional[float] = None,
                    name: str = "Coles Full Cream Milk 3L", code: str = "8150288") -> Dict:

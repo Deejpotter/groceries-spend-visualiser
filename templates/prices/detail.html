@@ -65,16 +65,92 @@
     {% endif %}
 </div>
 
-<div class="card mb-4">
-    <div class="card-header">History</div>
+<div class="card mb-4" id="history">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center">
+        <span>History <small class="text-muted">per {{ unit }}</small></span>
+        <div class="btn-group btn-group-sm" role="group" aria-label="History range">
+            {% for key in ranges %}
+            <a class="btn {{ 'btn-primary' if key == range_key else 'btn-outline-primary' }}"
+               href="{{ url_for('prices.prices_detail', ingredient_id=ingredient.id, range=key) }}#history"
+               {% if key == range_key %}aria-current="true"{% endif %}>{{ {'90': '3 months', '180': '6 months', '365': '1 year', 'all': 'All'}[key] }}</a>
+            {% endfor %}
+        </div>
+    </div>
     <div class="card-body">
         {% if series %}
         <div class="chart-box"><canvas id="priceHistory" role="img" aria-label="Line chart of {{ ingredient|label }} prices per {{ unit }} over time by store"></canvas></div>
         {% else %}
-        <p class="text-muted mb-0">No prices yet. They build up from your linked purchases and the daily shelf checks.</p>
+        <p class="text-muted mb-0">No prices in this range yet. They build up from your linked purchases and the daily shelf checks.</p>
         {% endif %}
     </div>
+    {% if stats %}
+    <div class="table-responsive">
+    <table class="table table-sm mb-0">
+        <thead><tr><th>Source</th><th class="text-right">Prices</th><th class="text-right">Low</th><th class="text-right">High</th>
+            <th class="text-right">Usual</th><th class="text-right">On special</th><th class="text-right">Special usually</th></tr></thead>
+        <tbody>
+        {% for st in stats %}
+        <tr>
+            <td><strong>{{ st.label }}</strong><div class="small text-muted">{{ st.first|nice_date }} to {{ st.last|nice_date }}</div></td>
+            <td class="text-right">{{ st.count }}</td>
+            <td class="text-right">{{ st.low.unit_price|unit_price }}<div class="small text-muted">{{ st.low.date|nice_date }}</div></td>
+            <td class="text-right">{{ st.high.unit_price|unit_price }}<div class="small text-muted">{{ st.high.date|nice_date }}</div></td>
+            <td class="text-right">{{ (st.regular or st.average)|unit_price }}</td>
+            <td class="text-right">{% if st.special_share is not none %}{{ (st.special_share * 100)|round|int }}% of checks{% else %}—{% endif %}
+                {% if st.last_special %}<div class="small text-muted">last {{ st.last_special.date|nice_date }}</div>{% endif %}</td>
+            <td class="text-right">{{ st.special_average|unit_price if st.special_average else '—' }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% endif %}
 </div>
+
+{% if changes or series %}
+<div class="card mb-4">
+    <div class="card-header">Price changes</div>
+    {% if changes %}
+    <ul class="list-group list-group-flush">
+        {% for c in changes %}
+        <li class="list-group-item d-flex flex-wrap justify-content-between">
+            <span>{{ c.label }}:
+                {% if c.kind == 'special' %}<span class="badge badge-success">special</span>
+                {% elif c.kind == 'special_ended' %}special ended,
+                {% else %}<span class="{{ 'text-danger' if c.kind == 'up' else 'text-success' }}">{{ c.kind }}</span>{% endif %}
+                {{ c.from|money }} → {{ c.to|money }}</span>
+            <span class="small text-muted">{{ c.date|nice_date }}</span>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="card-body text-muted">No shelf price changes in this range.</div>
+    {% endif %}
+    {% if series %}
+    <div class="card-body border-top">
+        <details>
+            <summary>Every price in this range</summary>
+            <div class="table-responsive mt-2">
+            <table class="table table-sm mb-0">
+                <thead><tr><th>Date</th><th>Source</th><th>Product</th><th class="text-right">Price</th><th class="text-right">Per {{ unit }}</th></tr></thead>
+                <tbody>
+                {% for key, points in series.items() %}{% for p in points|reverse %}
+                <tr>
+                    <td class="text-nowrap">{{ p.date|nice_date }}</td>
+                    <td>{{ 'You paid' if key == 'paid' else stores[key].label }}</td>
+                    <td class="small">{{ p.name }}</td>
+                    <td class="text-right">{{ p.price|money }}{% if p.was_price %} <span class="badge badge-success">special</span>{% endif %}</td>
+                    <td class="text-right">{{ p.unit_price|unit_price }}</td>
+                </tr>
+                {% endfor %}{% endfor %}
+                </tbody>
+            </table>
+            </div>
+        </details>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
 
 <div class="card mb-4" id="search">
     <div class="card-header">Find a product to track</div>
@@ -159,7 +235,8 @@
         return {
             label: names[key] || key, data: dates.map(d => byDate[d] ?? null), spanGaps: true,
             borderColor: colour, backgroundColor: colour, borderWidth: 2, tension: 0,
-            pointRadius: key === 'paid' ? 4 : 2, showLine: key !== 'paid', pointStyle: key === 'paid' ? 'rectRot' : 'circle'
+            pointRadius: key === 'paid' ? 4 : (series[key].length > 40 ? 0 : 2), pointHoverRadius: 4,
+            showLine: key !== 'paid', pointStyle: key === 'paid' ? 'rectRot' : 'circle', stepped: key !== 'paid'
         };
     });
     new Chart(document.getElementById('priceHistory'), {
@@ -170,13 +247,15 @@
         },
         options: {
             maintainAspectRatio: false,
+            interaction: {mode: 'index', intersect: false},
             plugins: {
-                tooltip: {callbacks: {label: ctx => ctx.dataset.label + ': $' + ctx.parsed.y.toFixed(2)}},
+                tooltip: {mode: 'index', intersect: false,
+                          callbacks: {label: ctx => ctx.dataset.label + ': $' + ctx.parsed.y.toFixed(ctx.parsed.y < 0.1 ? 4 : 2)}},
                 legend: {labels: {color: inkSoft}}
             },
             scales: {
-                x: {grid: {display: false}, ticks: {color: inkSoft}},
-                y: {grace: '8%', grid: {color: grid}, ticks: {color: inkSoft, callback: v => '$' + v}}
+                x: {grid: {display: false}, ticks: {color: inkSoft, autoSkip: true, maxTicksLimit: 12, maxRotation: 0}},
+                y: {grace: '8%', grid: {color: grid}, ticks: {color: inkSoft, callback: v => '$' + v.toFixed(v < 0.1 ? 4 : 2)}}
             }
         }
     });

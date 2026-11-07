@@ -157,6 +157,11 @@ tests/            Unit tests for services + integration tests via Flask test cli
   same parsers and `save_capture()` saves tracked or picked products. A Coles capture also saves the
   build id, which reconnects the server's Coles checks. The fragment is untrusted input: nothing is
   saved until the user clicks Save.
+  **History** (`price_stats()`, `price_changes()`, `sparkline()` in `store_prices.py`): the Prices list
+  shows a 90-day trend line per ingredient and the last 14 days of price changes; each ingredient page has
+  a range filter (`?range=90|180|365|all`), per-store stats and every saved price. `GET
+  /api/v1/prices/<id>/history` returns the same. The daily check is a Coolify scheduled task running
+  `flask --app app check-prices` on staging and production.
 
 - **Spend import** (`services/spend_import.py`): de-duplicated by `UNIQUE(store, basket_id, product_name)`. Cup prices like `$1.51 / 100G` are parsed and converted to per-unit prices. Unpriced rows are skipped with a summary, not an error.
 
