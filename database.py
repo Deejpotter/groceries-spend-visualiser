@@ -146,6 +146,33 @@ CREATE TABLE IF NOT EXISTS stock_counts (
     UNIQUE (item_key, counted_on)
 );
 
+CREATE TABLE IF NOT EXISTS price_watches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ingredient_id INTEGER NOT NULL,
+    store TEXT NOT NULL,
+    store_code TEXT NOT NULL,
+    name TEXT NOT NULL,
+    url TEXT,
+    origin TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ingredient_id, store),
+    FOREIGN KEY (ingredient_id) REFERENCES ingredients(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS shelf_prices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    store TEXT NOT NULL,
+    store_code TEXT NOT NULL,
+    checked_on TEXT NOT NULL,
+    name TEXT,
+    price REAL,
+    was_price REAL,
+    cup_price TEXT,
+    available INTEGER NOT NULL DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (store, store_code, checked_on)
+);
+
 CREATE TABLE IF NOT EXISTS photo_counts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     item_key TEXT NOT NULL,
