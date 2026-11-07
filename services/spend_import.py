@@ -63,6 +63,8 @@ def price_per_unit(cup_price: Optional[str], unit_price: Optional[float], target
 
 PRICE_JUMP_LIMIT = 3.0
 SIZE_RANGE_RE = re.compile(r"\d\s*(?:kg|g)\s*-\s*\d", re.I)
+# "Salami ... per 100g" is a deli rate label, not a pack; "Apple each" has no weight.
+RATE_NAME_RE = re.compile(r"\bper\s*[\d.]*\s*(?:g|kg|ml|l)\b|\beach\b", re.I)
 
 
 def ingredient_unit_price(product_name: Optional[str], cup_price: Optional[str], unit_price: Optional[float],
@@ -79,6 +81,8 @@ def ingredient_unit_price(product_name: Optional[str], cup_price: Optional[str],
     if parsed and (units_compatible(parsed[2], unit) or (parsed[2] == "each" and unit == "each")):
         return price_per_unit(cup_price, unit_price, unit)
     if unit_price is None or unit_price <= 0 or SIZE_RANGE_RE.search(product_name or ""):
+        return None
+    if (units_compatible(unit, "kg") or units_compatible(unit, "L")) and RATE_NAME_RE.search(product_name or ""):
         return None
     size = parse_pack_size(product_name, unit) or pack_size
     if unit == "each":
