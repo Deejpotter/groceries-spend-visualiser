@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf %}
+
+{% block title %}Captured {{ store.label }} prices — {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+    <h1 class="mb-2">{{ store.label }} prices</h1>
+    <a href="{{ url_for('prices.prices_list') }}" class="btn btn-outline-primary mb-2">All prices</a>
+</div>
+<p class="text-muted">From <a href="{{ captured.url|http_url }}" target="_blank" rel="noopener noreferrer">{{ captured.url|truncate(80) }}</a>.
+    {% if captured.build_id %}Saving also reconnects the daily Coles check.{% endif %}</p>
+
+<form method="post" action="{{ url_for('prices.prices_capture_save') }}">
+    {{ csrf() }}
+    <input type="hidden" name="data" value="{{ data }}">
+    {% if rows %}
+    <div class="table-responsive">
+    <table class="table table-sm align-middle">
+        <thead><tr><th>Product</th><th class="text-right">Price</th><th class="text-right">Unit price</th><th>Track for</th></tr></thead>
+        <tbody>
+        {% for row in rows %}{% set p = row.product %}
+        <tr>
+            <td>{% if p.url %}<a href="{{ p.url|http_url }}" target="_blank" rel="noopener noreferrer">{{ p.name }}</a>{% else %}{{ p.name }}{% endif %}
+                {% if not p.available %}<span class="badge badge-secondary">unavailable</span>{% endif %}</td>
+            <td class="text-right">{{ p.price|money }}{% if p.was_price %}
+                <div class="small text-muted"><s>{{ p.was_price|money }}</s> special</div>{% endif %}</td>
+            <td class="text-right small text-muted">{{ p.cup_price or '—' }}</td>
+            <td>
+                {% if row.tracked %}
+                <span class="text-success">Tracked:</span> {% for ing in row.tracked %}<a href="{{ url_for('prices.prices_detail', ingredient_id=ing.id) }}">{{ ing|label }}</a>{{ ', ' if not loop.last }}{% endfor %}
+                {% else %}
+                <label class="sr-only" for="ing-{{ p.code }}">Ingredient for {{ p.name }}</label>
+                <select id="ing-{{ p.code }}" name="ingredient_{{ p.code }}" class="form-control form-control-sm">
+                    <option value="">Don't track</option>
+                    {% for ing in ingredients %}<option value="{{ ing.id }}" {% if ing.id == row.suggested_id %}selected{% endif %}>{{ ing|label }}</option>{% endfor %}
+                </select>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <div class="alert alert-warning">
+        No prices found on that page.
+        {% if captured.store == 'woolworths' %}Woolworths search pages don't hold their prices in the page; open a product page and try again.
+        {% else %}Open a product, search or category page and click the bookmark again.{% endif %}
+    </div>
+    {% endif %}
+    {% if rows or captured.build_id %}
+    <button type="submit" class="btn btn-primary">{{ 'Save prices' if rows else 'Reconnect Coles' }}</button>
+    {% endif %}
+</form>
+{% endblock %}

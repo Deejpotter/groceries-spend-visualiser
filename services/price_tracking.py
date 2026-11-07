@@ -126,9 +126,68 @@ def check_prices(db, today: date, client, pause: float = REQUEST_GAP_SECONDS) ->
             time.sleep(pause)
     build = store_clients._coles_build_cache["id"]
     if build and (not saved_build or saved_build[0] != build):
-        db.execute("INSERT INTO settings (key, value) VALUES ('coles_build_id', ?)"
-                   " ON CONFLICT (key) DO UPDATE SET value = excluded.value", (build,))
-        db.commit()
+        save_coles_build(db, build)
+    return result
+
+
+def save_coles_build(db, build: str) -> None:
+    """Keep Coles' build id for the JSON routes, in memory and in settings (survives restarts)."""
+    from services import store_clients
+    store_clients._coles_build_cache["id"] = build
+    db.execute("INSERT INTO settings (key, value) VALUES ('coles_build_id', ?)"
+               " ON CONFLICT (key) DO UPDATE SET value = excluded.value", (build,))
+    db.commit()
+
+
+def capture_review(db, captured: Dict) -> Dict:
+    """Captured products with the ingredients already tracking each, and a suggested ingredient.
+
+    A suggestion is only offered for a single product (a product page): on a list page most
+    products aren't wanted, so nothing is picked for the user.
+    """
+    from services.product_matching import suggest_ingredient
+    ingredients = [dict(r) for r in db.execute(
+        "SELECT id, name, display_name FROM ingredients ORDER BY lower(COALESCE(NULLIF(display_name, ''), name))")]
+    by_id = {i["id"]: i for i in ingredients}
+    tracked: Dict[str, List[Dict]] = {}
+    for row in db.execute("SELECT ingredient_id, store_code FROM price_watches WHERE store = ?",
+                          (captured.get("store"),)):
+        if row["ingredient_id"] in by_id:
+            tracked.setdefault(str(row["store_code"]), []).append(by_id[row["ingredient_id"]])
+    single = len(captured.get("products") or []) == 1
+    rows = []
+    for product in captured.get("products") or []:
+        watching = tracked.get(product["code"], [])
+        suggestion = suggest_ingredient(product["name"], ingredients) if single and not watching else None
+        rows.append({"product": product, "tracked": watching,
+                     "suggested_id": suggestion["ingredient_id"] if suggestion else None})
+    rows.sort(key=lambda r: (not r["tracked"], r["product"]["name"].lower()))
+    return {"rows": rows, "ingredients": ingredients}
+
+
+def save_capture(db, captured: Dict, choices: Dict[str, int], day: str) -> Dict:
+    """Save today's price for every captured product that is tracked or newly picked.
+
+    ``choices`` maps a product code to the ingredient that should track it. A Coles capture
+    also brings the site's build id, which lets the daily check read Coles again.
+    """
+    store = captured.get("store")
+    known = {r[0] for r in db.execute("SELECT id FROM ingredients")}
+    tracked = {str(r[0]) for r in db.execute("SELECT store_code FROM price_watches WHERE store = ?", (store,))}
+    result = {"saved": 0, "watched": [], "build": False}
+    for product in captured.get("products") or []:
+        ingredient_id = choices.get(product["code"])
+        if ingredient_id in known:
+            watch_product(db, ingredient_id, product, day)
+            result["watched"].append(ingredient_id)
+            result["saved"] += 1
+        elif product["code"] in tracked:
+            save_shelf_price(db, product, day)
+            result["saved"] += 1
+    db.commit()
+    if captured.get("build_id"):
+        save_coles_build(db, captured["build_id"])
+        result["build"] = True
     return result
 
 

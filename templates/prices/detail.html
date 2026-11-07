@@ -132,6 +132,8 @@
             </div>
             <div class="col-sm-2 mb-2 d-flex align-items-end"><button type="submit" class="btn btn-outline-primary btn-block">Track link</button></div>
         </form>
+        <p class="small text-muted mb-0">If a store's search fails here, open the product on the store's website and use
+            the <a href="{{ url_for('prices.prices_capture') }}">Capture prices</a> bookmark.</p>
     </div>
 </div>
 {% endblock %}
