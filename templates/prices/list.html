@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf %}
+
+{% block title %}Prices — {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+    <h1 class="mb-2">Prices</h1>
+    <form method="post" action="{{ url_for('prices.prices_check') }}" class="mb-2">
+        {{ csrf() }}
+        <button type="submit" class="btn btn-outline-primary" {% if last_check.running %}disabled{% endif %}>
+            {% if last_check.running %}Checking…{% else %}Check prices now{% endif %}
+        </button>
+    </form>
+</div>
+
+<p class="text-muted">
+    Shelf prices at Woolworths, Coles and Aldi for the products you track, checked once a day when you open
+    this page. Prices are per ingredient unit so different pack sizes compare fairly.
+    {% if last_check.date %}Last checked {{ last_check.date|nice_date }}{% if last_check.result %}:
+        {{ last_check.result.checked }} checked{% for store, error in (last_check.result.failed or {}).items() %},
+        <span class="text-warning">{{ stores[store].label if store in stores else store }} failed</span>{% endfor %}{% endif %}.
+    {% endif %}
+</p>
+
+{% if rows %}
+<div class="table-responsive">
+<table class="table table-hover table-sticky-first">
+    <thead>
+        <tr>
+            <th>Ingredient</th>
+            <th class="text-right">Last paid</th>
+            {% for key, store in stores.items() %}<th class="text-right">{{ store.label }}</th>{% endfor %}
+            <th>Cheapest now</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for row in rows %}
+        {% set ing = row.ingredient %}{% set s = row.summary %}
+        <tr>
+            <td><a href="{{ url_for('prices.prices_detail', ingredient_id=ing.id) }}">{{ ing|label }}</a>
+                <div class="small text-muted">per {{ ing.unit|replace('_', ' ') }}</div></td>
+            <td class="text-right">{% if s.last_paid %}{{ s.last_paid.unit_price|unit_price }}
+                <div class="small text-muted">{{ s.last_paid.date|nice_date }}</div>{% else %}—{% endif %}</td>
+            {% for key in stores %}
+            {% set st = row.stores.get(key) %}
+            <td class="text-right">
+                {% if st %}
+                    <span class="{{ 'text-muted' if not st.fresh }}">{{ st.latest.unit_price|unit_price }}</span>
+                    {% if st.on_special %}<span class="badge badge-success">special</span>{% endif %}
+                    {% if st.change_30d %}<div class="small {{ 'text-danger' if st.change_30d > 0 else 'text-success' }}">
+                        {{ '+' if st.change_30d > 0 }}{{ st.change_30d|unit_price }} in 30 days</div>{% endif %}
+                {% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            {% endfor %}
+            <td>{% if s.cheapest %}<strong>{{ s.cheapest.label }}</strong>
+                {% if s.saving_per_unit %}<div class="small text-success">{{ s.saving_per_unit|unit_price }}/{{ ing.unit|replace('_', ' ') }} less than you paid</div>{% endif %}
+                {% else %}<span class="text-muted">No current price</span>{% endif %}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{% else %}
+<div class="alert alert-info">
+    Nothing tracked yet. Woolworths products are tracked automatically once an invoice line is linked to an
+    ingredient. To add Coles or Aldi, open an ingredient from
+    <a href="{{ url_for('ingredients.ingredient_list') }}">Ingredients</a> and choose <strong>Prices</strong>.
+</div>
+{% endif %}
+{% endblock %}

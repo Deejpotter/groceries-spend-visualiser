@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf, post_button %}
+
+{% block title %}{{ ingredient|label }} prices — {{ app_name }}{% endblock %}
+
+{% block content %}
+{% set unit = ingredient.unit|replace('_', ' ') %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+    <h1 class="mb-2">{{ ingredient|label }} <small class="text-muted">per {{ unit }}</small></h1>
+    <div class="mb-2">
+        <a href="{{ url_for('prices.prices_list') }}" class="btn btn-outline-primary mr-2">All prices</a>
+        <a href="{{ url_for('ingredients.ingredient_edit', ingredient_id=ingredient.id) }}" class="btn btn-outline-secondary">Edit ingredient</a>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Now</span>
+        {% if watches %}
+        <form method="post" action="{{ url_for('prices.prices_check_one', ingredient_id=ingredient.id) }}">
+            {{ csrf() }}<button type="submit" class="btn btn-sm btn-outline-primary">Check now</button>
+        </form>
+        {% endif %}
+    </div>
+    <div class="table-responsive">
+    <table class="table mb-0">
+        <thead><tr><th>Store</th><th>Product</th><th class="text-right">Shelf</th><th class="text-right">Per {{ unit }}</th>
+            <th class="text-right">6-month low</th><th></th></tr></thead>
+        <tbody>
+        {% for key, store in stores.items() %}
+        {% set w = watches.get(key) %}
+        {% set matches = summary.stores|selectattr('store', 'equalto', key)|list %}
+        {% set s = matches[0] if matches else None %}
+        <tr>
+            <td><strong>{{ store.label }}</strong>{% if summary.cheapest and summary.cheapest.store == key %}
+                <span class="badge badge-success">cheapest</span>{% endif %}</td>
+            <td>{% if w %}{% if w.url %}<a href="{{ w.url|http_url }}" target="_blank" rel="noopener noreferrer">{{ w.name }}</a>{% else %}{{ w.name }}{% endif %}
+                {% if w.origin == 'auto' %}<div class="small text-muted">from your last invoice</div>{% endif %}
+                {% else %}<span class="text-muted">Not tracked</span>{% endif %}</td>
+            <td class="text-right">{% if s %}{{ s.latest.price|money }}
+                {% if s.latest.was_price %}<div class="small text-muted"><s>{{ s.latest.was_price|money }}</s> special</div>{% endif %}
+                {% if not s.fresh %}<div class="small text-muted">{{ s.latest.date|nice_date }}</div>{% endif %}
+                {% else %}—{% endif %}</td>
+            <td class="text-right">{% if s %}{{ s.latest.unit_price|unit_price }}{% else %}—{% endif %}</td>
+            <td class="text-right">{% if s and s.low_6m %}{{ s.low_6m|unit_price }}{% else %}—{% endif %}</td>
+            <td class="text-right text-nowrap">
+                <a class="btn btn-sm btn-link" href="{{ url_for('prices.prices_detail', ingredient_id=ingredient.id, store=key, q=query) }}#search">{{ 'Change' if w else 'Find' }}</a>
+                {% if w %}{{ post_button(url_for('prices.prices_unwatch', ingredient_id=ingredient.id, store=key), 'Stop', class='btn btn-sm btn-link text-danger', confirm='Stop tracking this product? Its saved prices stay.') }}{% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+        {% if summary.last_paid %}
+        <tr class="text-muted">
+            <td>You paid</td>
+            <td>{{ summary.last_paid.name }}<div class="small">{{ summary.last_paid.store }}, {{ summary.last_paid.date|nice_date }}</div></td>
+            <td class="text-right">{{ summary.last_paid.price|money }}</td>
+            <td class="text-right">{{ summary.last_paid.unit_price|unit_price }}</td><td></td><td></td>
+        </tr>
+        {% endif %}
+        </tbody>
+    </table>
+    </div>
+    {% if summary.saving_per_unit %}
+    <div class="card-footer text-success">{{ summary.cheapest.label }} is {{ summary.saving_per_unit|unit_price }}/{{ unit }} less than you last paid.</div>
+    {% endif %}
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">History</div>
+    <div class="card-body">
+        {% if series %}
+        <div class="chart-box"><canvas id="priceHistory" role="img" aria-label="Line chart of {{ ingredient|label }} prices per {{ unit }} over time by store"></canvas></div>
+        {% else %}
+        <p class="text-muted mb-0">No prices yet. They build up from your linked purchases and the daily shelf checks.</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card mb-4" id="search">
+    <div class="card-header">Find a product to track</div>
+    <div class="card-body">
+        <form method="get" action="{{ url_for('prices.prices_detail', ingredient_id=ingredient.id) }}#search" class="form-row">
+            <div class="col-sm-3 mb-2">
+                <label class="sr-only" for="price-store">Store</label>
+                <select id="price-store" name="store" class="form-control">
+                    {% for key, s in stores.items() %}<option value="{{ key }}" {% if store == key %}selected{% endif %}>{{ s.label }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-sm-7 mb-2">
+                <label class="sr-only" for="price-q">Search</label>
+                <input id="price-q" name="q" class="form-control" value="{{ query }}" placeholder="e.g. full cream milk 2L">
+            </div>
+            <div class="col-sm-2 mb-2"><button type="submit" class="btn btn-primary btn-block">Search</button></div>
+        </form>
+        {% if search_error %}<div class="alert alert-warning mt-2 mb-0">{{ search_error }}</div>{% endif %}
+        {% if searched and not search_error %}
+            {% if results %}
+            <div class="table-responsive mt-2">
+            <table class="table table-sm mb-0">
+                <thead><tr><th>Product</th><th class="text-right">Price</th><th class="text-right">Per {{ unit }}</th><th></th></tr></thead>
+                <tbody>
+                {% for p in results %}
+                <tr>
+                    <td>{% if p.url %}<a href="{{ p.url|http_url }}" target="_blank" rel="noopener noreferrer">{{ p.name }}</a>{% else %}{{ p.name }}{% endif %}
+                        {% if not p.available %}<span class="badge badge-secondary">unavailable</span>{% endif %}</td>
+                    <td class="text-right">{{ p.price|money }}{% if p.was_price %} <span class="badge badge-success">special</span>{% endif %}</td>
+                    <td class="text-right">{% if p.unit_price %}{{ p.unit_price|unit_price }}{% else %}—{% endif %}</td>
+                    <td class="text-right">
+                        <form method="post" action="{{ url_for('prices.prices_watch', ingredient_id=ingredient.id) }}">
+                            {{ csrf() }}
+                            <input type="hidden" name="store" value="{{ p.store }}">
+                            <input type="hidden" name="code" value="{{ p.code }}">
+                            <input type="hidden" name="name" value="{{ p.name }}">
+                            <input type="hidden" name="url" value="{{ p.url or '' }}">
+                            <button type="submit" class="btn btn-sm btn-outline-primary">Track</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+            {% else %}
+            <p class="text-muted mt-2 mb-0">No products found. Try fewer words.</p>
+            {% endif %}
+        {% endif %}
+        <form method="post" action="{{ url_for('prices.prices_watch', ingredient_id=ingredient.id) }}" class="form-row mt-3">
+            {{ csrf() }}
+            <div class="col-sm-10 mb-2">
+                <label for="price-link" class="small text-muted mb-1">Or paste a product page link from the store's website</label>
+                <input id="price-link" name="link" type="url" class="form-control" placeholder="https://www.coles.com.au/product/...">
+            </div>
+            <div class="col-sm-2 mb-2 d-flex align-items-end"><button type="submit" class="btn btn-outline-primary btn-block">Track link</button></div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if series %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"
+        integrity="sha384-NrKB+u6Ts6AtkIhwPixiKTzgSKNblyhlk0Sohlgar9UHUBzai/sgnNNWWd291xqt" crossorigin="anonymous"></script>
+<script>
+(function () {
+    const series = {{ series|tojson }};
+    const names = {paid: 'You paid', woolworths: 'Woolworths', coles: 'Coles', aldi: 'Aldi'};
+    const colours = {woolworths: '#1f8a4c', coles: '#d6262e', aldi: '#3b6fd4'};
+    const css = getComputedStyle(document.documentElement);
+    const brand = (css.getPropertyValue('--brand') || '#c25e3a').trim();
+    const inkSoft = (css.getPropertyValue('--ink-soft') || '#7a6c58').trim();
+    const grid = (css.getPropertyValue('--line') || '#e2d6c1').trim();
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { Chart.defaults.animation = false; }
+    const dates = [...new Set(Object.values(series).flat().map(p => p.date))].sort();
+    const datasets = Object.keys(series).map(key => {
+        const byDate = Object.fromEntries(series[key].map(p => [p.date, p.unit_price]));
+        const colour = colours[key] || brand;
+        return {
+            label: names[key] || key, data: dates.map(d => byDate[d] ?? null), spanGaps: true,
+            borderColor: colour, backgroundColor: colour, borderWidth: 2, tension: 0,
+            pointRadius: key === 'paid' ? 4 : 2, showLine: key !== 'paid', pointStyle: key === 'paid' ? 'rectRot' : 'circle'
+        };
+    });
+    new Chart(document.getElementById('priceHistory'), {
+        type: 'line',
+        data: {
+            labels: dates.map(d => new Date(d + 'T00:00:00').toLocaleDateString(undefined, {day: 'numeric', month: 'short', year: '2-digit'})),
+            datasets: datasets
+        },
+        options: {
+            maintainAspectRatio: false,
+            plugins: {
+                tooltip: {callbacks: {label: ctx => ctx.dataset.label + ': $' + ctx.parsed.y.toFixed(2)}},
+                legend: {labels: {color: inkSoft}}
+            },
+            scales: {
+                x: {grid: {display: false}, ticks: {color: inkSoft}},
+                y: {grace: '8%', grid: {color: grid}, ticks: {color: inkSoft, callback: v => '$' + v}}
+            }
+        }
+    });
+})();
+</script>
+{% endif %}
+{% endblock %}

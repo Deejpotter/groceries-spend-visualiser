@@ -248,6 +248,48 @@ def spend_summary():
     return jsonify(_spend_summary_payload())
 
 
+@api_bp.route("/prices")
+@require_api_key
+@_handle
+def prices():
+    """Tracked ingredients: last paid, latest shelf price per store (per ingredient unit), cheapest."""
+    from models import today
+    from services.price_tracking import prices_overview
+    items = []
+    for row in prices_overview(get_db(), today()):
+        summary, ing = row["summary"], row["ingredient"]
+        items.append({
+            "ingredient_id": ing["id"], "name": ing.get("display_name") or ing["name"], "unit": ing["unit"],
+            "last_paid": summary["last_paid"],
+            "stores": {s["store"]: {"name": s["latest"]["name"], "price": s["latest"]["price"],
+                                    "was_price": s["latest"].get("was_price"),
+                                    "unit_price": s["latest"]["unit_price"], "checked_on": s["latest"]["date"],
+                                    "change_30d": s["change_30d"], "low_6m": s["low_6m"]}
+                       for s in summary["stores"]},
+            "cheapest": summary["cheapest"]["store"] if summary["cheapest"] else None,
+            "saving_per_unit": summary["saving_per_unit"],
+        })
+    return jsonify({"items": items, "last_check": get_setting("price_check_last")})
+
+
+@api_bp.route("/prices/search")
+@require_api_key
+@_handle
+def prices_search():
+    """Search one store's shelf: ?store=woolworths|coles|aldi&q=... (read-only, live)."""
+    from services.store_clients import StoreClient, StoreError
+    from services.store_prices import store_key
+    store, query = store_key(request.args.get("store")), (request.args.get("q") or "").strip()
+    if not store or not query:
+        raise ApiError(400, "bad_request", "Give store (woolworths, coles or aldi) and q.")
+    factory = current_app.config.get("STORE_CLIENT_FACTORY") or StoreClient
+    try:
+        results = factory().search(store, query)
+    except StoreError as exc:
+        raise ApiError(502, "store_unavailable", str(exc))
+    return jsonify({"store": store, "query": query, "results": results})
+
+
 @api_bp.route("/purchases")
 @require_api_key
 @_handle
