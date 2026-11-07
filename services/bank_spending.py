@@ -15,7 +15,8 @@ from functools import lru_cache
 
 from models import parse_ymd
 from services.recurring import (
-    _display_name, guess_category, known_merchant, normalise_merchant, transfer_payee,
+    _display_name, guess_category, known_merchant, normalise_merchant, strip_boilerplate,
+    transfer_payee,
 )
 from services.savings_advice import _day, is_move
 from services.subscriptions import SUBSCRIPTION_CATEGORIES, subscription_category_label
@@ -33,11 +34,14 @@ SPEND_CATEGORIES = [
 _SPEND_KEYWORDS = [
     ("eating_out", ("mcdonalds", "mcdonald's", "kfc", "hungry jack", "guzman", "dominos", "domino's",
                     "pizza", "uber eats", "doordash", "menulog", "subway", "oporto", "red rooster",
-                    "nandos", "grill'd", "cafe", "coffee", "restaurant", "bakery", "sushi", "kebab")),
+                    "nandos", "grill'd", "cafe", "coffee", "restaurant", "bakery", "sushi", "kebab",
+                    "ubereats", "hungry jacks", "hjs")),
     ("fuel", ("bp", "shell", "ampol", "caltex", "7-eleven", "united petroleum", "metro petroleum",
-              "liberty", "puma energy", "fuel", "petrol")),
+              "liberty", "puma energy", "fuel", "petrol", "petroleum", "u go", "ugo")),
     ("shopping", ("kmart", "target", "big w", "bunnings", "jb hi-fi", "officeworks", "amazon",
-                  "ebay", "temu", "myer", "david jones", "harvey norman", "rebel", "spotlight")),
+                  "ebay", "temu", "myer", "david jones", "harvey norman", "rebel", "spotlight",
+                  "aliexpress", "prouds", "epson", "dollarshaveclub", "dollar shave club")),
+    ("groceries", ("supermarket", "ritchies", "iga", "foodworks", "drakes")),
 ]
 _SPEND_LOOKUP = dict(SPEND_CATEGORIES)
 
@@ -72,9 +76,37 @@ def merchant_label(description: str) -> str:
 
 
 def merchant_key_for(row: Dict) -> str:
-    """The key spending is grouped by, and that a category choice is saved against."""
+    """The key spending is grouped by, and that a category choice is saved against.
+
+    One short word ("u", "op", "ste") would lump unrelated merchants together,
+    so a first word of three letters or fewer keeps the next word too.
+    """
     description = row.get("description") or ""
-    return normalise_merchant(description) or row.get("merchant_key") or description
+    key = normalise_merchant(description)
+    if key and len(key) <= 3 and not transfer_payee(description):
+        words = _key_words(description)
+        if len(words) > 1 and words[0] == key:
+            return f"{key} {words[1]}"
+    return key or row.get("merchant_key") or description
+
+
+def _key_words(description: str) -> List[str]:
+    text = re.sub(r"[^a-z0-9& ]+", " ", strip_boilerplate(description).lower())
+    return [w for w in text.split() if not (w.isdigit() and len(w) >= 3)]
+
+
+def _chosen_key(key: str, overrides: Dict[str, str]) -> Optional[str]:
+    """The saved key that holds the user's category for ``key``, also the older one-word key."""
+    if key in overrides:
+        return key
+    first = key.split(" ")[0]
+    return first if " " in key and first in overrides else None
+
+
+def _chosen(row: Dict, overrides: Dict[str, str]) -> Optional[str]:
+    """The user's category for this row's merchant."""
+    found = _chosen_key(merchant_key_for(row), overrides)
+    return overrides[found] if found else None
 
 
 def category_for(row: Dict, overrides: Optional[Dict[str, str]] = None) -> str:
@@ -84,7 +116,7 @@ def category_for(row: Dict, overrides: Optional[Dict[str, str]] = None) -> str:
     groceries, then known merchants, the Bills guesses and the everyday guesses.
     """
     if overrides:
-        chosen = overrides.get(merchant_key_for(row))
+        chosen = _chosen(row, overrides)
         if chosen:
             return chosen
     if (row.get("status") or "") == "grocery":
@@ -153,7 +185,8 @@ def category_detail(transactions: Iterable[Dict], code: str, days: Optional[int]
     groups: Dict[str, Dict] = {}
     for item in items:
         group = groups.setdefault(item["key"], {"key": item["key"], "name": item["name"], "amount": 0.0,
-                                                "count": 0, "rows": [], "chosen": item["key"] in overrides})
+                                                "count": 0, "rows": [],
+                                                "chosen": bool(_chosen_key(item["key"], overrides))})
         group["amount"] += item["amount"]
         group["count"] += 1
         group["rows"].append({"date": item["day"].isoformat(), "description": item["description"],

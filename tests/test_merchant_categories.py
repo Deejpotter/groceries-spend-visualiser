@@ -116,3 +116,58 @@ def test_route_rejects_unknown_category(client, app):
 def test_route_needs_login(client):
   resp = client.post("/spend/merchant-category", data={"merchant_key": "x", "category": "fuel"})
   assert resp.status_code in (302, 401)
+
+
+def test_other_merchants_get_better_guesses():
+  cases = {
+    "INSPIRED CHANGE PSYCHO FRANKSTON": "health",
+    "UBEREATS SYDNEY": "eating_out",
+    "HUNGRY JACKS CARRUM DOWNS": "eating_out",
+    "ENDEAVOUR PETROLEUM CARRUM DOWNS": "fuel",
+    "U GO CARRUM DOWNS": "fuel",
+    "VICROADS ONLINE PAYMEN KEW": "transport",
+    "VIC ROADS IVR KEW": "transport",
+    "ZLR BEST CAR CARE": "transport",
+    "POINTPARKING BAYSIDE": "transport",
+    "DEEPINFRA PALO ALTO CA": "software",
+    "XERO INV": "software",
+    "OPENROUTER INC NEW YORK": "software",
+    "BATTLE.NET US1 CA USA": "entertainment",
+    "STEAM GAMES DE DEU": "entertainment",
+    "NINTENDO SG SGP": "entertainment",
+    "AMZNPRIMEAU SYDNEY SOUTH NS": "memberships",
+    "DIRECT BEFOREPAY DT 62BETY": "loans",
+    "ATO SYDNEY NS": "bills",
+    "STE SUPERMARKET PL FRANKSTON": "groceries",
+    "RITCHIES SEAFORD": "groceries",
+    "PROUDS FRANKSTON": "shopping",
+    "ALIEXPRESS NORTH SYDNEY": "shopping",
+  }
+  wrong = {d: category_for({"description": d}) for d in cases if category_for({"description": d}) != cases[d]}
+  assert wrong == {}
+
+
+def test_short_first_word_keeps_the_next_word():
+  assert merchant_key_for({"description": "U GO CARRUM DOWNS"}) == "u go"
+  assert merchant_key_for({"description": "UBER TRIP"}) == "uber"
+  assert merchant_key_for({"description": "OP STORECO PTY LTD"}) == "op storeco"
+  assert merchant_key_for({"description": "CANVIEW OPERATIONS VARSITY LAKES"}) == "canview"
+
+
+def test_older_one_word_choice_still_applies():
+  row = {"description": "U GO CARRUM DOWNS"}
+  assert category_for(row, {"u": "shopping"}) == "shopping"
+  assert category_for(row, {"u go": "fuel", "u": "shopping"}) == "fuel"
+
+
+def test_auto_clears_an_older_one_word_choice(client, app):
+  login(client)
+  _add_bank_row(app, "OP STORECO PTY LTD")
+  with app.app_context():
+    from database import get_db
+    get_db().execute("INSERT INTO merchant_categories (merchant_key, category) VALUES ('op', 'shopping')")
+    get_db().commit()
+  assert "you chose this" in client.get("/spend/category/shopping").get_data(as_text=True)
+  client.post("/spend/merchant-category", data={
+    "merchant_key": "op storeco", "category": "auto", "name": "Op Storeco", "back": "shopping"})
+  assert "No bank transactions" in client.get("/spend/category/shopping").get_data(as_text=True)

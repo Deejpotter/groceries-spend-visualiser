@@ -158,7 +158,8 @@ def set_merchant_category():
         return redirect(url_for("spend.spend_category", code=back, range=range_key))
     db = get_db()
     if category == "auto":
-        db.execute("DELETE FROM merchant_categories WHERE merchant_key = ?", (key,))
+        # Also the older one-word key ("u" for "u go"), or the choice would stay.
+        db.execute("DELETE FROM merchant_categories WHERE merchant_key IN (?, ?)", (key, key.split(" ")[0]))
         flash(f"{name} is back to the automatic category.", "success")
     else:
         db.execute(
