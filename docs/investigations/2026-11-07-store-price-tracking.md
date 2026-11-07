@@ -134,3 +134,8 @@ untracked products on a list page are not saved (they'd have no ingredient to sh
 salted butter in the built-in browser, the review suggested Butter, Save tracked it at $14.00/kg and
 saved the build id; the server's own "Check now" and a Coles search (12 results) then worked. The local
 server, database and test login were removed afterwards.
+
+**Production (2b12701, via #148 and release #149):** the capture page's bookmark points at
+`https://groceries.deejpotter.com`. A capture from the Coles home page in Deej's Chrome saved the build id
+(no products, so nothing else changed), and the production Coles search for lactose-free milk then
+returned 12 live results. The Day Planner task to retry Coles was closed.
