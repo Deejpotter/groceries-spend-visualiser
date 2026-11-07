@@ -1,0 +1,225 @@
+"""Routes for shelf price tracking across Woolworths, Coles and Aldi."""
+
+import json
+import threading
+
+import click
+from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, url_for
+
+from auth import login_required
+from database import get_db, get_setting, set_setting
+from models import today as local_today
+from services import store_prices as sp
+from services.price_tracking import (
+    check_messages, check_prices, ingredient_prices, load_watches, prices_overview, unwatch, watch_product,
+)
+
+prices_bp = Blueprint("prices", __name__)
+
+_check_lock = threading.Lock()
+
+
+def _client():
+    """The store client; tests swap it via app.config['STORE_CLIENT_FACTORY']."""
+    factory = current_app.config.get("STORE_CLIENT_FACTORY")
+    if factory:
+        return factory()
+    from services.store_clients import StoreClient
+    return StoreClient()
+
+
+def _record_check(result):
+    set_setting("price_check_last", local_today().isoformat())
+    set_setting("price_check_result", json.dumps(result))
+    get_db().commit()
+
+
+def run_check(app, client_factory=None):
+    """Check every watched product; one run at a time. Returns the result, or None when busy."""
+    if not _check_lock.acquire(blocking=False):
+        return None
+    try:
+        with app.app_context():
+            client = (client_factory or _client)()
+            result = check_prices(get_db(), local_today(), client)
+            _record_check(result)
+            return result
+    finally:
+        _check_lock.release()
+
+
+def _maybe_check_prices():
+    """Check prices in the background once a day, when the prices page is opened."""
+    if get_setting("price_check_last") == local_today().isoformat():
+        return
+    if not load_watches(get_db()) and not get_db().execute(
+            "SELECT 1 FROM purchases WHERE stockcode IS NOT NULL AND ingredient_id IS NOT NULL LIMIT 1").fetchone():
+        return
+    app = current_app._get_current_object()
+    factory = app.config.get("STORE_CLIENT_FACTORY")
+
+    def _run():
+        try:
+            run_check(app, factory)
+        except Exception as exc:  # a thread must never break a request
+            app.logger.error(f"Price check failed: {exc}")
+
+    if app.config.get("TESTING"):
+        return
+    threading.Thread(target=_run, daemon=True, name="price-check").start()
+
+
+def _last_check():
+    try:
+        result = json.loads(get_setting("price_check_result") or "null")
+    except ValueError:
+        result = None
+    return {"date": get_setting("price_check_last"), "result": result, "running": _check_lock.locked()}
+
+
+@prices_bp.route("/prices")
+@login_required
+def prices_list():
+    _maybe_check_prices()
+    db = get_db()
+    return render_template("prices/list.html", rows=prices_overview(db, local_today()), stores=sp.STORES,
+                           last_check=_last_check())
+
+
+@prices_bp.route("/prices/check", methods=["POST"])
+@login_required
+def prices_check():
+    app = current_app._get_current_object()
+    if app.config.get("TESTING"):
+        result = run_check(app)
+        for level, message in check_messages(result or {"checked": 0, "unavailable": 0, "failed": {}}):
+            flash(message, level)
+        return redirect(url_for("prices.prices_list"))
+    if _check_lock.locked():
+        flash("A price check is already running.", "info")
+    else:
+        threading.Thread(target=lambda: run_check(app, app.config.get("STORE_CLIENT_FACTORY")),
+                         daemon=True, name="price-check").start()
+        flash("Checking shelf prices in the background. Refresh in a minute.", "info")
+    return redirect(url_for("prices.prices_list"))
+
+
+def _ingredient(ingredient_id):
+    row = get_db().execute("SELECT * FROM ingredients WHERE id = ?", (ingredient_id,)).fetchone()
+    if not row:
+        abort(404)
+    return dict(row)
+
+
+def _default_query(db, ingredient):
+    """Search text for a store: the latest linked product name without the store's brand word."""
+    row = db.execute("SELECT product_name FROM purchases WHERE ingredient_id = ? ORDER BY order_date DESC LIMIT 1",
+                     (ingredient["id"],)).fetchone()
+    text = row["product_name"] if row else (ingredient.get("display_name") or ingredient["name"])
+    words = [w for w in text.split() if w.lower() not in ("woolworths", "coles", "aldi", "pdm")]
+    return " ".join(words)
+
+
+@prices_bp.route("/prices/<int:ingredient_id>")
+@login_required
+def prices_detail(ingredient_id):
+    db = get_db()
+    ingredient = _ingredient(ingredient_id)
+    data = ingredient_prices(db, ingredient, local_today())
+    watches = {w["store"]: w for w in load_watches(db, ingredient_id)}
+    store = sp.store_key(request.args.get("store"))
+    query = request.args.get("q", "").strip()
+    results, search_error = [], None
+    if store and query:
+        from services.store_clients import StoreError
+        try:
+            results = _client().search(store, query)
+        except StoreError as exc:
+            search_error = str(exc)
+    from services.spend_import import ingredient_unit_price
+    for product in results:
+        product["unit_price"] = ingredient_unit_price(product["name"], product["cup_price"], product["price"],
+                                                      ingredient["unit"], ingredient.get("pack_size"))
+    return render_template(
+        "prices/detail.html", ingredient=ingredient, series=data["series"], summary=data["summary"],
+        watches=watches, stores=sp.STORES, store=store, query=query or _default_query(db, ingredient),
+        searched=bool(store and query), results=results, search_error=search_error,
+    )
+
+
+@prices_bp.route("/prices/<int:ingredient_id>/watch", methods=["POST"])
+@login_required
+def prices_watch(ingredient_id):
+    db = get_db()
+    _ingredient(ingredient_id)
+    link = request.form.get("link", "").strip()
+    if link:
+        parsed = sp.parse_product_link(link)
+        if not parsed:
+            flash("That isn't a Woolworths, Coles or Aldi product page address.", "warning")
+            return redirect(url_for("prices.prices_detail", ingredient_id=ingredient_id))
+        store, code, url = parsed["store"], parsed["code"], parsed["url"]
+    else:
+        store = sp.store_key(request.form.get("store"))
+        code = request.form.get("code", "").strip()
+        url = request.form.get("url", "").strip() or None
+    if not store or not code:
+        flash("Pick a product to track.", "warning")
+        return redirect(url_for("prices.prices_detail", ingredient_id=ingredient_id))
+    product = None
+    from services.store_clients import StoreError
+    try:
+        product = _client().product(store, code, url)
+    except StoreError as exc:
+        flash(f"Tracking it, but today's price couldn't be read: {exc}", "warning")
+    if not product:
+        product = {"store": store, "code": code, "name": request.form.get("name", "").strip(), "url": url}
+    watch_product(db, ingredient_id, dict(product, store=store, code=code), local_today().isoformat())
+    flash(f"Tracking {product.get('name') or code} at {sp.store_label(store)}.", "success")
+    return redirect(url_for("prices.prices_detail", ingredient_id=ingredient_id))
+
+
+@prices_bp.route("/prices/<int:ingredient_id>/unwatch/<store>", methods=["POST"])
+@login_required
+def prices_unwatch(ingredient_id, store):
+    if unwatch(get_db(), ingredient_id, store):
+        flash(f"Stopped tracking {sp.store_label(store)} for this ingredient. Its saved prices stay.", "success")
+    return redirect(url_for("prices.prices_detail", ingredient_id=ingredient_id))
+
+
+@prices_bp.route("/prices/<int:ingredient_id>/check", methods=["POST"])
+@login_required
+def prices_check_one(ingredient_id):
+    db = get_db()
+    _ingredient(ingredient_id)
+    from services.store_clients import StoreError
+    client = _client()
+    checked, day = 0, local_today().isoformat()
+    from services.price_tracking import save_shelf_price
+    for watch in load_watches(db, ingredient_id):
+        try:
+            product = client.product(watch["store"], watch["store_code"], watch["url"])
+        except StoreError as exc:
+            flash(f"{sp.store_label(watch['store'])}: {exc}", "warning")
+            continue
+        save_shelf_price(db, dict(product or {"price": None, "available": False},
+                                  store=watch["store"], code=watch["store_code"]), day)
+        checked += 1
+    db.commit()
+    if checked:
+        flash(f"Checked {checked} store price{'s' if checked != 1 else ''}.", "success")
+    return redirect(url_for("prices.prices_detail", ingredient_id=ingredient_id))
+
+
+def register_prices_routes(app):
+    app.register_blueprint(prices_bp)
+
+    @app.cli.command("check-prices")
+    def check_prices_command():
+        """Check today's shelf prices for every tracked product (for a daily scheduled task)."""
+        result = run_check(app)
+        if result is None:
+            click.echo("A price check is already running.")
+            return
+        for _level, message in check_messages(result):
+            click.echo(message)

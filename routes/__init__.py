@@ -10,6 +10,7 @@ from routes.spend import register_spend_routes
 from routes.subscriptions import register_subscriptions_routes
 from routes.undo import register_undo_routes
 from routes.search import register_search_routes
+from routes.prices import register_prices_routes
 from routes.api import api_bp
 
 
@@ -25,4 +26,5 @@ def register_all_routes(app):
     register_subscriptions_routes(app)
     register_undo_routes(app)
     register_search_routes(app)
+    register_prices_routes(app)
     app.register_blueprint(api_bp)

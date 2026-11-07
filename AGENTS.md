@@ -142,6 +142,16 @@ tests/            Unit tests for services + integration tests via Flask test cli
   default `anthropic/claude-opus-5.5`). Guesses go to `photo_counts` and are only shown beside the count
   boxes, never saved as counts, so the page can score them against the hand count. Photos aren't stored.
 
+- **Shelf prices** (`services/store_prices.py` parsers and history, `services/store_clients.py` the only
+  network code, `services/price_tracking.py` the DB side, page **Track → Prices**): an ingredient watches
+  one product per store (`price_watches`); `check_prices()` saves one `shelf_prices` row per product per
+  day. Woolworths is watched automatically from the latest linked invoice stockcode. Coles and Aldi are
+  picked from a search or a pasted product link. The daily check runs in the background when `/prices` is
+  opened, or `flask --app app check-prices`. None of the store endpoints is a public API: every failure is
+  a `StoreError`, and the automatic check only fetches product pages (robots.txt disallows the search
+  pages, so search runs only when the user clicks). Coles' HTML pages sometimes show a bot check; its JSON
+  routes need a build id, which is cached in memory and in the `coles_build_id` setting.
+
 - **Spend import** (`services/spend_import.py`): de-duplicated by `UNIQUE(store, basket_id, product_name)`. Cup prices like `$1.51 / 100G` are parsed and converted to per-unit prices. Unpriced rows are skipped with a summary, not an error.
 
 ## Git and deployment
