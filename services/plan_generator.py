@@ -202,6 +202,30 @@ def _claimed_by_other_rule(rules: List[Dict], rule: Dict, meal_type: str, day) -
                and rule_matches_day(r["day_of_week"], day) for r in rules)
 
 
+def slot_rule(rules: List[Dict], meal_type: str, day) -> Optional[Dict]:
+    """The active rule that plans ``meal_type`` on ``day`` (lowest sort order), or None."""
+    matching = [r for r in rules if r["meal_type"] == meal_type and r.get("is_active", 1)
+                and rule_matches_day(r["day_of_week"], day)]
+    return min(matching, key=lambda r: r.get("sort_order", 0)) if matching else None
+
+
+def leftover_dates(day, meal_type: str, covers_days: int, taken: Set[tuple], end,
+                   rules: List[Dict], rule: Optional[Dict]) -> List[str]:
+    """The slots a meal cooked on ``day`` feeds after that night: the next free
+    nights of the same meal, never past ``end``, never a taken slot, and never a
+    night another rule plans (a Friday meal)."""
+    dates, current = [], day
+    while len(dates) < max(1, int(covers_days or 1)) - 1:
+        current += timedelta(days=1)
+        if current > end:
+            break
+        key = (current.strftime("%Y-%m-%d"), meal_type)
+        if key in taken or _claimed_by_other_rule(rules, rule or {}, meal_type, current):
+            continue
+        dates.append(key[0])
+    return dates
+
+
 def generate_plan_entries(
     start_date_str: str,
     end_date_str: str,
@@ -232,6 +256,33 @@ def generate_plan_entries(
 
     entries = []
     used_ids: Set[int] = {e["recipe_id"] for e in existing_entries if "recipe_id" in e}
+
+    # A kept multi-day meal feeds the next nights too, before anything else is planned there.
+    recipes_by_id = {r["id"]: r for r in recipes}
+    kept = sorted((e for e in existing_entries if e.get("recipe_id") and not e.get("is_continuation")),
+                  key=lambda e: e["date"])
+    for e in kept:
+        recipe = recipes_by_id.get(e["recipe_id"])
+        day = parse_date(e["date"])
+        if not recipe or not day or day < start or day > end:
+            continue
+        rule = slot_rule(rules, e["meal_type"], day)
+        already = sum(1 for k in existing_entries
+                      if k.get("is_continuation") and k.get("continuation_of") == e.get("id"))
+        covers = max(1, int(recipe.get("covers_days") or 1)) - already
+        for leftover in leftover_dates(day, e["meal_type"], covers, existing_set, end, rules, rule):
+            entries.append({
+                "date": leftover,
+                "meal_type": e["meal_type"],
+                "recipe_id": recipe["id"],
+                "servings": e.get("servings") or recipe.get("servings") or 1,
+                "is_auto_generated": 1,
+                "is_continuation": 1,
+                "source_rule_id": (rule or {}).get("id"),
+                "origin": None,
+                "continuation_of": (e["date"], e["meal_type"]),
+            })
+            existing_set.add((leftover, e["meal_type"]))
     if scorer is not None:
         by_id = {r["id"]: r for r in recipes}
         for e in existing_entries:
@@ -292,18 +343,9 @@ def generate_plan_entries(
                 used_ids.add(recipe["id"])
 
                 existing_set.add(entry_key)
-                covers_days = max(1, int(recipe.get("covers_days") or 1))
-                continuation_date = date
-                continuations_added = 0
-                while continuations_added < covers_days - 1:
-                    continuation_date += timedelta(days=1)
-                    if continuation_date > end:
-                        break
-                    continuation_key = (continuation_date.strftime("%Y-%m-%d"), meal_type)
-                    if continuation_key in existing_set:
-                        continue
-                    if _claimed_by_other_rule(rules, rule, meal_type, continuation_date):
-                        continue  # leftovers never take a night another rule plans (a Friday meal)
+                for leftover in leftover_dates(date, meal_type, recipe.get("covers_days"), existing_set,
+                                               end, rules, rule):
+                    continuation_key = (leftover, meal_type)
                     entries.append({
                         "date": continuation_key[0],
                         "meal_type": meal_type,
@@ -316,7 +358,6 @@ def generate_plan_entries(
                         "continuation_of": entry_key,
                     })
                     existing_set.add(continuation_key)
-                    continuations_added += 1
                 break  # First matching rule wins
 
     return entries, None
