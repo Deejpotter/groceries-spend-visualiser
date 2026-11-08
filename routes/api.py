@@ -14,7 +14,7 @@ That decision logic lives in services/, not here.
 import base64
 import os
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import Blueprint, current_app, g, jsonify, request
 
@@ -220,6 +220,30 @@ def server_info():
 @_handle
 def plan():
     return jsonify(_plan_payload())
+
+
+@api_bp.route("/display")
+@require_api_key
+@_handle
+def display_board():
+    """Compact next-N-days meal board for the larder-cyd fridge display."""
+    from models import MEAL_TYPES, today as local_today
+    from services.display_board import board_info, build_board, clamp_days
+    from services.suggestions import current_pay_cycle
+    day = local_today()
+    days = clamp_days(request.args.get("days"))
+    meals = [m for m in (request.args.get("meals") or "").split(",") if m in MEAL_TYPES]
+    end = (day + timedelta(days=days - 1)).isoformat()
+    db = get_db()
+    entries = [dict(r) for r in db.execute(
+        """SELECT mpe.date, mpe.meal_type, mpe.is_continuation, mpe.origin, r.name AS recipe_name
+           FROM meal_plan_entries mpe JOIN recipes r ON r.id = mpe.recipe_id
+           WHERE mpe.date BETWEEN ? AND ?""", (day.isoformat(), end))]
+    skips = [dict(r) for r in db.execute(
+        "SELECT date, meal_type FROM plan_skips WHERE date BETWEEN ? AND ?", (day.isoformat(), end))]
+    left = db.execute("SELECT COUNT(*) FROM shopping_list_items WHERE checked = 0").fetchone()[0]
+    info = board_info(current_pay_cycle(day), left, day)
+    return jsonify(build_board(entries, skips, day, days, meals or None, info))
 
 
 @api_bp.route("/shopping-list")
