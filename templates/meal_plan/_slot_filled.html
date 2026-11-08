@@ -11,7 +11,8 @@
         Serves {{ entry.servings }}
         {% if entry.covers_days > 1 and not entry.is_continuation %}<span class="badge badge-warning">Covers {{ entry.covers_days }} days</span>{% endif %}
         {% if entry.is_continuation %}<span class="badge badge-light">Leftovers</span>{% endif %}
-        {% if entry.origin == 'rollover' %}<span class="badge badge-success" title="Rolled over from last pay cycle: its ingredients are already bought, so it isn't on the shopping list">Already bought</span>
+        {% if entry.origin == 'made' %}<span class="badge badge-success" title="Already cooked: kept when you regenerate and left off the shopping list">Already made</span>
+        {% elif entry.origin == 'rollover' %}<span class="badge badge-success" title="Rolled over from last pay cycle: its ingredients are already bought, so it isn't on the shopping list">Already bought</span>
         {% elif not entry.is_auto_generated %}<span class="badge badge-info" title="Kept when you regenerate">Kept</span>{% endif %}
     </div>
     {% if entry.reasons %}<div class="slot-reasons small text-muted">{{ entry.reasons|join(' · ') }}</div>{% endif %}

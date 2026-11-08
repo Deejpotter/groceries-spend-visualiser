@@ -325,6 +325,7 @@ def _plan_context(editing_rule=None):
         "tab": tab,
         "summary": plan_summary(days, shown_types),
         "spare_uses": _spare_uses(start_str, end_str),
+        "already_made_start": max(local_today().isoformat(), start_str or ""),
         "rule_errors": None,
         "pay_cycle": current_pay_cycle(local_today()),
         "has_history": bool(db.execute("SELECT 1 FROM meal_plan_entries WHERE date < ? LIMIT 1",
@@ -424,6 +425,27 @@ def meal_plan_add():
     if result["replaced_continuation"]:
         flash("This slot is a continuation of an earlier meal. Replacing it.", "info")
     flash("Meal added.", "success")
+    return _back_to_plan()
+
+
+@meal_bp.route("/meal-plan/already-made", methods=["POST"])
+@login_required
+def meal_plan_already_made():
+    """Lock in leftovers already in the fridge as kept meals the shopping list skips."""
+    from models import parse_ymd, short_date
+    from services.mutations import add_already_made
+    try:
+        result = add_already_made(
+            get_db(), request.form.get("recipe_id", type=int), request.form.get("meal_type", "").strip(),
+            request.form.get("start", "").strip(), request.form.get("meals", type=int),
+            servings=request.form.get("servings", type=int) or 1)
+    except ValueError as exc:
+        flash(str(exc), "error")
+        return _back_to_plan()
+    dates = result["dates"]
+    span = short_date(parse_ymd(dates[0])) + (f" to {short_date(parse_ymd(dates[-1]))}" if len(dates) > 1 else "")
+    flash(f"{result['recipe']} is locked in for {len(dates)} meal{'' if len(dates) == 1 else 's'} "
+          f"({span}), marked already made so it isn't on the shopping list.", "success")
     return _back_to_plan()
 
 

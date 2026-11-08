@@ -21,7 +21,8 @@ def load_manual_entries(start: str, end: str) -> List[Dict]:
     """Slots regeneration must leave alone: manual meals and skipped (ate out) slots."""
     db = get_db()
     kept = [dict(r) for r in db.execute(
-        "SELECT id, date, meal_type, recipe_id, servings, is_continuation, continuation_of FROM meal_plan_entries "
+        "SELECT id, date, meal_type, recipe_id, servings, is_continuation, continuation_of, origin "
+        "FROM meal_plan_entries "
         "WHERE date BETWEEN ? AND ? AND is_auto_generated = 0",
         (start, end),
     )]

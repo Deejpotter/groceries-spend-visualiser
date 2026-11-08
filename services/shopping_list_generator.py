@@ -13,6 +13,7 @@ from models import convert_unit, label_of, to_display_unit, units_compatible
 # Pantry stock keyed by ingredient id (preferred) or name: either a bare quantity
 # (assumed to be in the same unit as the list line) or a (quantity, unit) pair.
 ROLLOVER = "rollover"
+MADE = "made"
 
 PantryStock = Dict[Union[int, str], Union[float, Tuple[float, str]]]
 
@@ -104,8 +105,8 @@ def generate_shopping_list(
     for entry in plan_entries:
         if entry.get("is_continuation"):
             continue  # continuation meals share the original recipe's ingredients
-        if entry.get("origin") == ROLLOVER:
-            continue  # rolled over from last cycle: its ingredients were already bought
+        if entry.get("origin") in (ROLLOVER, MADE):
+            continue  # already bought (rolled over) or already cooked: nothing to buy
         recipe = recipes.get(entry["recipe_id"])
         if not recipe:
             continue
