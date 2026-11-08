@@ -416,3 +416,55 @@ def unskip_meal(db, date: str, meal_type: str) -> None:
     """Open a skipped slot again; the next regeneration may fill it."""
     db.execute("DELETE FROM plan_skips WHERE date = ? AND meal_type = ?", (date, meal_type))
     db.commit()
+
+
+def add_already_made(db, recipe_id: Optional[int], meal_type: str, start: str, meals: Optional[int],
+                     servings: int = 1, origin: str = "ui") -> Dict:
+    """Lock in food that's already cooked: ``meals`` meals of a recipe from ``start``.
+
+    It takes the next days that meal is planned on (a weekday lunch rule means
+    weekdays), skipping kept meals and skipped slots, and replacing suggested
+    meals. The meals are kept through regeneration and left off the shopping list.
+    """
+    from datetime import timedelta
+    from models import parse_date
+    from services.plan_generator import rule_matches_day
+    if not validate_date_format(start or "") or (meal_type or "") not in MEAL_TYPES or not recipe_id:
+        raise AgentError("validation", "Choose a recipe, a meal and a start date.")
+    recipe = _recipe_or_raise(db, recipe_id)
+    if not meals or meals < 1 or meals > 60:
+        raise AgentError("validation", "Meals left must be between 1 and 60.")
+    rules = [dict(r) for r in db.execute(
+        "SELECT * FROM meal_rules WHERE meal_type = ? AND is_active = 1", (meal_type,))]
+    kept = {r["date"] for r in db.execute(
+        "SELECT date FROM meal_plan_entries WHERE meal_type = ? AND is_auto_generated = 0 AND date >= ?",
+        (meal_type, start))}
+    kept |= {r["date"] for r in db.execute(
+        "SELECT date FROM plan_skips WHERE meal_type = ? AND date >= ?", (meal_type, start))}
+    dates, day = [], parse_date(start)
+    for _ in range(366):
+        key = day.strftime("%Y-%m-%d")
+        planned = not rules or any(rule_matches_day(r["day_of_week"], day) for r in rules)
+        if planned and key not in kept:
+            dates.append(key)
+            if len(dates) == meals:
+                break
+        day += timedelta(days=1)
+    if not dates:
+        raise AgentError("validation", "There are no free days for that meal from that date.")
+    first_id = None
+    for key in dates:
+        old = db.execute("SELECT id, is_continuation FROM meal_plan_entries WHERE date = ? AND meal_type = ?",
+                         (key, meal_type)).fetchone()
+        if old:
+            if not old["is_continuation"]:
+                db.execute("UPDATE meal_plan_entries SET is_continuation = 0, continuation_of = NULL "
+                           "WHERE continuation_of = ?", (old["id"],))
+            db.execute("DELETE FROM meal_plan_entries WHERE id = ?", (old["id"],))
+        cur = db.execute(
+            "INSERT INTO meal_plan_entries (date, meal_type, recipe_id, servings, is_auto_generated,"
+            " is_continuation, continuation_of, origin) VALUES (?, ?, ?, ?, 0, ?, ?, 'made')",
+            (key, meal_type, recipe["id"], servings, 1 if first_id else 0, first_id))
+        first_id = first_id or cur.lastrowid
+    db.commit()
+    return {"recipe": recipe["name"], "dates": dates, "origin": origin}

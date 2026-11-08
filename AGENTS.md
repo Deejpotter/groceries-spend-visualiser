@@ -110,6 +110,12 @@ tests/            Unit tests for services + integration tests via Flask test cli
 ## Feature notes worth knowing
 
 - **Meal plan generation** (`services/plan_generator.py`): rules are tried in `sort_order`, first match wins. `day_of_week` is comma-separated (`mon,wed,fri`) and also supports `weekday`, `weekend`, `all`. Manual entries are preserved across regeneration. Recipes can cover N days; continuations use the next free slot of the same meal type and link to the original entry so ingredients aren't bought twice. A kept or hand-placed multi-day meal gets leftover nights too (`leftover_dates()`), on regenerate and when it is placed or swapped in. Swapping hands the old meal's leftover nights to the new one as far as it covers; removing a meal, or leftovers the new one doesn't need, become standalone meals.
+- **Meal tags and already-made food**: a recipe tagged with a meal (`lunch`) and not another
+  (`dinner`) is only planned for that meal (`suits_meal()`), whatever a rule's tag filter says.
+  **Already made** on the plan page (`add_already_made()` in `services/mutations.py`) locks in N
+  meals of leftovers from a date, on the days that meal is planned. They're kept, have
+  `origin = 'made'`, get no extra leftovers on regenerate, and the shopping list skips them like
+  `rollover` (`ALREADY_HAVE` in `plan_generator.py`).
 - **Pay-cycle plans and ate-out skips**: **Next pay cycle** plans payday to the day before the next
   one. A multi-day meal's leftovers never take a night another rule plans (e.g. a Friday rule).
   **Ate out** (`skip_meal()` in `services/mutations.py`) records a `plan_skips` slot, moves that

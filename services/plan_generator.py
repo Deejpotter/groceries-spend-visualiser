@@ -43,6 +43,14 @@ def recipe_matches_filter(recipe: Dict, tag_filter: Optional[str]) -> bool:
     return bool(set(wanted) & set(parse_tags(recipe.get("tags"))))
 
 
+def suits_meal(recipe: Dict, meal_type: Optional[str]) -> bool:
+    """False when the recipe is tagged for other meals only ("lunch", not "dinner")."""
+    if not meal_type:
+        return True
+    meal_tags = set(parse_tags(recipe.get("tags"))) & set(MEAL_TYPES)
+    return not meal_tags or meal_type in meal_tags
+
+
 def first_choice(candidates: List[Dict]) -> Dict:
     """Deterministic chooser (used by tests); the app passes random.choice."""
     return candidates[0]
@@ -72,7 +80,7 @@ def select_recipe_for_rule(
     picks among the best few, so plans follow what the household eats while
     still varying. Returns None if no recipe matches the tag filter.
     """
-    candidates = [r for r in recipes if recipe_matches_filter(r, tag_filter)]
+    candidates = [r for r in recipes if recipe_matches_filter(r, tag_filter) and suits_meal(r, meal_type)]
     if not candidates:
         return None
     if used_ids:
@@ -179,7 +187,7 @@ class MealScorer:
         exclude = exclude or set()
         scored = []
         for r in recipes:
-            if r["id"] in exclude:
+            if r["id"] in exclude or not suits_meal(r, meal_type):
                 continue
             value, reasons = self.score(r, date, meal_type)
             scored.append({"recipe": r, "score": value, "reasons": reasons})
@@ -200,6 +208,11 @@ def _claimed_by_other_rule(rules: List[Dict], rule: Dict, meal_type: str, day) -
         return False
     return any(r is not rule and r["meal_type"] == meal_type and r.get("is_active", 1)
                and rule_matches_day(r["day_of_week"], day) for r in rules)
+
+
+# Meals whose food is already in the house: their nights are fixed, and the
+# shopping list leaves them off.
+ALREADY_HAVE = ("rollover", "made")
 
 
 def slot_rule(rules: List[Dict], meal_type: str, day) -> Optional[Dict]:
@@ -259,8 +272,8 @@ def generate_plan_entries(
 
     # A kept multi-day meal feeds the next nights too, before anything else is planned there.
     recipes_by_id = {r["id"]: r for r in recipes}
-    kept = sorted((e for e in existing_entries if e.get("recipe_id") and not e.get("is_continuation")),
-                  key=lambda e: e["date"])
+    kept = sorted((e for e in existing_entries if e.get("recipe_id") and not e.get("is_continuation")
+                   and e.get("origin") not in ALREADY_HAVE), key=lambda e: e["date"])
     for e in kept:
         recipe = recipes_by_id.get(e["recipe_id"])
         day = parse_date(e["date"])
