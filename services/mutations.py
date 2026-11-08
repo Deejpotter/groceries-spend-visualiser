@@ -32,6 +32,54 @@ def _recipe_or_raise(db, recipe_id) -> Dict:
     return recipe
 
 
+def _plan_leftovers(db, entry_id: int, date: str, meal_type: str, recipe_id: int, servings: int,
+                    old_leftovers: List[int]) -> int:
+    """Give a meal placed by hand its leftover nights.
+
+    The nights the old meal's leftovers held go to the new meal first; any the
+    new meal doesn't need become meals of their own, as before. Further nights
+    are only taken when free. Returns how many leftover nights the meal has.
+    """
+    from database import get_plan_dates
+    from models import parse_date
+    from services.plan_generator import leftover_dates, slot_rule
+    covers = db.execute("SELECT covers_days FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
+    covers_days = int((covers["covers_days"] if covers else 1) or 1)
+    day = parse_date(date)
+    _, plan_end = get_plan_dates()
+    end = parse_date(plan_end) if plan_end and plan_end >= date else None
+    if covers_days <= 1 or not day or not end:
+        if old_leftovers:
+            db.execute(f"UPDATE meal_plan_entries SET is_continuation = 0, continuation_of = NULL "
+                       f"WHERE id IN ({','.join('?' * len(old_leftovers))})", old_leftovers)
+        return 0
+    old = {r["date"]: r["id"] for r in db.execute(
+        f"SELECT id, date FROM meal_plan_entries WHERE id IN ({','.join('?' * len(old_leftovers))})",
+        old_leftovers)} if old_leftovers else {}
+    taken = {(r["date"], r["meal_type"]) for r in db.execute(
+        "SELECT date, meal_type FROM meal_plan_entries WHERE date > ? AND date <= ? AND meal_type = ?",
+        (date, plan_end, meal_type)) if r["date"] not in old}
+    taken |= {(r["date"], r["meal_type"]) for r in db.execute(
+        "SELECT date, meal_type FROM plan_skips WHERE date > ? AND date <= ?", (date, plan_end))}
+    rules = [dict(r) for r in db.execute("SELECT * FROM meal_rules")]
+    rule = slot_rule(rules, meal_type, day)
+    dates = leftover_dates(day, meal_type, covers_days, taken, end, rules, rule)
+    for leftover in dates:
+        if leftover in old:
+            db.execute("UPDATE meal_plan_entries SET recipe_id = ?, servings = ?, is_auto_generated = 1, "
+                       "is_continuation = 1, continuation_of = ? WHERE id = ?",
+                       (recipe_id, servings, entry_id, old.pop(leftover)))
+        else:
+            db.execute(
+                "INSERT INTO meal_plan_entries (date, meal_type, recipe_id, servings, is_auto_generated,"
+                " is_continuation, continuation_of, source_rule_id) VALUES (?, ?, ?, ?, 1, 1, ?, ?)",
+                (leftover, meal_type, recipe_id, servings, entry_id, (rule or {}).get("id")))
+    for left_id in old.values():
+        db.execute("UPDATE meal_plan_entries SET is_continuation = 0, continuation_of = NULL WHERE id = ?",
+                   (left_id,))
+    return len(dates)
+
+
 def place_meal(db, date: str, meal_type: str, recipe_id: Optional[int],
                servings: Optional[int] = None, default_servings: int = 2,
                origin: str = "ui") -> Dict:
@@ -48,12 +96,10 @@ def place_meal(db, date: str, meal_type: str, recipe_id: Optional[int],
         (date, meal_type),
     ).fetchone()
     replaced_continuation = False
+    old_leftovers: List[int] = []
     if existing and not existing["is_continuation"]:
-        db.execute(
-            "UPDATE meal_plan_entries SET is_continuation = 0, continuation_of = NULL "
-            "WHERE continuation_of = ?",
-            (existing["id"],),
-        )
+        old_leftovers = [r["id"] for r in db.execute(
+            "SELECT id FROM meal_plan_entries WHERE continuation_of = ?", (existing["id"],))]
     elif existing:
         replaced_continuation = True
     db.execute("DELETE FROM meal_plan_entries WHERE date = ? AND meal_type = ?", (date, meal_type))
@@ -62,9 +108,10 @@ def place_meal(db, date: str, meal_type: str, recipe_id: Optional[int],
         " VALUES (?, ?, ?, ?, 0, ?)",
         (date, meal_type, recipe_id, servings, origin),
     )
+    leftovers = _plan_leftovers(db, cur.lastrowid, date, meal_type, recipe_id, servings, old_leftovers)
     db.commit()
     return {"entry_id": cur.lastrowid, "recipe": recipe["name"], "servings": servings,
-            "replaced_continuation": replaced_continuation}
+            "replaced_continuation": replaced_continuation, "leftovers": leftovers}
 
 
 def swap_meal(db, entry_id: int, new_recipe_id: Optional[int],
@@ -81,12 +128,8 @@ def swap_meal(db, entry_id: int, new_recipe_id: Optional[int],
         servings = entry["servings"]
     if servings < 1:
         raise AgentError("validation", "Servings must be at least 1.")
-    if not entry["is_continuation"]:
-        db.execute(
-            "UPDATE meal_plan_entries SET is_continuation = 0, continuation_of = NULL "
-            "WHERE continuation_of = ?",
-            (entry_id,),
-        )
+    old_leftovers = [r["id"] for r in db.execute(
+        "SELECT id FROM meal_plan_entries WHERE continuation_of = ?", (entry_id,))]         if not entry["is_continuation"] else []
     if entry["is_auto_generated"] and entry["recipe_id"] != new_recipe_id:
         # A suggested meal swapped for another is a signal to suggest it less.
         db.execute("INSERT INTO suggestion_feedback (kind, item_key, action) VALUES ('meal', ?, 'swapped_out')",
@@ -96,8 +139,10 @@ def swap_meal(db, entry_id: int, new_recipe_id: Optional[int],
         "is_continuation = 0, continuation_of = NULL, origin = ? WHERE id = ?",
         (new_recipe_id, servings, origin, entry_id),
     )
+    leftovers = _plan_leftovers(db, entry_id, entry["date"], entry["meal_type"], new_recipe_id, servings,
+                                old_leftovers)
     db.commit()
-    return {"entry_id": entry_id, "recipe": recipe["name"], "servings": servings}
+    return {"entry_id": entry_id, "recipe": recipe["name"], "servings": servings, "leftovers": leftovers}
 
 
 def lock_meal(db, entry_id: int, locked: bool) -> Dict:
