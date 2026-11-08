@@ -172,6 +172,13 @@ tests/            Unit tests for services + integration tests via Flask test cli
   /api/v1/prices/<id>/history` returns the same. The daily check is a Coolify scheduled task running
   `flask --app app check-prices` on staging and production.
 
+- **Fridge display** (`services/display_board.py`, `GET /api/v1/display?days=14&meals=dinner`): a small
+  read-only board for the [larder-cyd](https://github.com/Deejpotter/larder-cyd) ESP32 display. One entry
+  per day from today (1 to 31 days, empty days included), each meal with a short note (Leftovers, Already
+  made, Already bought, Eating out for a `plan_skips` slot), plus days to payday and unticked shopping
+  lines. Names are cut to 40 ASCII characters because the device's LVGL fonts have no "…". It uses the
+  normal API keys; give the display its own key.
+
 - **Spend import** (`services/spend_import.py`): de-duplicated by `UNIQUE(store, basket_id, product_name)`. Cup prices like `$1.51 / 100G` are parsed and converted to per-unit prices. Unpriced rows are skipped with a summary, not an error.
 
 ## Git and deployment
