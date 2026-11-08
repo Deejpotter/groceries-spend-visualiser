@@ -221,7 +221,8 @@ def generate_plan(start_date_str, end_date_str, chooser=random.choice, suggest=F
         "DELETE FROM meal_plan_entries WHERE date BETWEEN ? AND ? AND is_auto_generated = 1",
         (start_date_str, end_date_str),
     )
-    entry_ids = {}
+    # Leftovers of a kept meal point at that meal's existing row.
+    entry_ids = {(m["date"], m["meal_type"]): m["id"] for m in manual if m.get("id")}
     for entry in entries:
         continuation_of = entry_ids.get(entry.get("continuation_of"))
         cursor = db.execute(
