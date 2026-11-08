@@ -51,6 +51,30 @@
         <button type="button" onclick="window.print()" class="btn btn-outline-secondary btn-sm ml-2 d-print-none">{{ icon('printer') }} Print</button>
     </div>
 </div>
+{% if plan_start and plan_end and recipes %}
+<details class="mb-3 d-print-none" id="already-made">
+    <summary class="small">Already made something? Lock in the leftovers</summary>
+    <form method="post" action="{{ url_for('meal_plan.meal_plan_already_made') }}" class="form-inline flex-wrap mt-2">
+        {{ csrf() }}
+        <label class="small text-muted mr-2 mb-1">What
+            <span class="ml-1">{{ recipe_select(label="Recipe already made") }}</span>
+        </label>
+        <label class="small text-muted mr-2 mb-1">For
+            <select name="meal_type" class="form-control form-control-sm ml-1" aria-label="Meal">
+                {% for mt in meal_types %}<option value="{{ mt }}" {% if mt == 'lunch' %}selected{% endif %}>{{ meal_type_label(mt) }}</option>{% endfor %}
+            </select>
+        </label>
+        <label class="small text-muted mr-2 mb-1">From
+            <input type="date" name="start" value="{{ already_made_start }}" class="form-control form-control-sm ml-1" required aria-label="First day">
+        </label>
+        <label class="small text-muted mr-2 mb-1">Meals left
+            <input type="number" name="meals" min="1" max="60" value="5" class="form-control form-control-sm ml-1" style="width:5rem" required aria-label="Meals left">
+        </label>
+        <button type="submit" class="btn btn-outline-primary btn-sm mb-1">Lock in</button>
+    </form>
+    <p class="small text-muted mb-0 mt-1">Fills the next days that meal is planned on, replacing suggestions. They're kept when you regenerate and left off the shopping list.</p>
+</details>
+{% endif %}
 {% if has_entries %}
 <p class="small text-muted">Regenerating replaces {{ regen.auto }} auto meal{{ '' if regen.auto == 1 else 's' }} and keeps {{ regen.manual }} manual meal{{ '' if regen.manual == 1 else 's' }}. Multi-day meals are re-placed from their originals.</p>
 {% endif %}
